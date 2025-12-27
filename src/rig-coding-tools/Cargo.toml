@@ -19,6 +19,7 @@ tokio = { version = "1", features = ["fs", "process", "time", "io-util"] }
 glob = "0.3"
 ignore = "0.4"
 regex = "1.11"
+grep = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 [dev-dependencies]

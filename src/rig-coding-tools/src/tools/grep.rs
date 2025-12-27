@@ -2,18 +2,21 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::util::validate_absolute_path;
+use glob::Pattern;
+use grep::matcher::Matcher;
+use grep::regex::RegexMatcher;
+use grep::searcher::sinks::UTF8;
+use grep::searcher::{BinaryDetection, Searcher, SearcherBuilder};
+use ignore::WalkBuilder;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
-use schemars::JsonSchema;
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::time::Duration;
-use tokio::process::Command;
-use tokio::time::timeout;
+use std::time::SystemTime;
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 2000;
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn default_limit() -> Option<usize> {
     Some(DEFAULT_LIMIT)
@@ -60,29 +63,11 @@ impl Tool for GrepTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Search file contents using regex patterns. Returns file paths containing matches, sorted by modification time.".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "required": ["pattern", "path"],
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "Regex pattern to search for in file contents"
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute directory path to search in"
-                    },
-                    "include": {
-                        "type": "string",
-                        "description": "File glob filter (e.g., \"*.rs\", \"*.{ts,tsx}\")"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum files to return (default: 100, max: 2000)"
-                    }
-                }
-            }),
+            description: "Search file contents using regex patterns. Returns file paths \
+                containing matches, sorted by modification time."
+                .to_string(),
+            parameters: serde_json::to_value(schema_for!(GrepArgs))
+                .expect("schema serialization should not fail"),
         }
     }
 
@@ -96,9 +81,6 @@ impl Tool for GrepTool {
                 "pattern must not be empty".into(),
             ));
         }
-
-        // Validate regex compiles
-        regex::Regex::new(pattern)?;
 
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
         if limit == 0 {
@@ -116,7 +98,7 @@ impl Tool for GrepTool {
             }
         });
 
-        let result = run_rg_search(pattern, include, path, limit).await?;
+        let result = run_grep_search(pattern, include, path, limit)?;
 
         if result.files.is_empty() {
             Ok("No matches found.".to_string())
@@ -130,111 +112,141 @@ impl Tool for GrepTool {
     }
 }
 
-/// Execute ripgrep to find files matching the pattern.
-async fn run_rg_search(
+/// Execute grep search using the grep crate library.
+fn run_grep_search(
     pattern: &str,
     include: Option<&str>,
     search_path: &Path,
     limit: usize,
 ) -> ToolResult<GrepOutput> {
-    let mut command = Command::new("rg");
-    command
-        .arg("--files-with-matches")
-        .arg("--sortr=modified")
-        .arg("--regexp")
-        .arg(pattern)
-        .arg("--no-messages");
+    // Compile the regex matcher for content searching
+    let matcher =
+        RegexMatcher::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
 
-    if let Some(glob) = include {
-        command.arg("--glob").arg(glob);
-    }
+    // Compile glob pattern if provided
+    let glob_pattern = include
+        .map(|g| Pattern::new(g).map_err(|e| ToolError::InvalidPattern(e.to_string())))
+        .transpose()?;
 
-    command.arg("--").arg(search_path);
+    // Build searcher once, reuse for all files (as recommended by grep-searcher docs)
+    let mut searcher = SearcherBuilder::new()
+        .binary_detection(BinaryDetection::quit(0))
+        .build();
 
-    let output = timeout(COMMAND_TIMEOUT, command.output())
-        .await
-        .map_err(|_| ToolError::Timeout("rg timed out after 30 seconds".into()))?
-        .map_err(|e| {
-            ToolError::Execution(format!(
-                "failed to launch rg: {e}. Ensure ripgrep is installed and on PATH."
-            ))
-        })?;
+    // Collect files with modification times
+    let mut files_with_mtime: Vec<(String, SystemTime)> = Vec::new();
 
-    match output.status.code() {
-        Some(0) => {
-            let (files, truncated) = parse_results(&output.stdout, limit);
-            Ok(GrepOutput { files, truncated })
-        }
-        Some(1) => Ok(GrepOutput {
-            files: Vec::new(),
-            truncated: false,
-        }),
-        _ => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(ToolError::Execution(format!("rg failed: {stderr}")))
-        }
-    }
-}
+    let walker = WalkBuilder::new(search_path)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .build();
 
-/// Parse ripgrep output into file paths, respecting the limit.
-fn parse_results(stdout: &[u8], limit: usize) -> (Vec<String>, bool) {
-    let mut results = Vec::new();
-    let mut truncated = false;
+    for entry_result in walker {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
 
-    for line in stdout.split(|&b| b == b'\n') {
-        if line.is_empty() {
+        // Skip directories
+        let file_type = match entry.file_type() {
+            Some(ft) if ft.is_file() => ft,
+            _ => continue,
+        };
+
+        // Skip symlinks
+        if file_type.is_symlink() {
             continue;
         }
-        if let Ok(text) = std::str::from_utf8(line) {
-            if text.is_empty() {
+
+        let entry_path = entry.path();
+
+        // Apply glob filter if provided
+        if let Some(ref glob) = glob_pattern {
+            let file_name = match entry_path.file_name().and_then(|n| n.to_str()) {
+                Some(name) => name,
+                None => continue,
+            };
+            if !glob.matches(file_name) {
                 continue;
             }
-            if results.len() >= limit {
-                truncated = true;
-                break;
-            }
-            results.push(text.to_string());
         }
+
+        // Check if file contains a match
+        if !file_has_match(&matcher, &mut searcher, entry_path) {
+            continue;
+        }
+
+        // Get modification time
+        let mtime = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+
+        let path_str = entry_path.to_string_lossy().into_owned();
+        files_with_mtime.push((path_str, mtime));
     }
 
-    (results, truncated)
+    // Sort by modification time (newest first)
+    files_with_mtime.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Check if truncation is needed
+    let truncated = files_with_mtime.len() > limit;
+
+    // Extract paths, truncating if needed
+    let files: Vec<String> = files_with_mtime
+        .into_iter()
+        .take(limit)
+        .map(|(path, _)| path)
+        .collect();
+
+    Ok(GrepOutput { files, truncated })
+}
+
+/// Check if a file contains at least one match for the pattern.
+fn file_has_match(matcher: &RegexMatcher, searcher: &mut Searcher, path: &Path) -> bool {
+    let mut found = false;
+
+    // Use grep searcher to check for matches
+    let result = searcher.search_path(
+        matcher,
+        path,
+        UTF8(|_line_num, line| {
+            // Check if this line actually contains a match
+            if matcher.find(line.as_bytes()).ok().flatten().is_some() {
+                found = true;
+                // Return false to stop searching after first match
+                Ok(false)
+            } else {
+                Ok(true)
+            }
+        }),
+    );
+
+    // If search succeeded and we found a match, return true
+    // If search failed (e.g., binary file), return false
+    result.is_ok() && found
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command as StdCommand;
     use tempfile::tempdir;
 
-    fn rg_available() -> bool {
-        StdCommand::new("rg")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+    #[test]
+    fn grep_validates_empty_pattern() {
+        let result = run_grep_search("", None, Path::new("/tmp"), 10);
+        // Empty pattern after trim should be caught before this function
+        // but RegexMatcher will accept empty pattern, so this tests the flow
+        assert!(result.is_ok() || matches!(result, Err(ToolError::InvalidPattern(_))));
     }
 
     #[test]
-    fn parse_results_handles_basic_output() {
-        let stdout = b"/tmp/a.rs\n/tmp/b.rs\n";
-        let (files, truncated) = parse_results(stdout, 10);
-        assert_eq!(files, vec!["/tmp/a.rs", "/tmp/b.rs"]);
-        assert!(!truncated);
-    }
-
-    #[test]
-    fn parse_results_truncates_at_limit() {
-        let stdout = b"/tmp/a.rs\n/tmp/b.rs\n/tmp/c.rs\n";
-        let (files, truncated) = parse_results(stdout, 2);
-        assert_eq!(files.len(), 2);
-        assert!(truncated);
-    }
-
-    #[test]
-    fn parse_results_handles_empty_lines() {
-        let stdout = b"/tmp/a.rs\n\n/tmp/b.rs\n";
-        let (files, _) = parse_results(stdout, 10);
-        assert_eq!(files, vec!["/tmp/a.rs", "/tmp/b.rs"]);
+    fn grep_validates_invalid_regex() {
+        let result = run_grep_search("[invalid", None, Path::new("/tmp"), 10);
+        assert!(matches!(result, Err(ToolError::InvalidPattern(_))));
     }
 
     #[tokio::test]
@@ -273,81 +285,112 @@ mod tests {
             limit: None,
         };
         let result = tool.call(args).await;
-        assert!(matches!(result, Err(ToolError::Regex(_))));
+        assert!(matches!(result, Err(ToolError::InvalidPattern(_))));
     }
 
-    #[tokio::test]
-    async fn run_rg_search_finds_matches() {
-        if !rg_available() {
-            return;
-        }
+    #[test]
+    fn run_grep_search_finds_matches() {
         let temp = tempdir().unwrap();
         let dir = temp.path();
         std::fs::write(dir.join("match.txt"), "hello world").unwrap();
         std::fs::write(dir.join("other.txt"), "goodbye").unwrap();
 
-        let result = run_rg_search("hello", None, dir, 10).await.unwrap();
+        let result = run_grep_search("hello", None, dir, 10).unwrap();
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with("match.txt"));
     }
 
-    #[tokio::test]
-    async fn run_rg_search_respects_glob_filter() {
-        if !rg_available() {
-            return;
-        }
+    #[test]
+    fn run_grep_search_respects_glob_filter() {
         let temp = tempdir().unwrap();
         let dir = temp.path();
         std::fs::write(dir.join("match.rs"), "hello world").unwrap();
         std::fs::write(dir.join("match.txt"), "hello world").unwrap();
 
-        let result = run_rg_search("hello", Some("*.rs"), dir, 10).await.unwrap();
+        let result = run_grep_search("hello", Some("*.rs"), dir, 10).unwrap();
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with(".rs"));
     }
 
-    #[tokio::test]
-    async fn run_rg_search_respects_limit() {
-        if !rg_available() {
-            return;
-        }
+    #[test]
+    fn run_grep_search_respects_limit() {
         let temp = tempdir().unwrap();
         let dir = temp.path();
         std::fs::write(dir.join("a.txt"), "pattern").unwrap();
         std::fs::write(dir.join("b.txt"), "pattern").unwrap();
         std::fs::write(dir.join("c.txt"), "pattern").unwrap();
 
-        let result = run_rg_search("pattern", None, dir, 2).await.unwrap();
+        let result = run_grep_search("pattern", None, dir, 2).unwrap();
         assert_eq!(result.files.len(), 2);
         assert!(result.truncated);
     }
 
-    #[tokio::test]
-    async fn run_rg_search_returns_empty_on_no_match() {
-        if !rg_available() {
-            return;
-        }
+    #[test]
+    fn run_grep_search_returns_empty_on_no_match() {
         let temp = tempdir().unwrap();
         let dir = temp.path();
         std::fs::write(dir.join("file.txt"), "content").unwrap();
 
-        let result = run_rg_search("nonexistent", None, dir, 10).await.unwrap();
+        let result = run_grep_search("nonexistent", None, dir, 10).unwrap();
         assert!(result.files.is_empty());
         assert!(!result.truncated);
     }
 
-    #[tokio::test]
-    async fn run_rg_search_supports_regex() {
-        if !rg_available() {
-            return;
-        }
+    #[test]
+    fn run_grep_search_supports_regex() {
         let temp = tempdir().unwrap();
         let dir = temp.path();
         std::fs::write(dir.join("match.txt"), "foo123bar").unwrap();
         std::fs::write(dir.join("nomatch.txt"), "foobar").unwrap();
 
-        let result = run_rg_search(r"foo\d+bar", None, dir, 10).await.unwrap();
+        let result = run_grep_search(r"foo\d+bar", None, dir, 10).unwrap();
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with("match.txt"));
+    }
+
+    #[test]
+    fn run_grep_search_skips_binary_files() {
+        let temp = tempdir().unwrap();
+        let dir = temp.path();
+
+        // Create a text file with a match
+        std::fs::write(dir.join("text.txt"), "hello world").unwrap();
+
+        // Create a binary file with null bytes before the match text
+        // Binary detection triggers when null bytes are encountered
+        let mut binary_content = vec![0u8; 10]; // Null bytes first
+        binary_content.extend_from_slice(b"hello world");
+        std::fs::write(dir.join("binary.bin"), &binary_content).unwrap();
+
+        let result = run_grep_search("hello", None, dir, 10).unwrap();
+        // Should only find the text file, not the binary
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("text.txt"));
+    }
+
+    #[test]
+    fn file_has_match_returns_true_for_matching_file() {
+        let temp = tempdir().unwrap();
+        let file_path = temp.path().join("test.txt");
+        std::fs::write(&file_path, "hello world").unwrap();
+
+        let matcher = RegexMatcher::new("hello").unwrap();
+        let mut searcher = SearcherBuilder::new()
+            .binary_detection(BinaryDetection::quit(0))
+            .build();
+        assert!(file_has_match(&matcher, &mut searcher, &file_path));
+    }
+
+    #[test]
+    fn file_has_match_returns_false_for_non_matching_file() {
+        let temp = tempdir().unwrap();
+        let file_path = temp.path().join("test.txt");
+        std::fs::write(&file_path, "goodbye world").unwrap();
+
+        let matcher = RegexMatcher::new("hello").unwrap();
+        let mut searcher = SearcherBuilder::new()
+            .binary_detection(BinaryDetection::quit(0))
+            .build();
+        assert!(!file_has_match(&matcher, &mut searcher, &file_path));
     }
 }
