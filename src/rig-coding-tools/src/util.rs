@@ -3,6 +3,9 @@
 use crate::error::{ToolError, ToolResult};
 use std::path::Path;
 
+/// Generous estimate of average characters per line for buffer pre-allocation.
+pub const ESTIMATED_CHARS_PER_LINE: usize = 64;
+
 /// Validates that a path is absolute.
 ///
 /// Returns the path as-is if valid, or an error describing the issue.

@@ -2,7 +2,7 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::output::ToolOutput;
-use crate::util::{truncate_line, validate_absolute_path};
+use crate::util::{truncate_line, validate_absolute_path, ESTIMATED_CHARS_PER_LINE};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -115,11 +115,13 @@ async fn read_file<const LINE_NUMBERS: bool>(
     validate_absolute_path(path)?;
 
     let file = File::open(path).await?;
-    let mut reader = BufReader::new(file);
+    // Size buffer for expected content, rounded to next power of 2
+    let buf_capacity = (limit * ESTIMATED_CHARS_PER_LINE).next_power_of_two();
+    let mut reader = BufReader::with_capacity(buf_capacity, file);
     let mut buffer = Vec::new();
 
-    // Pre-allocate output: estimate ~100 chars/line, capped to avoid over-allocation
-    let estimated_capacity = limit.min(256) * 100;
+    // Pre-allocate output based on expected content size
+    let estimated_capacity = limit * ESTIMATED_CHARS_PER_LINE;
     let mut output = String::with_capacity(estimated_capacity);
     let mut line_number = 0usize;
     let mut lines_output = 0usize;
