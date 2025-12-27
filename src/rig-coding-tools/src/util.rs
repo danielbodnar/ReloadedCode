@@ -45,16 +45,17 @@ pub fn truncate_text(text: &str, max_bytes: usize) -> (&str, bool) {
 
 /// Truncates a single line to a maximum character count.
 pub fn truncate_line(line: &str, max_chars: usize) -> (&str, bool) {
-    if line.chars().count() <= max_chars {
+    // Fast path: UTF-8 guarantees byte_count >= char_count,
+    // so if byte length fits, no truncation needed.
+    if line.len() <= max_chars {
         return (line, false);
     }
 
     // Find byte position at max_chars character boundary
-    let byte_pos = line
-        .char_indices()
-        .nth(max_chars)
-        .map(|(i, _)| i)
-        .unwrap_or(line.len());
+    let Some((byte_pos, _)) = line.char_indices().nth(max_chars) else {
+        // Fewer than max_chars characters exist
+        return (line, false);
+    };
 
     (&line[..byte_pos], true)
 }
