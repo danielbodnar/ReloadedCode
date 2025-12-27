@@ -7,6 +7,7 @@ use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
+use std::fmt::Write;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -116,8 +117,12 @@ async fn read_file<const LINE_NUMBERS: bool>(
     let file = File::open(path).await?;
     let mut reader = BufReader::new(file);
     let mut buffer = Vec::new();
-    let mut collected = Vec::with_capacity(limit.min(256));
+
+    // Pre-allocate output: estimate ~100 chars/line, capped to avoid over-allocation
+    let estimated_capacity = limit.min(256) * 100;
+    let mut output = String::with_capacity(estimated_capacity);
     let mut line_number = 0usize;
+    let mut lines_output = 0usize;
 
     loop {
         buffer.clear();
@@ -142,8 +147,8 @@ async fn read_file<const LINE_NUMBERS: bool>(
             continue;
         }
 
-        // Stop if we've collected enough lines
-        if collected.len() >= limit {
+        // Stop if we've output enough lines
+        if lines_output >= limit {
             break;
         }
 
@@ -153,12 +158,20 @@ async fn read_file<const LINE_NUMBERS: bool>(
         // Truncate long lines
         let (truncated_content, _) = truncate_line(&content, MAX_LINE_LENGTH);
 
+        // Add newline separator for subsequent lines
+        if lines_output > 0 {
+            output.push('\n');
+        }
+
         // Branch eliminated at compile time due to const generic
         if LINE_NUMBERS {
-            collected.push(format!("L{}: {}", line_number, truncated_content));
+            // write! to String is infallible
+            let _ = write!(&mut output, "L{}: {}", line_number, truncated_content);
         } else {
-            collected.push(truncated_content.to_owned());
+            output.push_str(truncated_content);
         }
+
+        lines_output += 1;
     }
 
     // Check if offset exceeded file length
@@ -169,7 +182,7 @@ async fn read_file<const LINE_NUMBERS: bool>(
         )));
     }
 
-    Ok(ToolOutput::new(collected.join("\n")))
+    Ok(ToolOutput::new(output))
 }
 
 #[cfg(test)]
