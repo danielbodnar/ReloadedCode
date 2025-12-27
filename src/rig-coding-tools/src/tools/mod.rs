@@ -16,6 +16,7 @@ pub mod write;
 
 // Re-exports
 pub use bash::BashTool;
+pub use grep::{GrepArgs, GrepFileMatches, GrepLineMatch, GrepOutput, GrepTool};
 pub use read::ReadTool;
 pub use todo::{Todo, TodoPriority, TodoReadTool, TodoState, TodoStatus, TodoWriteTool};
 pub use webfetch::WebFetchTool;

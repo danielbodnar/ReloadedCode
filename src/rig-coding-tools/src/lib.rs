@@ -11,7 +11,7 @@ pub use error::{ToolError, ToolResult};
 pub use output::ToolOutput;
 pub use tools::bash::BashTool;
 pub use tools::edit::{EditArgs, EditError, EditTool};
-pub use tools::grep::GrepTool;
+pub use tools::grep::{GrepArgs, GrepFileMatches, GrepLineMatch, GrepOutput, GrepTool};
 pub use tools::read::{ReadArgs, ReadTool};
 pub use tools::task::{MockTaskExecutor, TaskArgs, TaskExecutor, TaskResult, TaskTool};
 pub use tools::todo::{Todo, TodoPriority, TodoReadTool, TodoState, TodoStatus, TodoWriteTool};
