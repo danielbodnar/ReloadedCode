@@ -6,6 +6,9 @@ use std::path::Path;
 /// Generous estimate of average characters per line for buffer pre-allocation.
 pub const ESTIMATED_CHARS_PER_LINE: usize = 64;
 
+/// A number of characters per line that's likely to not be exceeded in most files.
+pub const LIKELY_CHARS_PER_LINE_MAX: usize = ESTIMATED_CHARS_PER_LINE * 4;
+
 /// Validates that a path is absolute.
 ///
 /// Returns the path as-is if valid, or an error describing the issue.
