@@ -40,14 +40,18 @@ rig-coding-tools = "0.1.0"
 ### Basic Example
 
 ```rust
-// TODO: Add your basic example here
+use rig_coding_tools::{ToolError, ToolResult};
+
+// Tool implementations will be added in future releases
+fn example() -> ToolResult<()> {
+    // Tools will follow the rig-core Tool trait pattern
+    Ok(())
+}
 ```
 
 ### Advanced Example
 
-```rust
-// TODO: Add a more advanced example here
-```
+Examples will be added as tools are implemented.
 
 ## License
 
