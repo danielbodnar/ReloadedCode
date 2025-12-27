@@ -4,6 +4,7 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::util::validate_absolute_path;
+use glob::Pattern;
 use ignore::WalkBuilder;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -78,7 +79,7 @@ fn glob_files(pattern: &str, search_path: &str) -> ToolResult<GlobOutput> {
 
     // Compile the glob pattern for matching
     let compiled_pattern =
-        ::glob::Pattern::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
+        Pattern::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
 
     // Collect files with modification times
     let mut files_with_mtime: Vec<(String, SystemTime)> = Vec::new();
