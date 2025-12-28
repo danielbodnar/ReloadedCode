@@ -4,6 +4,7 @@
 
 use crate::error::ToolError;
 use crate::util::truncate_text;
+use html_to_markdown_rs::{convert, ConversionOptions, PreprocessingOptions, PreprocessingPreset};
 use reqwest::redirect::Policy;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -11,8 +12,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Maximum response size to accept (1MB).
-const MAX_RESPONSE_SIZE: usize = 1_024 * 1_024;
+/// Maximum response size to accept (5MB).
+const MAX_RESPONSE_SIZE: usize = 5 * 1_024 * 1_024;
 /// Content truncation threshold (100KB).
 const CONTENT_TRUNCATE_SIZE: usize = 100 * 1_024;
 /// Default request timeout in milliseconds.
@@ -122,7 +123,7 @@ impl Tool for WebFetchTool {
 
         // Process based on content type
         let processed = if content_type.contains("text/html") {
-            strip_html_tags(&raw_content)
+            html_to_markdown(&raw_content)
         } else if content_type.contains("application/json") {
             format_json(&raw_content)
         } else {
@@ -178,30 +179,26 @@ fn categorize_reqwest_error(e: reqwest::Error, url: &str) -> ToolError {
     }
 }
 
-/// Strips HTML tags to extract text content.
-fn strip_html_tags(html: &str) -> String {
-    // Remove script and style elements entirely
-    let re_script = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
-    let re_style = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
-    let text = re_script.replace_all(html, " ");
-    let text = re_style.replace_all(&text, " ");
+/// Converts HTML to markdown for LLM-friendly output.
+fn html_to_markdown(html: &str) -> String {
+    let options = ConversionOptions {
+        preprocessing: PreprocessingOptions {
+            enabled: true,
+            preset: PreprocessingPreset::Aggressive,
+            remove_navigation: true,
+            remove_forms: true,
+        },
+        strip_tags: vec![
+            "img".into(),
+            "svg".into(),
+            "script".into(),
+            "style".into(),
+            "noscript".into(),
+        ],
+        ..Default::default()
+    };
 
-    // Remove all other tags, replacing with space to preserve word boundaries
-    let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
-    let text = re_tags.replace_all(&text, " ");
-
-    // Decode common HTML entities
-    let text = text
-        .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'");
-
-    // Collapse whitespace
-    let re_whitespace = regex::Regex::new(r"\s+").unwrap();
-    re_whitespace.replace_all(&text, " ").trim().to_string()
+    convert(html, Some(options)).unwrap_or_else(|_| html.to_string())
 }
 
 /// Formats JSON content for readability.
@@ -249,7 +246,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetches_and_strips_html() {
+    async fn fetches_and_converts_html_to_markdown() {
         let server = setup_mock_server().await;
         let html = r#"<html><head><title>Test</title></head>
             <body><h1>Hello</h1><p>World</p></body></html>"#;
@@ -272,8 +269,10 @@ mod tests {
             .await
             .unwrap();
 
+        // Should contain markdown heading and content
         assert!(result.contains("Hello"));
         assert!(result.contains("World"));
+        // Should not contain raw HTML tags
         assert!(!result.contains("<h1>"));
         assert!(!result.contains("<p>"));
         assert!(result.contains("Content-Type: text/html"));
@@ -363,24 +362,32 @@ mod tests {
     }
 
     #[test]
-    fn strip_html_tags_removes_all_tags() {
+    fn html_to_markdown_converts_structure() {
         let html = "<html><body><h1>Title</h1><p>Content</p></body></html>";
-        let result = strip_html_tags(html);
-        assert_eq!(result, "Title Content");
+        let result = html_to_markdown(html);
+        // Should preserve heading structure as markdown
+        assert!(result.contains("Title"));
+        assert!(result.contains("Content"));
+        // Should not contain raw HTML
+        assert!(!result.contains("<h1>"));
+        assert!(!result.contains("<p>"));
     }
 
     #[test]
-    fn strip_html_tags_removes_scripts() {
+    fn html_to_markdown_strips_scripts() {
         let html = "<p>Before</p><script>alert('xss')</script><p>After</p>";
-        let result = strip_html_tags(html);
-        assert_eq!(result, "Before After");
+        let result = html_to_markdown(html);
+        assert!(result.contains("Before"));
+        assert!(result.contains("After"));
+        assert!(!result.contains("alert"));
+        assert!(!result.contains("<script>"));
     }
 
     #[test]
-    fn strip_html_tags_decodes_entities() {
+    fn html_to_markdown_decodes_entities() {
         let html = "<p>Tom &amp; Jerry &lt;3</p>";
-        let result = strip_html_tags(html);
-        assert_eq!(result, "Tom & Jerry <3");
+        let result = html_to_markdown(html);
+        assert!(result.contains("Tom & Jerry <3"));
     }
 
     #[test]
