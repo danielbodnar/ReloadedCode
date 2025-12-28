@@ -15,8 +15,8 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 
-/// Maximum output size in bytes before truncation (100KB).
-const MAX_OUTPUT_BYTES: usize = 100 * 1024;
+/// Maximum output size in bytes before truncation (30KB).
+const MAX_OUTPUT_BYTES: usize = 30 * 1024;
 
 /// Default command timeout in milliseconds.
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
