@@ -1,26 +1,10 @@
 //! Shared utilities for tool implementations.
 
-use crate::error::{ToolError, ToolResult};
-use std::path::Path;
-
 /// Generous estimate of average characters per line for buffer pre-allocation.
 pub const ESTIMATED_CHARS_PER_LINE: usize = 64;
 
 /// A number of characters per line that's likely to not be exceeded in most files.
 pub const LIKELY_CHARS_PER_LINE_MAX: usize = ESTIMATED_CHARS_PER_LINE * 4;
-
-/// Validates that a path is absolute.
-///
-/// Returns the path as-is if valid, or an error describing the issue.
-pub fn validate_absolute_path(path: &Path) -> ToolResult<&Path> {
-    if !path.is_absolute() {
-        return Err(ToolError::InvalidPath(format!(
-            "path must be absolute: {}",
-            path.display()
-        )));
-    }
-    Ok(path)
-}
 
 /// Formats a line with its line number for output.
 ///
@@ -69,20 +53,6 @@ pub fn truncate_line(line: &str, max_chars: usize) -> (&str, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn validate_absolute_path_accepts_absolute() {
-        let path = PathBuf::from("/home/user/file.txt");
-        assert!(validate_absolute_path(&path).is_ok());
-    }
-
-    #[test]
-    fn validate_absolute_path_rejects_relative() {
-        let path = PathBuf::from("relative/path.txt");
-        let err = validate_absolute_path(&path).unwrap_err();
-        assert!(matches!(err, ToolError::InvalidPath(_)));
-    }
 
     #[test]
     fn format_numbered_line_pads_correctly() {

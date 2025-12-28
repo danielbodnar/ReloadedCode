@@ -1,20 +1,14 @@
-//! Task tool for launching autonomous sub-agents.
-//!
-//! Provides [`TaskTool`] for spawning sub-agents to handle complex tasks.
-//! Includes [`MockTaskExecutor`] for testing without LLM dependencies.
+//! Task execution types and mock executor.
 
 use crate::error::ToolResult;
 use async_trait::async_trait;
-use rig::completion::ToolDefinition;
-use rig::tool::Tool;
-use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-/// Input arguments for the task tool.
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+/// Input arguments for task execution.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TaskArgs {
     /// Short 3-5 word task description.
     pub description: String,
@@ -41,7 +35,7 @@ pub struct TaskResult {
 }
 
 impl TaskResult {
-    /// Formats the result for tool output.
+    /// Formats the result for display.
     pub fn format(&self) -> String {
         format!(
             "Task: {}\nAgent: {}\nSession: {}\nStatus: completed\n\nResult: {}",
@@ -52,8 +46,7 @@ impl TaskResult {
 
 /// Trait for executing tasks.
 ///
-/// Implement this trait to provide custom task execution logic,
-/// such as invoking a real LLM agent.
+/// Implement this to provide custom execution logic (e.g., real LLM agent).
 #[async_trait]
 pub trait TaskExecutor: Send + Sync {
     /// Execute a task with the given arguments.
@@ -62,7 +55,7 @@ pub trait TaskExecutor: Send + Sync {
 
 /// Mock task executor for testing.
 ///
-/// Returns predefined responses without requiring LLM authentication.
+/// Returns predefined responses without LLM calls.
 #[derive(Debug, Default)]
 pub struct MockTaskExecutor {
     responses: RwLock<HashMap<String, String>>,
@@ -119,58 +112,6 @@ impl TaskExecutor for MockTaskExecutor {
     }
 }
 
-/// Tool for launching autonomous sub-agents.
-///
-/// Uses a [`TaskExecutor`] to handle task execution. For testing,
-/// use [`TaskTool::with_mock`] to create a tool with [`MockTaskExecutor`].
-pub struct TaskTool<E: TaskExecutor = MockTaskExecutor> {
-    executor: Arc<E>,
-}
-
-impl TaskTool<MockTaskExecutor> {
-    /// Creates a new task tool with mock executor for testing.
-    pub fn with_mock() -> Self {
-        Self {
-            executor: Arc::new(MockTaskExecutor::new()),
-        }
-    }
-
-    /// Returns a reference to the mock executor for setting responses.
-    pub fn mock_executor(&self) -> &MockTaskExecutor {
-        &self.executor
-    }
-}
-
-impl<E: TaskExecutor> TaskTool<E> {
-    /// Creates a new task tool with the given executor.
-    pub fn new(executor: Arc<E>) -> Self {
-        Self { executor }
-    }
-}
-
-impl<E: TaskExecutor + 'static> Tool for TaskTool<E> {
-    const NAME: &'static str = "task";
-
-    type Error = crate::error::ToolError;
-    type Args = TaskArgs;
-    type Output = String;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: Self::NAME.to_string(),
-            description: "Launch a sub-agent to handle complex, multi-step tasks autonomously."
-                .to_string(),
-            parameters: serde_json::to_value(schema_for!(TaskArgs))
-                .expect("schema generation should not fail"),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let result = self.executor.execute(&args).await?;
-        Ok(result.format())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,10 +129,8 @@ mod tests {
         let result = executor.execute(&args).await.unwrap();
 
         assert_eq!(result.description, "test task");
-        assert_eq!(result.subagent_type, "general");
         assert!(result.session_id.starts_with("mock-session-"));
         assert!(result.result.contains("test task"));
-        assert!(result.result.contains("general agent"));
     }
 
     #[tokio::test]
@@ -225,56 +164,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_tool_calls_executor() {
-        let tool = TaskTool::with_mock();
-        let args = TaskArgs {
-            description: "analyze code".into(),
-            prompt: "review the main function".into(),
-            subagent_type: "coder".into(),
-            session_id: None,
-        };
-
-        let output = tool.call(args).await.unwrap();
-
-        assert!(output.contains("Task: analyze code"));
-        assert!(output.contains("Agent: coder"));
-        assert!(output.contains("Status: completed"));
-    }
-
-    #[tokio::test]
-    async fn task_tool_with_custom_mock_response() {
-        let tool = TaskTool::with_mock();
-        tool.mock_executor()
-            .set_response("special task", "Special output!");
-
-        let args = TaskArgs {
-            description: "special task".into(),
-            prompt: "do special things".into(),
-            subagent_type: "general".into(),
-            session_id: None,
-        };
-
-        let output = tool.call(args).await.unwrap();
-        assert!(output.contains("Special output!"));
-    }
-
-    #[tokio::test]
-    async fn task_tool_definition_has_correct_schema() {
-        let tool = TaskTool::with_mock();
-        let def = tool.definition("".into()).await;
-
-        assert_eq!(def.name, "task");
-        assert!(def.description.contains("sub-agent"));
-
-        let params = def.parameters.as_object().unwrap();
-        let props = params.get("properties").unwrap().as_object().unwrap();
-        assert!(props.contains_key("description"));
-        assert!(props.contains_key("prompt"));
-        assert!(props.contains_key("subagent_type"));
-        assert!(props.contains_key("session_id"));
-    }
-
-    #[tokio::test]
     async fn session_ids_increment() {
         let executor = MockTaskExecutor::new();
         let args = TaskArgs {
@@ -289,5 +178,21 @@ mod tests {
 
         assert_eq!(r1.session_id, "mock-session-0");
         assert_eq!(r2.session_id, "mock-session-1");
+    }
+
+    #[test]
+    fn task_result_formats_correctly() {
+        let result = TaskResult {
+            description: "my task".into(),
+            subagent_type: "coder".into(),
+            session_id: "sess-1".into(),
+            result: "Done!".into(),
+        };
+
+        let formatted = result.format();
+        assert!(formatted.contains("Task: my task"));
+        assert!(formatted.contains("Agent: coder"));
+        assert!(formatted.contains("Session: sess-1"));
+        assert!(formatted.contains("Result: Done!"));
     }
 }

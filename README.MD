@@ -1,49 +1,27 @@
 # rig-coding-tools
 
-## Additional Setup Required!!
-
-<!-- DELETE THIS SECTION AFTER COMPLETING SETUP -->
-
-Additional setup might be required.
-Once you do the stuff under this text, delete this section.
-
-### Code Coverage
-To setup code coverage for this project:
-
-1. Go to [Codecov][codecov], add your project.
-2. Go to [Settings -> Secrets and variables -> Actions][gh-actions-secrets] in your repo and add a repository secret named `CODECOV_TOKEN`.
-3. Do the same in [Settings -> Secrets and variables -> Dependabot][gh-actions-dependabot].
-
-The instructions on the Codecov page will provide the token to use.
-
-
-### Setup API Key (crates.io)
-
-You'll need to set up an API key to publish to `crates.io` on tag.
-
-- Generate your API key in [crates.io (Account Settings -> API Tokens)][crates-io-key].
-- Go to [Settings -> Secrets and variables -> Actions][gh-actions-secrets] in your repo and add environment secret named `CRATES_IO_TOKEN`.
-- Paste your API key.
-
-
-
-
-### Fill in README Documentation
-
-This repository uses a two-level README structure:
-
-| File | Purpose | What to Write |
-|------|---------|---------------|
-| `README.MD` (this file) | GitHub landing page | Project overview, quick start example, badges |
-| [`src/rig-coding-tools/README.MD`](./src/rig-coding-tools/README.MD) | crates.io page | Detailed features, installation, comprehensive usage examples |
-
------------------------
-
-[![Crates.io](https://img.shields.io/crates/v/rig-coding-tools.svg)](https://crates.io/crates/rig-coding-tools)
-[![Docs.rs](https://docs.rs/rig-coding-tools/badge.svg)](https://docs.rs/rig-coding-tools)
+[![Crates.io - coding-tools-core](https://img.shields.io/crates/v/coding-tools-core.svg)](https://crates.io/crates/coding-tools-core)
+[![Crates.io - coding-tools-rig](https://img.shields.io/crates/v/coding-tools-rig.svg)](https://crates.io/crates/coding-tools-rig)
+[![Docs.rs](https://docs.rs/coding-tools-rig/badge.svg)](https://docs.rs/coding-tools-rig)
 [![CI](https://github.com/Sewer56/rig-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/rig-coding-tools/actions)
 
-Basic coding tools for rig based LLM agents
+Coding tools for building LLM-powered development agents with [Rig](https://github.com/0xPlaygrounds/rig).
+
+## About This Workspace
+
+This workspace contains multiple Rust crates for integrating coding tools with LLM agents:
+
+- **[coding-tools-core](./src/coding-tools-core/)**: Framework-agnostic core operations and utilities
+- **[coding-tools-rig](./src/coding-tools-rig/)**: Rig framework-specific Tool implementations
+
+## Features
+
+- **File Operations**: Read, write, edit files with line-numbered output
+- **Search**: Glob pattern matching and regex content search  
+- **Shell**: Cross-platform command execution with timeout
+- **Web**: URL fetching with HTML-to-markdown conversion
+- **Task Delegation**: Sub-agent spawning for complex workflows
+- **Path Security**: Choose between unrestricted or sandboxed file access
 
 ## Quick Start
 
@@ -51,33 +29,35 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rig-coding-tools = "0.1.0"
+coding-tools-rig = "0.1"
 ```
 
 ```rust
-// TODO: Add a minimal example showing the most common use case
+use coding_tools_rig::absolute::{ReadTool, WriteTool};
+use coding_tools_rig::BashTool;
+
+// Create tools for unrestricted file access
+let read = ReadTool::new();
+let write = WriteTool::new();
+let bash = BashTool::new();
+
+// Use with rig agent builder...
 ```
-See the [rig-coding-tools crate documentation](./src/rig-coding-tools/README.MD) for detailed usage.
 
-## Crates
+For more examples and documentation, see [README.md](./README.md) and the individual crate READMEs.
 
-- [rig-coding-tools](./src/rig-coding-tools/README.MD): Core library <!-- TODO: Update description -->
+## Documentation
 
-## Developer Manual
-
-For step-by-step development guidance, see the [Developer Manual](https://reloaded-project.github.io/reloaded-templates-rust/manual/).
+- [Workspace Overview](./README.md)
+- [coding-tools-core README](./src/coding-tools-core/README.md)
+- [coding-tools-rig README](./src/coding-tools-rig/README.md)
+- [Developer Guidelines](./src/AGENTS.md)
 
 ## Contributing
 
-We welcome contributions! See the [Contributing Guide](https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing) for details.
+Contributions are welcome! Please ensure all tests pass and the code follows our guidelines.
 
 ## License
 
 Licensed under [Apache 2.0](./LICENSE).
 
-[codecov]: https://app.codecov.io
-[gh-actions-secrets]: https://github.com/Sewer56/rig-coding-tools/settings/secrets/actions
-[gh-actions-dependabot]: https://github.com/Sewer56/rig-coding-tools/settings/secrets/dependabot
-[gh-pages]: https://github.com/Sewer56/rig-coding-tools/settings/pages
-[crates-io-key]: https://crates.io/settings/tokens
-[nuget-key]: https://www.nuget.org/account/apikeys

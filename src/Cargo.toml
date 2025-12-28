@@ -1,7 +1,7 @@
 
 [workspace]
 resolver = "2"
-members = ["rig-coding-tools"]
+members = ["coding-tools-core", "coding-tools-rig"]
 
 # Profile Build
 [profile.profile]

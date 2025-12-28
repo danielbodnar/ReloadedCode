@@ -1,0 +1,30 @@
+[package]
+name = "coding-tools-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core types and utilities for coding tools - framework agnostic"
+repository = "https://github.com/Sewer56/rig-coding-tools"
+license = "Apache-2.0"
+include = ["src/**/*"]
+readme = "README.md"
+
+[dependencies]
+async-trait = "0.1"
+glob = "0.3"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+html-to-markdown-rs = "2.16"
+ignore = "0.4"
+memchr = "2.7"
+regex = "1.11"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+schemars = "1.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.0", features = ["fs", "io-util", "process", "time", "sync"] }
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { version = "1.0", features = ["rt", "macros"] }
+wiremock = "0.6"

@@ -4,8 +4,16 @@ Basic coding tools for rig based LLM agents
 
 # Project Structure
 
-- `rig-coding-tools/` - Main library crate
-  - `src/` - Library source code
+- `coding-tools-core/` - Framework-agnostic core library
+  - `src/operations/` - Core operation implementations (read, write, edit, glob, grep, bash, etc.)
+  - `src/path/` - Path resolution (absolute and allowed)
+  - `src/error.rs` - Unified error types
+  - `src/output.rs` - Tool output formatting
+  - `src/util.rs` - Shared utilities
+- `coding-tools-rig/` - Rig framework Tool implementations
+   - `src/absolute/` - Unrestricted file system tools
+   - `src/allowed/` - Sandboxed file system tools
+   - `src/bash.rs`, `src/task.rs`, etc. - Standalone tools
 
 # Code Guidelines
 
@@ -32,5 +40,10 @@ cargo test --workspace --all-features --quiet
 cargo clippy --workspace --all-features --quiet -- -D warnings
 cargo doc --workspace --all-features --quiet
 cargo fmt --all --quiet
-cargo publish --dry-run --quiet
+```
+
+For individual crates:
+```bash
+cargo publish --dry-run -p coding-tools-core --quiet
+cargo publish --dry-run -p coding-tools-rig --quiet
 ```

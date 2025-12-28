@@ -1,4 +1,4 @@
-//! Common error types for rig-coding-tools.
+//! Common error types for coding tools.
 
 use thiserror::Error;
 
@@ -58,12 +58,6 @@ impl From<glob::PatternError> for ToolError {
 impl From<glob::GlobError> for ToolError {
     fn from(e: glob::GlobError) -> Self {
         ToolError::Io(e.into_error())
-    }
-}
-
-impl From<reqwest::Error> for ToolError {
-    fn from(e: reqwest::Error) -> Self {
-        ToolError::Http(e.to_string())
     }
 }
 
