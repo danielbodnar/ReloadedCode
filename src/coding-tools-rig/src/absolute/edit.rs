@@ -1,4 +1,4 @@
-//! Edit file tool using AbsolutePathResolver.
+//! Edit file tool using [`AbsolutePathResolver`].
 
 use coding_tools_core::operations::edit_file;
 use coding_tools_core::path::AbsolutePathResolver;

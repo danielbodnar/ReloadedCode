@@ -1,4 +1,4 @@
-//! Grep content search tool using AbsolutePathResolver.
+//! Grep content search tool using [`AbsolutePathResolver`].
 
 use coding_tools_core::operations::grep_search;
 use coding_tools_core::path::AbsolutePathResolver;

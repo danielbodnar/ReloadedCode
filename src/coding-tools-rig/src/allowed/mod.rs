@@ -1,4 +1,4 @@
-//! Tools using `AllowedPathResolver`.
+//! Tools using [`AllowedPathResolver`].
 //!
 //! These tools restrict file access to configured allowed directories.
 //! Use for sandboxed file system access.

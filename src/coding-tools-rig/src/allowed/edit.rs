@@ -1,4 +1,4 @@
-//! Edit file tool using AllowedPathResolver.
+//! Edit file tool using [`AllowedPathResolver`].
 
 use coding_tools_core::operations::edit_file;
 use coding_tools_core::path::AllowedPathResolver;

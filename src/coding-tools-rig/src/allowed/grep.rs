@@ -1,4 +1,4 @@
-//! Grep content search tool using AllowedPathResolver.
+//! Grep content search tool using [`AllowedPathResolver`].
 
 use coding_tools_core::operations::grep_search;
 use coding_tools_core::path::AllowedPathResolver;

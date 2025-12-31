@@ -1,4 +1,4 @@
-//! Read file tool using AbsolutePathResolver.
+//! Read file tool using [`AbsolutePathResolver`].
 
 use coding_tools_core::operations::read_file;
 use coding_tools_core::path::AbsolutePathResolver;

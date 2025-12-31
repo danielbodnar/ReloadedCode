@@ -1,6 +1,6 @@
 //! Task tool for launching autonomous sub-agents.
 //!
-//! Provides `TaskTool` for spawning sub-agents to handle complex tasks.
+//! Provides [`TaskTool`] for spawning sub-agents to handle complex tasks.
 
 use coding_tools_core::{ToolError, ToolOutput};
 use rig::completion::ToolDefinition;

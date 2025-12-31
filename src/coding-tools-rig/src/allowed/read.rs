@@ -1,4 +1,4 @@
-//! Read file tool using AllowedPathResolver.
+//! Read file tool using [`AllowedPathResolver`].
 
 use coding_tools_core::operations::read_file;
 use coding_tools_core::path::AllowedPathResolver;

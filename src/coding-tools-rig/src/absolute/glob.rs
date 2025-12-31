@@ -1,4 +1,4 @@
-//! Glob pattern file finding tool using AbsolutePathResolver.
+//! Glob pattern file finding tool using [`AbsolutePathResolver`].
 
 use coding_tools_core::operations::glob_files;
 use coding_tools_core::path::AbsolutePathResolver;

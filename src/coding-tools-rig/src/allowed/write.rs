@@ -1,4 +1,4 @@
-//! Write file tool using AllowedPathResolver.
+//! Write file tool using [`AllowedPathResolver`].
 
 use coding_tools_core::operations::write_file;
 use coding_tools_core::path::AllowedPathResolver;
