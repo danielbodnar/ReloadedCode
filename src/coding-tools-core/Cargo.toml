@@ -10,10 +10,10 @@ readme = "README.md"
 
 [features]
 default = ["async"]
-# Enables async function signatures and async-only modules (webfetch, task)
+# Enables async function signatures and async-only modules (task requires async)
 async = ["dep:async-trait", "dep:reqwest", "dep:tokio"]
 # Enables blocking/sync mode - mutually exclusive with async
-blocking = ["maybe-async/is_sync"]
+blocking = ["maybe-async/is_sync", "dep:reqwest", "reqwest?/blocking"]
 
 [dependencies]
 # Tool outputs (BashOutput, GrepOutput, etc.) serialize to JSON for LLM consumption

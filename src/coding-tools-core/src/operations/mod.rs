@@ -2,7 +2,7 @@
 //!
 //! This module contains framework-agnostic implementations of:
 //! - File operations (read, write, edit, glob, grep, bash, todo) - always available
-//! - Web fetching (fetch_url) - requires `async` feature
+//! - Web fetching (fetch_url) - requires `async` or `blocking` feature
 //! - Task delegation (task execution and mocking) - requires `async` feature
 
 // Always available (sync or async based on runtime feature)
@@ -22,13 +22,16 @@ pub use read::read_file;
 pub use todo::{read_todos, write_todos, Todo, TodoPriority, TodoState, TodoStatus};
 pub use write::write_file;
 
-// Async-only modules (require async feature)
+// Webfetch available in both async and blocking modes
+#[cfg(any(feature = "async", feature = "blocking"))]
+pub mod webfetch;
+
+#[cfg(any(feature = "async", feature = "blocking"))]
+pub use webfetch::{fetch_url, format_json, html_to_markdown, WebFetchOutput};
+
+// Task module requires async (trait uses async_trait)
 #[cfg(feature = "async")]
 pub mod task;
-#[cfg(feature = "async")]
-pub mod webfetch;
 
 #[cfg(feature = "async")]
 pub use task::{MockTaskExecutor, TaskArgs, TaskExecutor, TaskResult};
-#[cfg(feature = "async")]
-pub use webfetch::{fetch_url, format_json, html_to_markdown, WebFetchOutput};

@@ -1,22 +1,8 @@
-//! Web content fetching operation.
+//! Async web content fetching.
 
+use super::{categorize_reqwest_error, check_size, process_content, WebFetchOutput};
 use crate::error::{ToolError, ToolResult};
-use html_to_markdown_rs::{convert, ConversionOptions, PreprocessingOptions, PreprocessingPreset};
 use std::time::Duration;
-
-/// Maximum response size to accept (5MB).
-const MAX_RESPONSE_SIZE: usize = 5 * 1_024 * 1_024;
-
-/// Result from URL fetch operation.
-#[derive(Debug, Clone)]
-pub struct WebFetchOutput {
-    /// The processed content (HTML converted to markdown, JSON prettified).
-    pub content: String,
-    /// The Content-Type header value.
-    pub content_type: String,
-    /// Original byte length before processing.
-    pub byte_length: usize,
-}
 
 /// Fetches content from a URL and returns processed content.
 ///
@@ -49,91 +35,25 @@ pub async fn fetch_url(
 
     // Check Content-Length if available
     if let Some(len) = response.content_length() {
-        if len as usize > MAX_RESPONSE_SIZE {
-            return Err(ToolError::Http(format!(
-                "Response too large: {} bytes (max {})",
-                len, MAX_RESPONSE_SIZE
-            )));
-        }
+        check_size(len as usize, url)?;
     }
 
-    let bytes = read_limited_body(response, MAX_RESPONSE_SIZE).await?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| ToolError::Http(e.to_string()))?;
+
+    check_size(bytes.len(), url)?;
+
     let byte_length = bytes.len();
     let raw_content = String::from_utf8_lossy(&bytes);
-
-    let content = if content_type.contains("text/html") {
-        html_to_markdown(&raw_content)
-    } else if content_type.contains("application/json") {
-        format_json(&raw_content)
-    } else {
-        raw_content.into_owned()
-    };
+    let content = process_content(&raw_content, &content_type);
 
     Ok(WebFetchOutput {
         content,
         content_type,
         byte_length,
     })
-}
-
-/// Reads response body up to a size limit.
-async fn read_limited_body(response: reqwest::Response, max_size: usize) -> ToolResult<Vec<u8>> {
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| ToolError::Http(e.to_string()))?;
-
-    if bytes.len() > max_size {
-        return Err(ToolError::Http(format!(
-            "Response too large: {} bytes (max {})",
-            bytes.len(),
-            max_size
-        )));
-    }
-    Ok(bytes.to_vec())
-}
-
-/// Categorizes reqwest errors into appropriate ToolError variants.
-fn categorize_reqwest_error(e: reqwest::Error, url: &str) -> ToolError {
-    if e.is_timeout() {
-        ToolError::Timeout(format!("Request timed out for {}", url))
-    } else if e.is_connect() {
-        ToolError::Http(format!("Connection failed for {}: {}", url, e))
-    } else if e.is_redirect() {
-        ToolError::Http(format!("Too many redirects for {}", url))
-    } else {
-        ToolError::Http(e.to_string())
-    }
-}
-
-/// Converts HTML to markdown for LLM-friendly output.
-pub fn html_to_markdown(html: &str) -> String {
-    let options = ConversionOptions {
-        preprocessing: PreprocessingOptions {
-            enabled: true,
-            preset: PreprocessingPreset::Aggressive,
-            remove_navigation: true,
-            remove_forms: true,
-        },
-        strip_tags: vec![
-            "img".into(),
-            "svg".into(),
-            "script".into(),
-            "style".into(),
-            "noscript".into(),
-        ],
-        ..Default::default()
-    };
-
-    convert(html, Some(options)).unwrap_or_else(|_| html.to_string())
-}
-
-/// Formats JSON content for readability.
-pub fn format_json(json_str: &str) -> String {
-    match serde_json::from_str::<serde_json::Value>(json_str) {
-        Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| json_str.to_string()),
-        Err(_) => json_str.to_string(),
-    }
 }
 
 #[cfg(test)]
@@ -241,25 +161,5 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(ToolError::Http(_))));
-    }
-
-    #[test]
-    fn html_to_markdown_strips_scripts() {
-        let html = "<p>Before</p><script>alert('xss')</script><p>After</p>";
-        let result = html_to_markdown(html);
-        assert!(!result.contains("alert"));
-    }
-
-    #[test]
-    fn format_json_prettifies() {
-        let json = r#"{"a":1}"#;
-        let result = format_json(json);
-        assert!(result.contains("\"a\": 1"));
-    }
-
-    #[test]
-    fn format_json_returns_original_on_invalid() {
-        let invalid = "not json";
-        assert_eq!(format_json(invalid), "not json");
     }
 }
