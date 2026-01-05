@@ -7,12 +7,13 @@ Rig framework Tool implementations for coding tools.
 
 ## Features
 
-- **Absolute-path tools** - Unrestricted file system access with absolute paths
-- **Allowed-path tools** - Sandboxed access restricted to configured directories
+- **File operations** - Read, write, edit, glob, grep with two access modes:
+  - `absolute::*` - Unrestricted filesystem access
+  - `allowed::*` - Sandboxed to configured directories
 - **Shell execution** - Cross-platform command execution with timeout
 - **Web fetching** - URL content retrieval with format conversion
 - **Task delegation** - Sub-agent spawning for complex tasks
-- **Todo management** - Persistent todo list tracking
+- **Todo management** - Shared-state todo list tracking
 - **Context strings** - LLM guidance text for tool usage (re-exported from core)
 
 ## Installation
@@ -34,51 +35,89 @@ cargo run --example basic -p coding-tools-rig
 
 ## Usage
 
-### Absolute-Path Tools
+### File Operation Tools
 
-For unrestricted file access:
+File tools (Read, Write, Edit, Glob, Grep) come in two variants:
+
+**`absolute::*`** - Unrestricted filesystem access, requires absolute paths:
 
 ```rust
 use coding_tools_rig::absolute::{ReadTool, WriteTool, EditTool, GlobTool, GrepTool};
-use coding_tools_rig::BashTool;
-use rig::tool::ToolSet;
 
-let read: ReadTool<true> = ReadTool::new();
+let read: ReadTool<true> = ReadTool::new();  // <true> enables line numbers
+let write = WriteTool::new();
+let edit = EditTool::new();
 let glob = GlobTool::new();
-let bash = BashTool::new();
-
-let toolset = ToolSet::builder()
-    .static_tool(read)
-    .static_tool(glob)
-    .static_tool(bash)
-    .build();
+let grep: GrepTool<true> = GrepTool::new();
 ```
 
-### Allowed-Path Tools
-
-For sandboxed file access:
+**`allowed::*`** - Sandboxed to configured directories:
 
 ```rust
-use coding_tools_rig::allowed::ReadTool;
+use coding_tools_rig::allowed::{ReadTool, WriteTool};
+use coding_tools_rig::AllowedPathResolver;
 use std::path::PathBuf;
 
+// Option 1: Pass paths directly
 let read: ReadTool<true> = ReadTool::new([
     PathBuf::from("/home/user/project"),
+    PathBuf::from("/tmp/workspace"),
 ]).unwrap();
-// Paths are restricted to /home/user/project
+
+// Option 2: Share a resolver across tools (recommended)
+let resolver = AllowedPathResolver::new([
+    PathBuf::from("/home/user/project"),
+]).unwrap();
+let read: ReadTool<true> = ReadTool::with_resolver(resolver.clone());
+let write = WriteTool::with_resolver(resolver);
 ```
 
-### Standalone Tools
+### Other Tools
 
-Tools without path requirements:
+Tools that don't operate on files:
 
 ```rust
-use coding_tools_rig::{BashTool, TaskTool, WebFetchTool};
-use coding_tools_rig::todo::{TodoReadTool, TodoWriteTool};
+use coding_tools_rig::{BashTool, TaskTool, WebFetchTool, TodoTools};
 
-let bash = BashTool::new();
-let task = TaskTool::with_mock(); // or TaskTool::new(executor)
-let webfetch = WebFetchTool::new();
+let bash = BashTool::new();           // Shell command execution
+let webfetch = WebFetchTool::new();   // URL content fetching
+let task = TaskTool::with_mock();     // Sub-agent delegation
+let todos = TodoTools::new();         // Todo list (todos.read, todos.write)
+```
+
+### PreambleBuilder
+
+`PreambleBuilder` tracks registered tools and generates a combined context string
+for the agent's system prompt. This provides LLM guidance on using each tool effectively.
+
+```rust
+use coding_tools_rig::absolute::{ReadTool, GlobTool};
+use coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
+use rig::tool::ToolSet;
+
+// Create preamble builder to track tools
+let mut pb = PreambleBuilder::new();
+
+// Create todo tools with shared state
+let todos = TodoTools::new();
+
+// Build toolset - pb.track() registers each tool and passes it through
+let toolset = ToolSet::builder()
+    .static_tool(pb.track(ReadTool::<true>::new()))
+    .static_tool(pb.track(GlobTool::new()))
+    .static_tool(pb.track(BashTool::new()))
+    .static_tool(pb.track(todos.read))
+    .static_tool(pb.track(todos.write))
+    .build();
+
+// Generate preamble with usage instructions for all tracked tools
+let preamble = pb.build();
+
+// Use with rig agent:
+// let agent = client.agent("gpt-4o")
+//     .preamble(&preamble)  // <-- Pass preamble here
+//     .tools(toolset)
+//     .build();
 ```
 
 ### Context Strings
@@ -94,6 +133,19 @@ println!("{}", BASH);
 // Path-based tools have absolute and allowed variants
 println!("{}", READ_ABSOLUTE);  // For absolute::ReadTool
 println!("{}", READ_ALLOWED);   // For allowed::ReadTool
+```
+
+## Examples
+
+```bash
+# Basic toolset setup with PreambleBuilder
+cargo run --example basic -p coding-tools-rig
+
+# Complete agent configuration (recommended starting point)
+cargo run --example full_agent -p coding-tools-rig
+
+# Sandboxed file access with allowed::* tools
+cargo run --example sandboxed -p coding-tools-rig
 ```
 
 ## License

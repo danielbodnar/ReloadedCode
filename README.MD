@@ -39,21 +39,44 @@ coding-tools-rig = "0.1"
 ```
 
 ```rust
-use coding_tools_rig::absolute::{ReadTool, WriteTool};
-use coding_tools_rig::BashTool;
+use coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
+use coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
+use rig::tool::ToolSet;
 
-// Create tools for unrestricted file access
-let read: ReadTool<true> = ReadTool::new();
-let write: WriteTool<true> = WriteTool::new();
-let bash = BashTool::new();
+// Track tools and generate LLM guidance
+let mut pb = PreambleBuilder::new();
+let todos = TodoTools::new();
 
-// Use with rig agent builder...
+let toolset = ToolSet::builder()
+    .static_tool(pb.track(ReadTool::<true>::new()))
+    .static_tool(pb.track(WriteTool::new()))
+    .static_tool(pb.track(GlobTool::new()))
+    .static_tool(pb.track(BashTool::new()))
+    .static_tool(pb.track(todos.read))
+    .static_tool(pb.track(todos.write))
+    .build();
+
+// Generate preamble for agent system prompt
+let preamble = pb.build();
+
+// Use with rig agent:
+// let agent = client.agent("gpt-4o")
+//     .preamble(&preamble)
+//     .tools(toolset)
+//     .build();
 ```
 
-Run the example:
+## Examples
 
 ```bash
+# Basic toolset setup
 cargo run --example basic -p coding-tools-rig
+
+# Complete agent configuration (recommended starting point)
+cargo run --example full_agent -p coding-tools-rig
+
+# Sandboxed file access
+cargo run --example sandboxed -p coding-tools-rig
 ```
 
 ## Documentation
