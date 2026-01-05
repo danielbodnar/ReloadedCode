@@ -48,7 +48,7 @@ mod tests {
         let path = "C:\\Users\\user\\file.txt";
         #[cfg(not(windows))]
         let path = "/home/user/file.txt";
-        
+
         let result = resolver.resolve(path);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from(path));
