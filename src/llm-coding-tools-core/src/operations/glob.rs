@@ -67,6 +67,10 @@ pub fn glob_files<R: PathResolver>(
             Err(_) => continue,
         };
 
+        // Normalize Windows backslashes to forward slashes for glob pattern matching
+        #[cfg(windows)]
+        let rel_path = rel_path.replace('\\', "/");
+
         if rel_path.is_empty() {
             continue;
         }
@@ -133,5 +137,23 @@ mod tests {
         let resolver = AbsolutePathResolver;
         let result = glob_files(&resolver, "**/*", dir.path().to_str().unwrap()).unwrap();
         assert!(!result.files.iter().any(|f| f.contains("target")));
+    }
+
+    #[test]
+    fn glob_returns_forward_slash_paths() {
+        // Patterns and returned paths use forward slashes on all platforms
+        let dir = create_test_tree();
+        let resolver = AbsolutePathResolver;
+        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap()).unwrap();
+
+        // Verify matching works with forward-slash patterns
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("lib.rs"));
+
+        // Verify returned paths use forward slashes (critical for Windows)
+        for path in &result.files {
+            assert!(!path.contains('\\'), "expected forward slashes: {path}");
+        }
+        assert!(result.files.iter().any(|f| f.contains('/')));
     }
 }
