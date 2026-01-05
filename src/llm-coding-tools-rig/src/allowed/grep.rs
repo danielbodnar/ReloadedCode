@@ -85,7 +85,7 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
 
         let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
         if limit == 0 {
-            return Err(ToolError::InvalidPattern(
+            return Err(ToolError::Validation(
                 "limit must be greater than zero".into(),
             ));
         }
