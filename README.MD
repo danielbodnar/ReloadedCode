@@ -22,6 +22,12 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 - **Web**: URL fetching with HTML-to-markdown conversion
 - **Task Delegation**: Sub-agent spawning for complex workflows
 - **Path Security**: Choose between unrestricted or sandboxed file access
+- **Context Strings**: Embedded LLM guidance for tool usage
+
+## Feature Flags (coding-tools-core)
+
+- `tokio` (default): Async mode with tokio runtime
+- `blocking`: Sync/blocking mode, mutually exclusive with `async`
 
 ## Quick Start
 
@@ -37,18 +43,21 @@ use coding_tools_rig::absolute::{ReadTool, WriteTool};
 use coding_tools_rig::BashTool;
 
 // Create tools for unrestricted file access
-let read = ReadTool::new();
-let write = WriteTool::new();
+let read: ReadTool<true> = ReadTool::new();
+let write: WriteTool<true> = WriteTool::new();
 let bash = BashTool::new();
 
 // Use with rig agent builder...
 ```
 
-For more examples and documentation, see [README.md](./README.md) and the individual crate READMEs.
+Run the example:
+
+```bash
+cargo run --example basic -p coding-tools-rig
+```
 
 ## Documentation
 
-- [Workspace Overview](./README.md)
 - [coding-tools-core README](./src/coding-tools-core/README.md)
 - [coding-tools-rig README](./src/coding-tools-rig/README.md)
 - [Developer Guidelines](./src/AGENTS.md)
@@ -60,4 +69,3 @@ Contributions are welcome! Please ensure all tests pass and the code follows our
 ## License
 
 Licensed under [Apache 2.0](./LICENSE).
-
