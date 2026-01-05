@@ -5,7 +5,7 @@ edition = "2021"
 description = "Core types and utilities for coding tools - framework agnostic"
 repository = "https://github.com/Sewer56/rig-coding-tools"
 license = "Apache-2.0"
-include = ["src/**/*"]
+include = ["src/**/*", "README.md"]
 readme = "README.md"
 
 [features]

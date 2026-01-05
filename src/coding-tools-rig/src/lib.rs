@@ -28,6 +28,9 @@ pub mod webfetch;
 // Re-export core types for convenience
 pub use coding_tools_core::{ToolError, ToolOutput, ToolResult};
 
+// Re-export context module for convenience
+pub use coding_tools_core::context;
+
 // Re-export path resolvers
 pub use coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
 

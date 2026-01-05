@@ -19,6 +19,7 @@ compile_error!("Feature `async` requires a runtime. Enable `tokio` feature inste
 #[cfg(all(feature = "async", feature = "blocking"))]
 compile_error!("Features `async` and `blocking` are mutually exclusive.");
 
+pub mod context;
 pub mod error;
 pub mod fs;
 pub mod operations;
