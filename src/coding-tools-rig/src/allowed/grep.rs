@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::grep_search;
 use coding_tools_core::path::AllowedPathResolver;
-use coding_tools_core::{ToolError, ToolOutput, ToolResult};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput, ToolResult};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -66,7 +66,7 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Search file contents using regex patterns within allowed directories. \
                           Paths are relative to configured base directories."
                 .to_string(),
@@ -134,6 +134,14 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
         } else {
             ToolOutput::new(output)
         })
+    }
+}
+
+impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
+    const NAME: &'static str = "grep";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::GREP_ALLOWED
     }
 }
 

@@ -25,11 +25,14 @@ pub mod fs;
 pub mod operations;
 pub mod output;
 pub mod path;
+pub mod preamble;
 pub mod util;
 
+pub use context::ToolContext;
 pub use error::{ToolError, ToolResult};
 pub use output::ToolOutput;
 pub use path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
+pub use preamble::PreambleBuilder;
 
 // Re-export operations (always available, sync or async based on runtime feature)
 pub use operations::{

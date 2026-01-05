@@ -28,8 +28,12 @@ pub mod webfetch;
 // Re-export core types for convenience
 pub use coding_tools_core::{ToolError, ToolOutput, ToolResult};
 
-// Re-export context module for convenience
+// Re-export context module and ToolContext trait for convenience
 pub use coding_tools_core::context;
+pub use coding_tools_core::ToolContext;
+
+// Re-export PreambleBuilder from core
+pub use coding_tools_core::PreambleBuilder;
 
 // Re-export path resolvers
 pub use coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
@@ -60,3 +64,26 @@ pub use bash::{BashArgs, BashTool};
 pub use task::{TaskArgs, TaskTool};
 pub use todo::{TodoReadArgs, TodoReadTool, TodoTools, TodoWriteArgs, TodoWriteTool};
 pub use webfetch::{WebFetchArgs, WebFetchTool};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preamble_builder_with_real_tools() {
+        let mut pb = PreambleBuilder::new();
+        let read: absolute::ReadTool<true> = pb.track(absolute::ReadTool::new());
+        let bash = pb.track(BashTool::new());
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Read Tool"));
+        assert!(preamble.contains("## Bash Tool"));
+        assert!(preamble.contains("absolute path")); // From READ_ABSOLUTE
+
+        // Tools are returned unchanged
+        assert_eq!(<absolute::ReadTool<true> as rig::tool::Tool>::NAME, "read");
+        let _ = read;
+        let _ = bash;
+    }
+}

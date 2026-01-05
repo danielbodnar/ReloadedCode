@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::read_file;
 use coding_tools_core::path::AbsolutePathResolver;
-use coding_tools_core::{ToolError, ToolOutput};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -58,7 +58,7 @@ impl<const LINE_NUMBERS: bool> Tool for ReadTool<LINE_NUMBERS> {
             "Read file contents. Returns raw file content without line number prefixes."
         };
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: description.to_string(),
             parameters: serde_json::to_value(schema_for!(ReadArgs))
                 .expect("schema serialization should never fail"),
@@ -68,6 +68,14 @@ impl<const LINE_NUMBERS: bool> Tool for ReadTool<LINE_NUMBERS> {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let resolver = AbsolutePathResolver;
         read_file::<_, LINE_NUMBERS>(&resolver, &args.file_path, args.offset, args.limit).await
+    }
+}
+
+impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
+    const NAME: &'static str = "read";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::READ_ABSOLUTE
     }
 }
 

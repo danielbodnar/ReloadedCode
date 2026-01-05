@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::grep_search;
 use coding_tools_core::path::AbsolutePathResolver;
-use coding_tools_core::{ToolError, ToolOutput};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -60,7 +60,7 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
                 and content, sorted by file modification time."
         };
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: description.to_string(),
             parameters: serde_json::to_value(schema_for!(GrepArgs))
                 .expect("schema serialization should not fail"),
@@ -127,6 +127,14 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
         } else {
             ToolOutput::new(output)
         })
+    }
+}
+
+impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
+    const NAME: &'static str = "grep";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::GREP_ABSOLUTE
     }
 }
 

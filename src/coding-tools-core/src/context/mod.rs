@@ -68,6 +68,39 @@ pub const GREP_ABSOLUTE: &str = include_str!("grep_absolute.txt");
 /// Grep tool context for allowed/sandboxed path mode.
 pub const GREP_ALLOWED: &str = include_str!("grep_allowed.txt");
 
+/// Trait for tools that provide usage context for LLM preambles.
+///
+/// Implement this trait on tool types (for frameworks like rig) to enable automatic preamble
+/// generation via [`PreambleBuilder`](crate::PreambleBuilder).
+///
+/// # Example
+///
+/// ```rust
+/// use coding_tools_core::context::ToolContext;
+///
+/// struct MyTool;
+///
+/// impl ToolContext for MyTool {
+///     const NAME: &'static str = "mytool";
+///
+///     fn context(&self) -> &'static str {
+///         "Instructions for using MyTool..."
+///     }
+/// }
+/// ```
+pub trait ToolContext {
+    /// Tool name used for section headers in generated preamble.
+    ///
+    /// Should be lowercase (e.g., "read", "bash", "glob").
+    /// PreambleBuilder capitalizes this for display.
+    const NAME: &'static str;
+
+    /// Returns the tool's context string for preamble generation.
+    ///
+    /// This should return one of the context constants from this module.
+    fn context(&self) -> &'static str;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

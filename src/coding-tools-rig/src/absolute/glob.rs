@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::glob_files;
 use coding_tools_core::path::AbsolutePathResolver;
-use coding_tools_core::{GlobOutput, ToolError};
+use coding_tools_core::{GlobOutput, ToolContext, ToolError};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -38,7 +38,7 @@ impl Tool for GlobTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Find files matching a glob pattern. Respects .gitignore and \
                 returns paths sorted by modification time (newest first)."
                 .to_string(),
@@ -50,6 +50,14 @@ impl Tool for GlobTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let resolver = AbsolutePathResolver;
         glob_files(&resolver, &args.pattern, &args.path)
+    }
+}
+
+impl ToolContext for GlobTool {
+    const NAME: &'static str = "glob";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::GLOB_ABSOLUTE
     }
 }
 

@@ -3,7 +3,7 @@
 //! Provides tools for reading and writing todo items.
 
 use coding_tools_core::operations::{read_todos, write_todos};
-use coding_tools_core::{ToolError, ToolOutput};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -45,7 +45,7 @@ impl Tool for TodoWriteTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Replace the todo list with new items.".to_string(),
             parameters: serde_json::to_value(schema_for!(TodoWriteArgs))
                 .expect("schema serialization should never fail"),
@@ -80,7 +80,7 @@ impl Tool for TodoReadTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Read the current todo list.".to_string(),
             parameters: serde_json::to_value(schema_for!(TodoReadArgs))
                 .expect("schema serialization should never fail"),
@@ -90,6 +90,22 @@ impl Tool for TodoReadTool {
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let content = read_todos(&self.state);
         Ok(ToolOutput::new(content))
+    }
+}
+
+impl ToolContext for TodoWriteTool {
+    const NAME: &'static str = "todowrite";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::TODO_WRITE
+    }
+}
+
+impl ToolContext for TodoReadTool {
+    const NAME: &'static str = "todoread";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::TODO_READ
     }
 }
 

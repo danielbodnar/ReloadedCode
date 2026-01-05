@@ -3,6 +3,7 @@
 use coding_tools_core::operations::edit_file;
 use coding_tools_core::path::AbsolutePathResolver;
 pub use coding_tools_core::EditError;
+use coding_tools_core::ToolContext;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -43,7 +44,7 @@ impl Tool for EditTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Makes exact string replacements in files. Use replace_all=true to \
                            replace all occurrences."
                 .to_string(),
@@ -62,6 +63,14 @@ impl Tool for EditTool {
             args.replace_all,
         )
         .await
+    }
+}
+
+impl ToolContext for EditTool {
+    const NAME: &'static str = "edit";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::EDIT_ABSOLUTE
     }
 }
 

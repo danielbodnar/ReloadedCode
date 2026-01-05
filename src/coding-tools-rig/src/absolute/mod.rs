@@ -1,4 +1,4 @@
-//! Tools using [`AbsolutePathResolver`].
+//! Tools using [`coding_tools_core::path::AbsolutePathResolver`].
 //!
 //! These tools require absolute paths and perform no directory restriction.
 //! Use for unrestricted file system access.

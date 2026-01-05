@@ -3,7 +3,7 @@
 //! Provides cross-platform shell command execution with timeout support.
 
 use coding_tools_core::operations::execute_command;
-use coding_tools_core::{BashOutput, ToolError, ToolOutput};
+use coding_tools_core::{BashOutput, ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -53,7 +53,7 @@ impl Tool for BashTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Execute a shell command with optional working directory and timeout."
                 .to_string(),
             parameters: serde_json::to_value(schema_for!(BashArgs))
@@ -67,6 +67,14 @@ impl Tool for BashTool {
 
         let result = execute_command(&args.command, workdir, timeout).await?;
         Ok(format_bash_output(&result))
+    }
+}
+
+impl ToolContext for BashTool {
+    const NAME: &'static str = "bash";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::BASH
     }
 }
 

@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::read_file;
 use coding_tools_core::path::AllowedPathResolver;
-use coding_tools_core::{ToolError, ToolOutput, ToolResult};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput, ToolResult};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -75,7 +75,7 @@ impl<const LINE_NUMBERS: bool> Tool for ReadTool<LINE_NUMBERS> {
              Paths are relative to configured base directories."
         };
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: description.to_string(),
             parameters: serde_json::to_value(schema_for!(ReadArgs))
                 .expect("schema serialization should never fail"),
@@ -84,6 +84,14 @@ impl<const LINE_NUMBERS: bool> Tool for ReadTool<LINE_NUMBERS> {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         read_file::<_, LINE_NUMBERS>(&self.resolver, &args.file_path, args.offset, args.limit).await
+    }
+}
+
+impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
+    const NAME: &'static str = "read";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::READ_ALLOWED
     }
 }
 

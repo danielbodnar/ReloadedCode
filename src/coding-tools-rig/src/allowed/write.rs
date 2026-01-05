@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::write_file;
 use coding_tools_core::path::AllowedPathResolver;
-use coding_tools_core::{ToolError, ToolResult};
+use coding_tools_core::{ToolContext, ToolError, ToolResult};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -51,7 +51,7 @@ impl Tool for WriteTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Write content to a file within allowed directories. \
                           Paths are relative to configured base directories."
                 .to_string(),
@@ -62,6 +62,14 @@ impl Tool for WriteTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         write_file(&self.resolver, &args.file_path, &args.content).await
+    }
+}
+
+impl ToolContext for WriteTool {
+    const NAME: &'static str = "write";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::WRITE_ALLOWED
     }
 }
 

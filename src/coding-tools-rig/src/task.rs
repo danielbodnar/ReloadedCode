@@ -2,7 +2,7 @@
 //!
 //! Provides [`TaskTool`] for spawning sub-agents to handle complex tasks.
 
-use coding_tools_core::{ToolError, ToolOutput};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -69,7 +69,7 @@ impl<E: TaskExecutor + 'static> Tool for TaskTool<E> {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Delegate a task to a specialized sub-agent.".to_string(),
             parameters: serde_json::to_value(schema_for!(TaskArgs))
                 .expect("schema serialization should never fail"),
@@ -80,6 +80,14 @@ impl<E: TaskExecutor + 'static> Tool for TaskTool<E> {
         let core_args = CoreTaskArgs::from(args);
         let result = self.executor.execute(&core_args).await?;
         Ok(ToolOutput::new(result.format()))
+    }
+}
+
+impl<E: TaskExecutor> ToolContext for TaskTool<E> {
+    const NAME: &'static str = "task";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::TASK
     }
 }
 

@@ -1,48 +1,58 @@
-//! Basic example showing coding-tools-rig tool setup.
+//! PreambleBuilder example - pass-through tracking for ToolSet.
+//!
+//! Demonstrates:
+//! - Using PreambleBuilder alongside ToolSet::builder()
+//! - Full access to Rig's API (no wrapper limitations)
+//! - Generating and using the preamble string
 //!
 //! Run: cargo run --example basic -p coding-tools-rig
 
 use coding_tools_rig::absolute::{GlobTool, GrepTool, ReadTool};
-use coding_tools_rig::allowed_tools::ReadTool as AllowedReadTool;
-use coding_tools_rig::context::{BASH, GLOB_ABSOLUTE, READ_ABSOLUTE, READ_ALLOWED};
-use coding_tools_rig::BashTool;
+use coding_tools_rig::{BashTool, PreambleBuilder};
 use rig::tool::ToolSet;
 
 #[tokio::main]
 async fn main() {
-    // === Absolute path tools (unrestricted filesystem access) ===
-    let read: ReadTool<true> = ReadTool::new();
-    let glob = GlobTool::new();
-    let grep: GrepTool<true> = GrepTool::new();
-    let bash = BashTool::new();
+    // === Create preamble builder to track tools ===
+    let mut pb = PreambleBuilder::new();
 
-    // === Allowed path tools (sandboxed to specific directories) ===
-    let read_sandboxed: AllowedReadTool<true> =
-        AllowedReadTool::new([std::env::current_dir().unwrap()]).unwrap();
-
-    // === ToolSet for dynamic tool management ===
+    // === Use ToolSet::builder() directly - full Rig API! ===
     let toolset = ToolSet::builder()
-        .static_tool(read)
-        .static_tool(glob)
-        .static_tool(grep)
-        .static_tool(bash)
-        .static_tool(read_sandboxed)
+        .static_tool(pb.track(ReadTool::<true>::new()))
+        .static_tool(pb.track(GlobTool::new()))
+        .static_tool(pb.track(GrepTool::<true>::new()))
+        .static_tool(pb.track(BashTool::new()))
+        // Can use any ToolSet method here - dynamic_tool, etc.
         .build();
 
-    // === Print tool definitions ===
-    println!("Available tools:");
+    // === Generate preamble string ===
+    let preamble = pb.build();
+
+    // === Print tool definitions from ToolSet ===
+    println!("=== Tools in ToolSet ===");
     for def in toolset.get_tool_definitions().await.unwrap() {
         println!(
             "  - {}: {}",
             def.name,
-            &def.description[..50.min(def.description.len())]
+            &def.description[..60.min(def.description.len())]
         );
     }
 
-    // === Context strings for LLM system prompts ===
-    println!("\nContext string snippets:");
-    println!("  READ_ABSOLUTE: {}...", &READ_ABSOLUTE[..60]);
-    println!("  READ_ALLOWED: {}...", &READ_ALLOWED[..60]);
-    println!("  GLOB_ABSOLUTE: {}...", &GLOB_ABSOLUTE[..60]);
-    println!("  BASH: {}...", &BASH[..60]);
+    // === Print generated preamble ===
+    println!("\n=== Generated Preamble ({} chars) ===\n", preamble.len());
+    println!("{}", &preamble[..1000.min(preamble.len())]);
+    if preamble.len() > 1000 {
+        println!("\n... ({} more chars)", preamble.len() - 1000);
+    }
+
+    // === Integration with Rig agent ===
+    // IMPORTANT: You must call .preamble() to actually use the generated string!
+    //
+    // let agent = openai::Client::from_env()
+    //     .agent("gpt-4o")
+    //     .preamble(&preamble)  // <-- Pass preamble to Rig
+    //     .tools(toolset)
+    //     .build();
+    //
+    // let response = agent.prompt("Read main.rs").await?;
 }

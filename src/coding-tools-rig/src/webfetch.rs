@@ -3,7 +3,7 @@
 //! Provides URL fetching with format conversion support.
 
 use coding_tools_core::operations::fetch_url;
-use coding_tools_core::{ToolError, ToolOutput};
+use coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -66,7 +66,7 @@ impl Tool for WebFetchTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description:
                 "Fetch content from a URL. HTML is converted to markdown, JSON is prettified."
                     .to_string(),
@@ -84,6 +84,14 @@ impl Tool for WebFetchTool {
             result.content_type, result.byte_length, result.content
         );
         Ok(ToolOutput::new(content))
+    }
+}
+
+impl ToolContext for WebFetchTool {
+    const NAME: &'static str = "webfetch";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::WEBFETCH
     }
 }
 

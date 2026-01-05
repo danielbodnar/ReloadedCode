@@ -2,7 +2,7 @@
 
 use coding_tools_core::operations::glob_files;
 use coding_tools_core::path::AllowedPathResolver;
-use coding_tools_core::{GlobOutput, ToolError, ToolResult};
+use coding_tools_core::{GlobOutput, ToolContext, ToolError, ToolResult};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -51,7 +51,7 @@ impl Tool for GlobTool {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: Self::NAME.to_string(),
+            name: <Self as Tool>::NAME.to_string(),
             description: "Find files matching a glob pattern within allowed directories. \
                           Paths are relative to configured base directories."
                 .to_string(),
@@ -62,6 +62,14 @@ impl Tool for GlobTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         glob_files(&self.resolver, &args.pattern, &args.path)
+    }
+}
+
+impl ToolContext for GlobTool {
+    const NAME: &'static str = "glob";
+
+    fn context(&self) -> &'static str {
+        coding_tools_core::context::GLOB_ALLOWED
     }
 }
 
