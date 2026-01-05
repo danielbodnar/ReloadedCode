@@ -1,11 +1,13 @@
 //! Todo list management operation.
+//!
+//! This module is only available with the `async` feature.
 
 use crate::error::{ToolError, ToolResult};
+use parking_lot::RwLock;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 /// Task status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -76,7 +78,7 @@ impl TodoState {
 /// Writes/replaces the todo list with new items.
 ///
 /// Validates that all todos have non-empty id and content.
-pub async fn write_todos(state: &TodoState, todos: Vec<Todo>) -> ToolResult<String> {
+pub fn write_todos(state: &TodoState, todos: Vec<Todo>) -> ToolResult<String> {
     for todo in &todos {
         if todo.id.trim().is_empty() {
             return Err(ToolError::Validation("todo id cannot be empty".into()));
@@ -87,13 +89,13 @@ pub async fn write_todos(state: &TodoState, todos: Vec<Todo>) -> ToolResult<Stri
     }
 
     let count = todos.len();
-    *state.todos.write().await = todos;
+    *state.todos.write() = todos;
     Ok(format!("Updated todo list with {count} task(s)."))
 }
 
 /// Reads and formats the current todo list.
-pub async fn read_todos(state: &TodoState) -> String {
-    let todos = state.todos.read().await;
+pub fn read_todos(state: &TodoState) -> String {
+    let todos = state.todos.read();
 
     if todos.is_empty() {
         return "No tasks.".to_string();
@@ -128,8 +130,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn write_and_read_todos() {
+    #[test]
+    fn write_and_read_todos() {
         let state = TodoState::new();
 
         let todos = vec![
@@ -138,40 +140,36 @@ mod tests {
             make_todo("3", TodoStatus::Pending),
         ];
 
-        let result = write_todos(&state, todos).await.unwrap();
+        let result = write_todos(&state, todos).unwrap();
         assert!(result.contains("3 task(s)"));
 
-        let output = read_todos(&state).await;
+        let output = read_todos(&state);
         assert!(output.contains("[x]"));
         assert!(output.contains("[>]"));
         assert!(output.contains("[ ]"));
     }
 
-    #[tokio::test]
-    async fn read_empty_list() {
+    #[test]
+    fn read_empty_list() {
         let state = TodoState::new();
-        let output = read_todos(&state).await;
+        let output = read_todos(&state);
         assert_eq!(output, "No tasks.");
     }
 
-    #[tokio::test]
-    async fn write_replaces_existing() {
+    #[test]
+    fn write_replaces_existing() {
         let state = TodoState::new();
 
-        write_todos(&state, vec![make_todo("a", TodoStatus::Pending)])
-            .await
-            .unwrap();
-        write_todos(&state, vec![make_todo("b", TodoStatus::Completed)])
-            .await
-            .unwrap();
+        write_todos(&state, vec![make_todo("a", TodoStatus::Pending)]).unwrap();
+        write_todos(&state, vec![make_todo("b", TodoStatus::Completed)]).unwrap();
 
-        let output = read_todos(&state).await;
+        let output = read_todos(&state);
         assert!(!output.contains("Task a"));
         assert!(output.contains("Task b"));
     }
 
-    #[tokio::test]
-    async fn write_validates_empty_id() {
+    #[test]
+    fn write_validates_empty_id() {
         let state = TodoState::new();
         let todo = Todo {
             id: "".to_string(),
@@ -179,12 +177,12 @@ mod tests {
             status: TodoStatus::Pending,
             priority: TodoPriority::Low,
         };
-        let result = write_todos(&state, vec![todo]).await;
+        let result = write_todos(&state, vec![todo]);
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 
-    #[tokio::test]
-    async fn write_validates_empty_content() {
+    #[test]
+    fn write_validates_empty_content() {
         let state = TodoState::new();
         let todo = Todo {
             id: "1".to_string(),
@@ -192,7 +190,7 @@ mod tests {
             status: TodoStatus::Pending,
             priority: TodoPriority::Low,
         };
-        let result = write_todos(&state, vec![todo]).await;
+        let result = write_todos(&state, vec![todo]);
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 

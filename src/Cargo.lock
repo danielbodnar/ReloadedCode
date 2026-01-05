@@ -154,7 +154,9 @@ dependencies = [
  "grep-searcher",
  "html-to-markdown-rs",
  "ignore",
+ "maybe-async",
  "memchr",
+ "parking_lot",
  "regex",
  "reqwest",
  "schemars",
@@ -170,7 +172,6 @@ dependencies = [
 name = "coding-tools-rig"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "coding-tools-core",
  "reqwest",
  "rig-core",
@@ -949,6 +950,17 @@ dependencies = [
  "markup5ever",
  "tendril",
  "xml5ever",
+]
+
+[[package]]
+name = "maybe-async"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cf92c10c7e361d6b99666ec1c6f9805b0bea2c3bd8c78dc6fe98ac5bd78db11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

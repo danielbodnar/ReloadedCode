@@ -1,6 +1,7 @@
 //! File editing operation with exact string replacement.
 
 use crate::error::ToolError;
+use crate::fs;
 use crate::path::PathResolver;
 use thiserror::Error;
 
@@ -33,6 +34,7 @@ impl From<std::io::Error> for EditError {
 /// Performs exact string replacement in a file.
 ///
 /// Returns success message with replacement count.
+#[maybe_async::maybe_async]
 pub async fn edit_file<R: PathResolver>(
     resolver: &R,
     file_path: &str,
@@ -48,7 +50,7 @@ pub async fn edit_file<R: PathResolver>(
     }
 
     let path = resolver.resolve(file_path)?;
-    let content = tokio::fs::read_to_string(&path).await?;
+    let content = fs::read_to_string(&path).await?;
 
     let count = content.matches(old_string).count();
 
@@ -66,7 +68,7 @@ pub async fn edit_file<R: PathResolver>(
         content.replacen(old_string, new_string, 1)
     };
 
-    tokio::fs::write(&path, &new_content).await?;
+    fs::write(&path, &new_content).await?;
 
     Ok(format!("Successfully replaced {} occurrence(s)", count))
 }
@@ -78,16 +80,16 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    async fn create_temp_file(content: &str) -> NamedTempFile {
+    fn create_temp_file(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(content.as_bytes()).unwrap();
         file.flush().unwrap();
         file
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn single_replacement_succeeds() {
-        let file = create_temp_file("hello world").await;
+        let file = create_temp_file("hello world");
         let resolver = AbsolutePathResolver;
 
         let result = edit_file(
@@ -101,13 +103,13 @@ mod tests {
         .unwrap();
 
         assert!(result.contains("1 occurrence"));
-        let content = tokio::fs::read_to_string(file.path()).await.unwrap();
+        let content = std::fs::read_to_string(file.path()).unwrap();
         assert_eq!(content, "hello rust");
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn not_found_returns_error() {
-        let file = create_temp_file("hello world").await;
+        let file = create_temp_file("hello world");
         let resolver = AbsolutePathResolver;
 
         let err = edit_file(

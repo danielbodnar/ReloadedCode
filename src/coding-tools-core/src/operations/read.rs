@@ -1,14 +1,13 @@
 //! File reading operation.
 
 use crate::error::{ToolError, ToolResult};
+use crate::fs;
 use crate::output::ToolOutput;
 use crate::path::PathResolver;
 use crate::util::{truncate_line, ESTIMATED_CHARS_PER_LINE};
 use memchr::memchr;
 use std::borrow::Cow;
 use std::fmt::Write;
-use tokio::fs::File;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 const MAX_LINE_LENGTH: usize = 2000;
 
@@ -47,12 +46,19 @@ fn process_line<const LINE_NUMBERS: bool>(
 ///
 /// When `LINE_NUMBERS` is `true`, each line is prefixed with `L{number}: `.
 /// When `false`, raw content is returned without prefixes.
+#[maybe_async::maybe_async]
 pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
     resolver: &R,
     file_path: &str,
     offset: usize,
     limit: usize,
 ) -> ToolResult<ToolOutput> {
+    // Conditional trait import for consume() method
+    #[cfg(feature = "blocking")]
+    use std::io::BufRead as _;
+    #[cfg(not(feature = "blocking"))]
+    use tokio::io::AsyncBufReadExt as _;
+
     if offset == 0 {
         return Err(ToolError::OutOfBounds(
             "offset must be >= 1 (1-indexed)".into(),
@@ -63,14 +69,12 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
     }
 
     let path = resolver.resolve(file_path)?;
-
-    let mut overflow: Vec<u8> = Vec::new();
-    let file = File::open(&path).await?;
     let buf_capacity = (limit * ESTIMATED_CHARS_PER_LINE).next_power_of_two();
-    let mut reader = BufReader::with_capacity(buf_capacity, file);
+    let mut reader = fs::open_buffered(&path, buf_capacity).await?;
 
     let estimated_capacity = limit * ESTIMATED_CHARS_PER_LINE;
     let mut output = String::with_capacity(estimated_capacity);
+    let mut overflow: Vec<u8> = Vec::new();
     let mut line_number = 0usize;
     let mut lines_output = 0usize;
 
@@ -154,6 +158,7 @@ mod tests {
     use std::io::Write as _;
     use tempfile::NamedTempFile;
 
+    #[maybe_async::maybe_async]
     async fn read_temp_file<const LINE_NUMBERS: bool>(
         content: &[u8],
         offset: usize,
@@ -165,7 +170,7 @@ mod tests {
         read_file::<_, LINE_NUMBERS>(&resolver, temp.path().to_str().unwrap(), offset, limit).await
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn reads_basic_file_with_line_numbers() {
         let result = read_temp_file::<true>(b"hello\nworld\n", 1, 2000)
             .await
@@ -173,7 +178,7 @@ mod tests {
         assert_eq!(result.content, "L1: hello\nL2: world");
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn reads_basic_file_without_line_numbers() {
         let result = read_temp_file::<false>(b"hello\nworld\n", 1, 2000)
             .await
@@ -181,7 +186,7 @@ mod tests {
         assert_eq!(result.content, "hello\nworld");
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn errors_on_offset_zero() {
         let err = read_temp_file::<true>(b"test\n", 0, 10).await.unwrap_err();
         assert!(matches!(err, ToolError::OutOfBounds(_)));

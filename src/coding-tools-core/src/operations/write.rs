@@ -1,11 +1,13 @@
 //! File writing operation.
 
 use crate::error::ToolResult;
+use crate::fs;
 use crate::path::PathResolver;
 
 /// Writes content to a file, creating parent directories if needed.
 ///
 /// Overwrites existing files. Returns a success message with byte count.
+#[maybe_async::maybe_async]
 pub async fn write_file<R: PathResolver>(
     resolver: &R,
     file_path: &str,
@@ -16,12 +18,12 @@ pub async fn write_file<R: PathResolver>(
     // Create parent directories if they don't exist
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            tokio::fs::create_dir_all(parent).await?;
+            fs::create_dir_all(parent).await?;
         }
     }
 
     let bytes = content.as_bytes();
-    tokio::fs::write(&path, bytes).await?;
+    fs::write(&path, bytes).await?;
 
     Ok(format!(
         "Successfully wrote {} bytes to {}",
@@ -36,7 +38,7 @@ mod tests {
     use crate::path::AbsolutePathResolver;
     use tempfile::TempDir;
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn write_creates_new_file() {
         let temp = TempDir::new().unwrap();
         let file_path = temp.path().join("new_file.txt");
@@ -50,7 +52,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "hello world");
     }
 
-    #[tokio::test]
+    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
     async fn write_creates_parent_directories() {
         let temp = TempDir::new().unwrap();
         let file_path = temp.path().join("a/b/c/deep.txt");

@@ -9,14 +9,19 @@ include = ["src/**/*"]
 readme = "README.md"
 
 [dependencies]
-async-trait = "0.1"
-coding-tools-core = { version = "0.1.0", path = "../coding-tools-core" }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# Core tool operations (file read/write/edit, glob, grep, bash, etc.)
+coding-tools-core = { version = "0.1.0", path = "../coding-tools-core", features = ["async"] }
+
+# Implements rig_core::tool::Tool trait for each tool
 rig-core = { version = "0.27", default-features = false, features = ["reqwest-rustls"] }
-schemars = "1.2.0"
+
+# WebFetchTool needs its own client instance
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+# Tool::definition() returns JSON Schema for LLM parameter validation
+schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["fs", "process", "time", "io-util", "sync"] }
 
 [dev-dependencies]
 tempfile = "3.10"

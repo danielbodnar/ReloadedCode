@@ -35,12 +35,20 @@ Basic coding tools for rig based LLM agents
 All must pass without warnings:
 
 ```bash
-cargo build --workspace --all-features --all-targets --quiet
-cargo test --workspace --all-features --quiet
-cargo clippy --workspace --all-features --quiet -- -D warnings
-cargo doc --workspace --all-features --quiet
+# Test async mode (default)
+cargo build -p coding-tools-core && cargo build -p coding-tools-rig --quiet
+cargo test -p coding-tools-core && cargo test -p coding-tools-rig --quiet
+cargo clippy -p coding-tools-core && cargo clippy -p coding-tools-rig --quiet -- -D warnings
+
+# Test blocking mode (coding-tools-core only, rig is inherently async)
+cargo test -p coding-tools-core --no-default-features --features blocking --quiet
+
+cargo doc --workspace --no-deps --quiet
 cargo fmt --all --quiet
 ```
+
+Note: `coding-tools-rig` is async-only (implements rig's async `Tool` trait).
+The `blocking` feature only applies to `coding-tools-core`.
 
 For individual crates:
 ```bash

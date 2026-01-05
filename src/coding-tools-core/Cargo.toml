@@ -8,23 +8,50 @@ license = "Apache-2.0"
 include = ["src/**/*"]
 readme = "README.md"
 
+[features]
+default = ["async"]
+# Enables async function signatures and async-only modules (webfetch, task)
+async = ["dep:async-trait", "dep:reqwest", "dep:tokio"]
+# Enables blocking/sync mode - mutually exclusive with async
+blocking = ["maybe-async/is_sync"]
+
 [dependencies]
-async-trait = "0.1"
-glob = "0.3"
-grep-regex = "0.1"
-grep-searcher = "0.1"
-html-to-markdown-rs = "2.16"
-ignore = "0.4"
-memchr = "2.7"
-regex = "1.11"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-schemars = "1.2.0"
+# Tool outputs (BashOutput, GrepOutput, etc.) serialize to JSON for LLM consumption
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# ToolError type uses thiserror for ergonomic error definitions
 thiserror = "2.0"
-tokio = { version = "1.0", features = ["fs", "io-util", "process", "time", "sync"] }
+
+# Todo types derive JsonSchema for LLM tool parameter validation
+schemars = "1.0"
+
+# Sync RwLock for TodoState (no tokio dependency)
+parking_lot = "0.12"
+
+# Glob and grep tool implementations
+glob = "0.3"           # Pattern matching for glob_files
+grep-regex = "0.1"     # Regex matcher for grep_search
+grep-searcher = "0.1"  # File content searching for grep_search
+ignore = "0.4"         # Respects .gitignore when walking directories
+memchr = "2.7"         # Fast newline detection in read_file
+regex = "1.11"         # ToolError includes regex::Error conversion
+
+# Webfetch tool converts HTML to markdown for LLM-friendly output
+html-to-markdown-rs = "2.16"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+
+# Unifies async/sync code via procedural macros
+maybe-async = "0.2"
+
+# TaskExecutor trait requires async methods
+async-trait = { version = "0.1", optional = true }
+
+# Async file I/O, process execution, and timeouts
+tokio = { version = "1.0", features = ["fs", "io-util", "process", "time"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.10"
+# For async tests (when async feature enabled)
 tokio = { version = "1.0", features = ["rt", "macros"] }
 wiremock = "0.6"

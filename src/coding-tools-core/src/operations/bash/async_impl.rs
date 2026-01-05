@@ -1,22 +1,11 @@
-//! Shell command execution operation.
+//! Async shell command execution.
 
+use super::BashOutput;
 use crate::error::{ToolError, ToolResult};
-use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
-
-/// Result of shell command execution.
-#[derive(Debug, Clone, Serialize)]
-pub struct BashOutput {
-    /// Exit code from the command (None if killed by timeout).
-    pub exit_code: Option<i32>,
-    /// Standard output from the command.
-    pub stdout: String,
-    /// Standard error output from the command.
-    pub stderr: String,
-}
 
 /// Executes a shell command with optional working directory and timeout.
 ///
@@ -26,7 +15,6 @@ pub async fn execute_command(
     workdir: Option<&Path>,
     timeout: Duration,
 ) -> ToolResult<BashOutput> {
-    // Validate workdir exists if specified
     if let Some(dir) = workdir {
         if !dir.is_dir() {
             return Err(ToolError::InvalidPath(format!(
@@ -36,30 +24,6 @@ pub async fn execute_command(
         }
     }
 
-    let mut cmd = build_command(command, workdir);
-    let result = tokio::time::timeout(timeout, cmd.output()).await;
-
-    match result {
-        Ok(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-
-            Ok(BashOutput {
-                exit_code: output.status.code(),
-                stdout,
-                stderr,
-            })
-        }
-        Ok(Err(e)) => Err(ToolError::Execution(e.to_string())),
-        Err(_) => Err(ToolError::Timeout(format!(
-            "command timed out after {}ms",
-            timeout.as_millis()
-        ))),
-    }
-}
-
-/// Builds a Command for the given shell command string.
-fn build_command(command: &str, workdir: Option<&Path>) -> Command {
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
         c.args(["/C", command]);
@@ -79,7 +43,20 @@ fn build_command(command: &str, workdir: Option<&Path>) -> Command {
         .stderr(Stdio::piped())
         .kill_on_drop(true);
 
-    cmd
+    let result = tokio::time::timeout(timeout, cmd.output()).await;
+
+    match result {
+        Ok(Ok(output)) => Ok(BashOutput {
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }),
+        Ok(Err(e)) => Err(ToolError::Execution(e.to_string())),
+        Err(_) => Err(ToolError::Timeout(format!(
+            "command timed out after {}ms",
+            timeout.as_millis()
+        ))),
+    }
 }
 
 #[cfg(test)]

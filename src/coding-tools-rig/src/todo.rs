@@ -53,7 +53,7 @@ impl Tool for TodoWriteTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let message = write_todos(&self.state, args.todos).await?;
+        let message = write_todos(&self.state, args.todos)?;
         Ok(ToolOutput::new(message))
     }
 }
@@ -88,7 +88,7 @@ impl Tool for TodoReadTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let content = read_todos(&self.state).await;
+        let content = read_todos(&self.state);
         Ok(ToolOutput::new(content))
     }
 }
