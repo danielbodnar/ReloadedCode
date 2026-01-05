@@ -1,9 +1,9 @@
-# rig-coding-tools
+# llm-coding-tools
 
-[![Crates.io - coding-tools-core](https://img.shields.io/crates/v/coding-tools-core.svg)](https://crates.io/crates/coding-tools-core)
-[![Crates.io - coding-tools-rig](https://img.shields.io/crates/v/coding-tools-rig.svg)](https://crates.io/crates/coding-tools-rig)
-[![Docs.rs](https://docs.rs/coding-tools-rig/badge.svg)](https://docs.rs/coding-tools-rig)
-[![CI](https://github.com/Sewer56/rig-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/rig-coding-tools/actions)
+[![Crates.io - llm-coding-tools-core](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core)
+[![Crates.io - llm-coding-tools-rig](https://img.shields.io/crates/v/llm-coding-tools-rig.svg)](https://crates.io/crates/llm-coding-tools-rig)
+[![Docs.rs](https://docs.rs/llm-coding-tools-rig/badge.svg)](https://docs.rs/llm-coding-tools-rig)
+[![CI](https://github.com/Sewer56/llm-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/llm-coding-tools/actions)
 
 Coding tools for building LLM-powered development agents with [Rig](https://github.com/0xPlaygrounds/rig).
 
@@ -11,8 +11,8 @@ Coding tools for building LLM-powered development agents with [Rig](https://gith
 
 This workspace contains multiple Rust crates for integrating coding tools with LLM agents:
 
-- **[coding-tools-core](./src/coding-tools-core/)**: Framework-agnostic core operations and utilities
-- **[coding-tools-rig](./src/coding-tools-rig/)**: Rig framework-specific Tool implementations
+- **[llm-coding-tools-core](./src/llm-coding-tools-core/)**: Framework-agnostic core operations and utilities
+- **[llm-coding-tools-rig](./src/llm-coding-tools-rig/)**: Rig framework-specific Tool implementations
 
 ## Features
 
@@ -24,7 +24,7 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 - **Path Security**: Choose between unrestricted or sandboxed file access
 - **Context Strings**: Embedded LLM guidance for tool usage
 
-## Feature Flags (coding-tools-core)
+## Feature Flags (llm-coding-tools-core)
 
 - `tokio` (default): Async mode with tokio runtime
 - `blocking`: Sync/blocking mode, mutually exclusive with `async`
@@ -35,12 +35,12 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-coding-tools-rig = "0.1"
+llm-coding-tools-rig = "0.1"
 ```
 
 ```rust
-use coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
-use coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
+use llm_coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
+use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
 use rig::tool::ToolSet;
 
 // Track tools and generate LLM guidance
@@ -70,19 +70,19 @@ let preamble = pb.build();
 
 ```bash
 # Basic toolset setup
-cargo run --example basic -p coding-tools-rig
+cargo run --example basic -p llm-coding-tools-rig
 
 # Complete agent configuration (recommended starting point)
-cargo run --example full_agent -p coding-tools-rig
+cargo run --example full_agent -p llm-coding-tools-rig
 
 # Sandboxed file access
-cargo run --example sandboxed -p coding-tools-rig
+cargo run --example sandboxed -p llm-coding-tools-rig
 ```
 
 ## Documentation
 
-- [coding-tools-core README](./src/coding-tools-core/README.md)
-- [coding-tools-rig README](./src/coding-tools-rig/README.md)
+- [llm-coding-tools-core README](./src/llm-coding-tools-core/README.md)
+- [llm-coding-tools-rig README](./src/llm-coding-tools-rig/README.md)
 - [Developer Guidelines](./src/AGENTS.md)
 
 ## Contributing
