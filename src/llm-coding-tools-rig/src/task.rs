@@ -10,7 +10,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 // Re-export core types
-pub use llm_coding_tools_core::{MockTaskExecutor, TaskArgs as CoreTaskArgs, TaskExecutor, TaskResult};
+pub use llm_coding_tools_core::{
+    MockTaskExecutor, TaskArgs as CoreTaskArgs, TaskExecutor, TaskResult,
+};
 
 /// Arguments for the task tool (with JsonSchema for rig).
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
