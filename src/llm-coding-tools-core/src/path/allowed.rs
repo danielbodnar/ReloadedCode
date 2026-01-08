@@ -16,22 +16,19 @@ use std::path::PathBuf;
 /// 1. Canonicalizing the resolved path to eliminate `..` and symlinks
 /// 2. Verifying the result starts with an allowed base directory
 ///
-/// # Example
+/// ## Bash Tool Bypasses Path Restrictions
 ///
-/// ```no_run
-/// use llm_coding_tools_core::path::{PathResolver, AllowedPathResolver};
-/// use std::path::PathBuf;
+/// **When the bash/shell tool is enabled, this resolver's protections are effectively
+/// advisory.** The bash tool permits arbitrary shell commands, meaning an LLM can
+/// directly read, write, or delete any file the process has OS-level permissions for
+/// (e.g., `cat /etc/passwd`, `rm -rf /`, `curl ... | sh`).
 ///
-/// let resolver = AllowedPathResolver::new(vec![
-///     PathBuf::from("/home/user/project"),
-/// ]).unwrap();
+/// This resolver only restricts the structured file operations (`read`, `write`, `edit`,
+/// `glob`, `grep`). If your threat model requires actual filesystem sandboxing, you must
+/// either:
 ///
-/// // Relative paths resolved against allowed directories
-/// assert!(resolver.resolve("src/main.rs").is_ok());
-///
-/// // Path traversal is blocked
-/// assert!(resolver.resolve("../secret.txt").is_err());
-/// ```
+/// - Disable the bash tool entirely, or
+/// - Run the process in an OS-level sandbox (containers, seccomp, landlock, etc.)
 #[derive(Debug, Clone)]
 pub struct AllowedPathResolver {
     /// Canonicalized allowed base directories.
