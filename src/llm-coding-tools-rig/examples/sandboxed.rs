@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grep: GrepTool<true> = GrepTool::with_resolver(resolver);
 
     // === Build toolset ===
-    let mut pb = PreambleBuilder::new();
+    let mut pb = PreambleBuilder::<false>::new();
     let toolset = ToolSet::builder()
         .static_tool(pb.track(read))
         .static_tool(pb.track(write))

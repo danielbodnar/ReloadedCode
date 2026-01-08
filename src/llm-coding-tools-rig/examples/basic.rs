@@ -20,7 +20,7 @@ async fn main() {
     let todos = TodoTools::new();
 
     // === Create preamble builder to track tools ===
-    let mut pb = PreambleBuilder::new();
+    let mut pb = PreambleBuilder::<false>::new();
 
     // === Use ToolSet::builder() directly - full Rig API! ===
     let toolset = ToolSet::builder()

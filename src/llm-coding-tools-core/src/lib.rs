@@ -32,7 +32,7 @@ pub use context::ToolContext;
 pub use error::{ToolError, ToolResult};
 pub use output::ToolOutput;
 pub use path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
-pub use preamble::PreambleBuilder;
+pub use preamble::{PreambleBuilder, Substitute};
 
 // Re-export operations (always available, sync or async based on runtime feature)
 pub use operations::{

@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // PreambleBuilder tracks which tools are registered and generates
     // a combined context string for the system prompt. This gives the
     // LLM detailed guidance on how to use each tool effectively.
-    let mut pb = PreambleBuilder::new();
+    let mut pb = PreambleBuilder::<false>::new();
 
     // === 3. Build toolset with all tools ===
     //
