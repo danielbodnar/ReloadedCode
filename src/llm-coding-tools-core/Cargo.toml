@@ -41,7 +41,7 @@ regex = "1.11"         # ToolError includes regex::Error conversion
 
 # Webfetch tool converts HTML to markdown for LLM-friendly output
 html-to-markdown-rs = "2.16"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "rustls-native-certs"], optional = true }
 
 # Unifies async/sync code via procedural macros
 maybe-async = "0.2"
