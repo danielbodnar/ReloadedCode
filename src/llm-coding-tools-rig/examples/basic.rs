@@ -40,16 +40,14 @@ async fn main() {
     // === Print tool definitions from ToolSet ===
     println!("=== Tools in ToolSet ===");
     for def in toolset.get_tool_definitions().await.unwrap() {
-        println!(
-            "  - {}: {}",
-            def.name,
-            &def.description[..60.min(def.description.len())]
-        );
+        let truncated_desc: String = def.description.chars().take(60).collect();
+        println!("  - {}: {}", def.name, truncated_desc);
     }
 
     // === Print generated preamble ===
     println!("\n=== Generated Preamble ({} chars) ===\n", preamble.len());
-    println!("{}", &preamble[..1000.min(preamble.len())]);
+    let truncated_preamble: String = preamble.chars().take(1000).collect();
+    println!("{}", truncated_preamble);
     if preamble.len() > 1000 {
         println!("\n... ({} more chars)", preamble.len() - 1000);
     }
