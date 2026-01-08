@@ -1,6 +1,4 @@
-# llm-coding-tools
-
-Basic coding tools for rig based LLM agents
+Basic coding oriented tools for LLM agents
 
 # Feature Flags (llm-coding-tools-core)
 
