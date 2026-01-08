@@ -20,6 +20,7 @@ use std::path::PathBuf;
 pub trait PathResolver: Send + Sync {
     /// Resolves and validates a path string.
     ///
-    /// Returns the canonical path if valid, or an error describing the issue.
+    /// Returns an absolute path (may or may not be canonical) if valid,
+    /// or an error describing the issue.
     fn resolve(&self, path: &str) -> ToolResult<PathBuf>;
 }
