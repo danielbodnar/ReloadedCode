@@ -67,6 +67,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+Example preamble output (truncated):
+
+```text
+# Tool Usage Guidelines
+
+## Read Tool
+
+Reads files from disk.
+
+## Bash Tool
+
+Executes shell commands.
+```
+
 Run the full example app:
 
 ```bash

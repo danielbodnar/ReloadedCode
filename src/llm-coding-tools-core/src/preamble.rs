@@ -40,6 +40,36 @@ struct ContextEntry {
 /// let preamble = pb.build()
 ///     .substitute("agents", agent_list);
 /// ```
+///
+/// # Output
+///
+/// The generated preamble is Markdown. For example, with two tools:
+///
+/// ```text
+/// # Tool Usage Guidelines
+///
+/// ## Read Tool
+///
+/// Reads files from disk.
+///
+/// ## Bash Tool
+///
+/// Executes shell commands.
+/// ```
+///
+/// When the environment section is enabled and a working directory is provided:
+///
+/// ```text
+/// # Environment
+///
+/// Working directory: /home/user/project
+///
+/// # Tool Usage Guidelines
+///
+/// ## Read Tool
+///
+/// Reads files from disk.
+/// ```
 pub struct PreambleBuilder<const ENV: bool = false> {
     entries: Vec<ContextEntry>,
     working_directory: Option<String>,
