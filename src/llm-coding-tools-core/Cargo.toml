@@ -32,16 +32,19 @@ schemars = "1.2"
 parking_lot = "0.12"
 
 # Glob and grep tool implementations
-glob = "0.3"           # Pattern matching for glob_files
-grep-regex = "0.1"     # Regex matcher for grep_search
-grep-searcher = "0.1"  # File content searching for grep_search
-ignore = "0.4"         # Respects .gitignore when walking directories
-memchr = "2.7"         # Fast newline detection in read_file
-regex = "1.12"         # ToolError includes regex::Error conversion
+glob = "0.3"          # Pattern matching for glob_files
+grep-regex = "0.1"    # Regex matcher for grep_search
+grep-searcher = "0.1" # File content searching for grep_search
+ignore = "0.4"        # Respects .gitignore when walking directories
+memchr = "2.7"        # Fast newline detection in read_file
+regex = "1.12"        # ToolError includes regex::Error conversion
 
 # Webfetch tool converts HTML to markdown for LLM-friendly output
 html-to-markdown-rs = "2.20"
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "rustls-native-certs"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",
+    "rustls-native-certs",
+], optional = true }
 
 # Unifies async/sync code via procedural macros
 maybe-async = "0.2"

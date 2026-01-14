@@ -10,13 +10,18 @@ readme = "README.md"
 
 [dependencies]
 # Core tool operations (file read/write/edit, glob, grep, bash, etc.)
-llm-coding-tools-core = { version = "0.1.0", path = "../llm-coding-tools-core", features = ["tokio"] }
+llm-coding-tools-core = { version = "0.1.0", path = "../llm-coding-tools-core", features = [
+    "tokio",
+] }
 
 # Implements rig_core::tool::Tool trait for each tool
 rig-core = { version = "0.28", default-features = false, features = ["reqwest-rustls"] }
 
 # WebFetchTool needs its own client instance
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "rustls-native-certs"] }
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",
+    "rustls-native-certs",
+] }
 
 # Tool::definition() returns JSON Schema for LLM parameter validation
 schemars = "1.2"
