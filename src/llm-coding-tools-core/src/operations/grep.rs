@@ -58,6 +58,7 @@ pub fn grep_search<R: PathResolver>(
     let matcher =
         RegexMatcher::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
 
+    // Optional filename filter via glob.
     let glob_pattern = include
         .map(|g| Pattern::new(g).map_err(|e| ToolError::InvalidPattern(e.to_string())))
         .transpose()?;
@@ -81,6 +82,7 @@ pub fn grep_search<R: PathResolver>(
             Err(_) => continue,
         };
 
+        // Skip directories and non-regular files.
         match entry.file_type() {
             Some(ft) if ft.is_file() => {}
             _ => continue,
@@ -88,6 +90,7 @@ pub fn grep_search<R: PathResolver>(
 
         let entry_path = entry.path();
 
+        // Apply include glob to basename when requested.
         if let Some(ref glob) = glob_pattern {
             let file_name = match entry_path.file_name().and_then(|n| n.to_str()) {
                 Some(name) => name,
@@ -116,12 +119,14 @@ pub fn grep_search<R: PathResolver>(
         });
     }
 
+    // Sort newest files first.
     files.sort_by(|a, b| b.mtime.cmp(&a.mtime));
 
     let mut match_count = 0;
     let mut truncate_at = files.len();
     let mut truncated = false;
 
+    // Enforce overall match limit across files.
     for (x, file) in files.iter_mut().enumerate() {
         let remaining = limit - match_count;
         if file.matches.len() > remaining {
@@ -143,6 +148,7 @@ pub fn grep_search<R: PathResolver>(
     })
 }
 
+#[inline]
 fn collect_file_matches(
     matcher: &RegexMatcher,
     searcher: &mut Searcher,
