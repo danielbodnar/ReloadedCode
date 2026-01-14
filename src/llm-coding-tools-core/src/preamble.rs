@@ -20,25 +20,31 @@ struct ContextEntry {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use llm_coding_tools_rig::absolute::{ReadTool, GlobTool};
-/// use llm_coding_tools_rig::{BashTool, PreambleBuilder};
-/// use rig::tool::ToolSet;
+/// ```no_run
+/// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+/// use llm_coding_tools_core::PreambleBuilder;
+///
+/// struct ReadTool;
+///
+/// impl ToolContext for ReadTool {
+///     const NAME: &'static str = "read";
+///
+///     fn context(&self) -> &'static str {
+///         READ_ABSOLUTE
+///     }
+/// }
 ///
 /// // Without environment section (default)
-/// let mut pb = PreambleBuilder::new();
+/// let mut pb = PreambleBuilder::<false>::new();
+/// let _preamble = pb.build();
 ///
 /// // With environment section
 /// let mut pb = PreambleBuilder::<true>::new()
-///     .working_directory(std::env::current_dir().unwrap());
+///     .working_directory(std::env::current_dir().unwrap().display().to_string());
 ///
-/// let toolset = ToolSet::builder()
-///     .static_tool(pb.track(ReadTool::<true>::new()))
-///     .static_tool(pb.track(BashTool::new()))
-///     .build();
+/// pb.track(ReadTool);
 ///
-/// let preamble = pb.build()
-///     .substitute("agents", agent_list);
+/// let _preamble = pb.build();
 /// ```
 ///
 /// # Output
@@ -94,10 +100,23 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     /// Records context and returns tool unchanged.
     ///
     /// Use this to wrap tools before registering them with your tool collection:
-    /// ```ignore
-    /// let mut pb = PreambleBuilder::new();
-    /// let my_tool = pb.track(MyTool::new());
-    /// // register my_tool with your tool collection
+    /// ```no_run
+    /// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+    /// use llm_coding_tools_core::PreambleBuilder;
+    ///
+    /// struct MyTool;
+    ///
+    /// impl ToolContext for MyTool {
+    ///     const NAME: &'static str = "read";
+    ///
+    ///     fn context(&self) -> &'static str {
+    ///         READ_ABSOLUTE
+    ///     }
+    /// }
+    ///
+    /// let mut pb = PreambleBuilder::<false>::new();
+    /// let _my_tool = pb.track(MyTool);
+    /// // register _my_tool with your tool collection
     /// ```
     ///
     /// For example, if working with rig's ToolSet builder:
@@ -128,12 +147,14 @@ impl PreambleBuilder<true> {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let pb = PreambleBuilder::<true>::new()
+    /// ```no_run
+    /// use llm_coding_tools_core::PreambleBuilder;
+    ///
+    /// let _pb = PreambleBuilder::<true>::new()
     ///     .working_directory("/home/user/project");
     ///
     /// // With runtime-computed path
-    /// let pb = PreambleBuilder::<true>::new()
+    /// let _pb = PreambleBuilder::<true>::new()
     ///     .working_directory(std::env::current_dir().unwrap().display().to_string());
     /// ```
     #[inline]
