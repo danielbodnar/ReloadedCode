@@ -3,7 +3,7 @@
 //! Provides cross-platform shell command execution with timeout support.
 
 use llm_coding_tools_core::operations::execute_command;
-use llm_coding_tools_core::{BashOutput, ToolContext, ToolError, ToolOutput};
+use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
@@ -66,7 +66,7 @@ impl Tool for BashTool {
         let timeout = Duration::from_millis(args.timeout_ms);
 
         let result = execute_command(&args.command, workdir, timeout).await?;
-        Ok(format_bash_output(&result))
+        Ok(result.format_output())
     }
 }
 
@@ -76,32 +76,6 @@ impl ToolContext for BashTool {
     fn context(&self) -> &'static str {
         llm_coding_tools_core::context::BASH
     }
-}
-
-fn format_bash_output(output: &BashOutput) -> ToolOutput {
-    let mut content = String::new();
-
-    if !output.stdout.is_empty() {
-        content.push_str(&output.stdout);
-    }
-    if !output.stderr.is_empty() {
-        if !content.is_empty() {
-            content.push('\n');
-        }
-        content.push_str("[stderr]\n");
-        content.push_str(&output.stderr);
-    }
-
-    if let Some(code) = output.exit_code {
-        if code != 0 {
-            if !content.is_empty() {
-                content.push('\n');
-            }
-            content.push_str(&format!("[exit code: {}]", code));
-        }
-    }
-
-    ToolOutput::new(content)
 }
 
 #[cfg(test)]

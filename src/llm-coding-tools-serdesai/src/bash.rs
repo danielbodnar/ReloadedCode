@@ -5,7 +5,6 @@
 use crate::convert::to_serdes_result;
 use crate::schema::bash_schema;
 use async_trait::async_trait;
-use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::ToolContext;
 use llm_coding_tools_core::operations::execute_command;
 use serde::Deserialize;
@@ -92,37 +91,7 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
 
         let result = execute_command(&args.command, workdir, timeout).await;
 
-        // Inline format_bash_output - only used here
-        to_serdes_result(
-            "Bash",
-            result.map(|output| {
-                // Pre-allocate capacity based on known stdout/stderr sizes plus overhead for labels
-                let estimated = output.stdout.len() + output.stderr.len() + 32;
-                let mut content = String::with_capacity(estimated);
-
-                if !output.stdout.is_empty() {
-                    content.push_str(&output.stdout);
-                }
-                if !output.stderr.is_empty() {
-                    if !content.is_empty() {
-                        content.push('\n');
-                    }
-                    content.push_str("[stderr]\n");
-                    content.push_str(&output.stderr);
-                }
-
-                if let Some(code) = output.exit_code
-                    && code != 0
-                {
-                    if !content.is_empty() {
-                        content.push('\n');
-                    }
-                    content.push_str(&format!("[exit code: {}]", code));
-                }
-
-                ToolOutput::new(content)
-            }),
-        )
+        to_serdes_result("Bash", result.map(|output| output.format_output()))
     }
 }
 
