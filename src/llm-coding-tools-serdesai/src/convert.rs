@@ -2,16 +2,21 @@
 //!
 //! Provides [`From`] implementations and helper functions to bridge
 //! [`llm_coding_tools_core`] types with serdesAI's tool system.
+//!
+//! [`llm_coding_tools_core`]: llm_coding_tools_core
 
 use llm_coding_tools_core::operations::EditError;
 use llm_coding_tools_core::{ToolError as CoreError, ToolOutput, ToolResult as CoreResult};
 use serde_json::json;
 use serdes_ai::tools::{ToolError as SerdesError, ToolReturn};
 
-/// Convert [`ToolOutput`] to [`ToolReturn`].
+/// Convert [`ToolOutput`] to [`ToolReturn`] (serdesAI).
 ///
 /// - Non-truncated output: `ToolReturn::text(content)`
 /// - Truncated output: `ToolReturn::json({ "content": ..., "truncated": true })`
+///
+/// [`ToolOutput`]: llm_coding_tools_core::ToolOutput
+/// [`ToolReturn`]: serdes_ai::tools::ToolReturn
 #[inline]
 pub fn output_to_return(output: ToolOutput) -> ToolReturn {
     if output.truncated {
@@ -24,7 +29,7 @@ pub fn output_to_return(output: ToolOutput) -> ToolReturn {
     }
 }
 
-/// Convert core `ToolResult<ToolOutput>` to serdesAI `ToolResult`.
+/// Convert core [`ToolResult<ToolOutput>`] to serdesAI [`ToolResult`].
 ///
 /// This is the primary conversion function for tool implementations.
 /// Requires tool_name for proper error context in validation errors.
@@ -40,6 +45,9 @@ pub fn output_to_return(output: ToolOutput) -> ToolReturn {
 ///     to_serdes_result("my_tool", core_result)
 /// }
 /// ```
+///
+/// [`ToolResult<ToolOutput>`]: llm_coding_tools_core::ToolResult
+/// [`ToolResult`]: serdes_ai::tools::ToolResult
 #[inline]
 pub fn to_serdes_result(
     tool_name: &str,
@@ -55,6 +63,8 @@ pub fn to_serdes_result(
 /// Maps edit-specific errors to appropriate error types:
 /// - Validation errors: `NotFound`, `AmbiguousMatch`, `EmptyOldString`, `IdenticalStrings`
 /// - Execution errors: `Tool(ToolError)` (IO, path errors)
+///
+/// [`EditError`]: llm_coding_tools_core::operations::EditError
 pub fn edit_error_to_serdes(err: EditError) -> SerdesError {
     match err {
         EditError::NotFound => SerdesError::validation_error(
@@ -83,7 +93,10 @@ pub fn edit_error_to_serdes(err: EditError) -> SerdesError {
     }
 }
 
-/// Convert core [`ToolError`] to serdesAI [`ToolError`] with tool name context.
+/// Convert core [`ToolError`][core] to serdesAI [`ToolError`][serdes] with tool name context.
+///
+/// [core]: llm_coding_tools_core::ToolError
+/// [serdes]: serdes_ai::tools::ToolError
 pub(crate) fn core_error_to_serdes(tool_name: &str, err: CoreError) -> SerdesError {
     match &err {
         // Validation errors - input/parameter issues
