@@ -23,7 +23,7 @@ struct TodoWriteArgs {
 
 /// Arguments for reading todos.
 ///
-/// Empty struct required for consistent JSON validation via `serde_json::from_value`.
+/// Empty struct required for consistent JSON validation via [`serde_json::from_value`].
 /// Ensures the input is a valid JSON object even when no parameters are needed.
 #[derive(Debug, Clone, Deserialize)]
 struct TodoReadArgs {}
