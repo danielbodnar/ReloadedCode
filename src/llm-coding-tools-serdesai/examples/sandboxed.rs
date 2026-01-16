@@ -28,12 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Each tool is initialized with the same set of allowed directories.
     // The `allowed` module tools use `AllowedPathResolver` internally.
-    let read: ReadTool<true> =
-        ReadTool::new(allowed_paths.clone()).expect("allowed paths should be valid");
-    let write = WriteTool::new(allowed_paths.clone());
-    let edit = EditTool::new(allowed_paths.clone());
-    let glob = GlobTool::new(allowed_paths.clone());
-    let grep: GrepTool<true> = GrepTool::new(allowed_paths);
+    let read: ReadTool<true> = ReadTool::new(allowed_paths.clone())?;
+    let write = WriteTool::new(allowed_paths.clone())?;
+    let edit = EditTool::new(allowed_paths.clone())?;
+    let glob = GlobTool::new(allowed_paths.clone())?;
+    let grep: GrepTool<true> = GrepTool::new(allowed_paths)?;
 
     // === Build registry with preamble tracking ===
     let mut pb = PreambleBuilder::<false>::new();

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serdes_ai::tools::{
     RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn,
 };
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::convert::edit_error_to_serdes;
 
@@ -33,12 +33,15 @@ pub struct EditTool {
 }
 
 impl EditTool {
-    /// Creates a new edit tool restricted to the given canonical directories.
-    /// `allowed_directories` should already be canonicalized (see [`AllowedPathResolver::from_canonical`]).
-    pub fn new(allowed_directories: Vec<PathBuf>) -> Self {
-        Self {
-            resolver: AllowedPathResolver::from_canonical(allowed_directories),
-        }
+    /// Creates a new edit tool restricted to the given directories.
+    ///
+    /// Returns an error if any directory doesn't exist or can't be canonicalized.
+    pub fn new(
+        allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>,
+    ) -> llm_coding_tools_core::ToolResult<Self> {
+        Ok(Self {
+            resolver: AllowedPathResolver::new(allowed_paths)?,
+        })
     }
 }
 
@@ -110,7 +113,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool = EditTool::new(vec![dir.path().to_path_buf()]);
+        let tool = EditTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -130,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool = EditTool::new(vec![dir.path().to_path_buf()]);
+        let tool = EditTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),

@@ -9,7 +9,7 @@ use serdes_ai::tools::{
     RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn,
 };
 use std::fmt::Write;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::convert::to_serdes_result;
 
@@ -40,10 +40,12 @@ pub struct GrepTool<const LINE_NUMBERS: bool = true> {
 
 impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
     /// Creates a new grep tool restricted to the given directories.
-    pub fn new(allowed_directories: Vec<PathBuf>) -> Self {
-        Self {
-            resolver: AllowedPathResolver::from_canonical(allowed_directories),
-        }
+    pub fn new(
+        allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>,
+    ) -> llm_coding_tools_core::ToolResult<Self> {
+        Ok(Self {
+            resolver: AllowedPathResolver::new(allowed_paths)?,
+        })
     }
 }
 
@@ -179,7 +181,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new(vec![dir.path().to_path_buf()]);
+        let tool: GrepTool<true> = GrepTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -199,7 +201,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool: GrepTool<true> = GrepTool::new(vec![dir.path().to_path_buf()]);
+        let tool: GrepTool<true> = GrepTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -216,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_empty_pattern() {
         let dir = TempDir::new().unwrap();
-        let tool: GrepTool<true> = GrepTool::new(vec![dir.path().to_path_buf()]);
+        let tool: GrepTool<true> = GrepTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),

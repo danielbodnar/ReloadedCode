@@ -6,7 +6,7 @@ use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::{ToolContext, ToolResult as CoreToolResult};
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::convert::to_serdes_result;
 
@@ -46,9 +46,9 @@ impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
     /// Creates a new read tool restricted to the given directories.
     ///
     /// Returns an error if any directory doesn't exist or can't be canonicalized.
-    pub fn new(allowed_directories: Vec<PathBuf>) -> CoreToolResult<Self> {
+    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> CoreToolResult<Self> {
         Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_directories)?,
+            resolver: AllowedPathResolver::new(allowed_paths)?,
         })
     }
 }
@@ -124,7 +124,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello\nworld\n").unwrap();
 
-        let tool: ReadTool<true> = ReadTool::new(vec![dir.path().to_path_buf()]).unwrap();
+        let tool: ReadTool<true> = ReadTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -145,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool: ReadTool<true> = ReadTool::new(vec![dir.path().to_path_buf()]).unwrap();
+        let tool: ReadTool<true> = ReadTool::new([dir.path()]).unwrap();
         let result = tool
             .call(
                 &mock_ctx(),
