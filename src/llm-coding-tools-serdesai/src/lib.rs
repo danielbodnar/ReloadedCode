@@ -63,9 +63,6 @@ pub use llm_coding_tools_core::{
     WebFetchOutput,
 };
 
-// Re-export conversion utilities
-pub use convert::{edit_error_to_serdes, output_to_return, to_serdes_result};
-
 // Re-export standalone tools
 pub use bash::BashTool;
 pub use task::TaskTool;
