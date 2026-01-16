@@ -76,7 +76,7 @@ pub fn edit_error_to_serdes(err: EditError) -> SerdesError {
             "edit",
             Some("old_string".to_string()),
             format!(
-                "oldString found {count} times and requires more code context to uniquely identify the intended match"
+                "old_string found {count} times and requires more code context to uniquely identify the intended match"
             ),
         ),
         EditError::EmptyOldString => SerdesError::validation_error(
