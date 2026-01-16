@@ -3,12 +3,11 @@
 //! Provides cross-platform shell command execution with timeout support.
 
 use crate::convert::to_serdes_result;
-use crate::schema::bash_schema;
 use async_trait::async_trait;
 use llm_coding_tools_core::context::ToolContext;
 use llm_coding_tools_core::operations::execute_command;
 use serde::Deserialize;
-use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -68,7 +67,31 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
             "Bash",
             "Execute a shell command with optional working directory and timeout.",
         )
-        .with_parameters(bash_schema().expect("schema serialization should never fail"))
+        .with_parameters(
+            SchemaBuilder::new()
+                .string_constrained(
+                    "command",
+                    "The shell command to execute",
+                    true,
+                    Some(1),
+                    None,
+                    None,
+                )
+                .string(
+                    "workdir",
+                    "Working directory for command execution (must be absolute path)",
+                    false,
+                )
+                .integer_constrained(
+                    "timeout_ms",
+                    "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
+                    false,
+                    Some(1),
+                    Some(600_000),
+                )
+                .build()
+                .expect("schema serialization should never fail"),
+        )
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {

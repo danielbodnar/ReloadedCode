@@ -3,12 +3,11 @@
 //! Provides [`TaskTool`] for spawning sub-agents to handle complex tasks.
 
 use crate::convert::to_serdes_result;
-use crate::schema::task_schema;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::ToolContext;
 use serde::Deserialize;
-use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 use std::sync::Arc;
 
 /// Convenience re-exports from [`llm_coding_tools_core`] for users of this crate.
@@ -76,8 +75,19 @@ impl TaskTool<MockTaskExecutor> {
 #[async_trait]
 impl<Deps: Send + Sync, E: TaskExecutor + Send + Sync + 'static> Tool<Deps> for TaskTool<E> {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new("Task", "Delegate a task to a specialized sub-agent.")
-            .with_parameters(task_schema().expect("schema serialization should never fail"))
+        ToolDefinition::new("Task", "Delegate a task to a specialized sub-agent.").with_parameters(
+            SchemaBuilder::new()
+                .string("description", "Short 3-5 word task description", true)
+                .string("prompt", "Detailed instructions for the sub-agent", true)
+                .string(
+                    "subagent_type",
+                    "Type of agent to use (e.g., \"general\", \"coder\")",
+                    true,
+                )
+                .string("session_id", "Existing session to continue", false)
+                .build()
+                .expect("schema serialization should never fail"),
+        )
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {

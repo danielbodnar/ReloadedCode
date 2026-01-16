@@ -3,13 +3,12 @@
 //! Provides URL fetching with format conversion support.
 
 use crate::convert::to_serdes_result;
-use crate::schema::webfetch_schema;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::ToolContext;
 use llm_coding_tools_core::operations::fetch_url;
 use serde::Deserialize;
-use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 use std::time::Duration;
 
 /// Default timeout: 30 seconds.
@@ -66,7 +65,19 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
             "WebFetch",
             "Fetch content from a URL. HTML is converted to markdown, JSON is prettified.",
         )
-        .with_parameters(webfetch_schema().expect("schema serialization should never fail"))
+        .with_parameters(
+            SchemaBuilder::new()
+                .string("url", "The URL to fetch", true)
+                .integer_constrained(
+                    "timeout_ms",
+                    "Timeout in milliseconds. Defaults to 30000 (30 seconds).",
+                    false,
+                    Some(1),
+                    Some(600_000),
+                )
+                .build()
+                .expect("schema serialization should never fail"),
+        )
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {

@@ -3,13 +3,12 @@
 //! Provides tools for reading and writing todo items.
 
 use crate::convert::to_serdes_result;
-use crate::schema::{todo_read_schema, todo_write_schema};
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::ToolContext;
 use llm_coding_tools_core::operations::{read_todos, write_todos};
 use serde::Deserialize;
-use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 
 // Re-export core types
 pub use llm_coding_tools_core::{Todo, TodoPriority, TodoState, TodoStatus};
@@ -44,8 +43,37 @@ impl TodoWriteTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new("TodoWrite", "Replace the todo list with new items.")
-            .with_parameters(todo_write_schema().expect("schema serialization should never fail"))
+        ToolDefinition::new("TodoWrite", "Replace the todo list with new items.").with_parameters(
+            SchemaBuilder::new()
+                .raw(
+                    "todos",
+                    serde_json::json!({
+                        "type": "array",
+                        "description": "The complete list of todos to set",
+                        "items": {
+                            "type": "object",
+                            "required": ["id", "content", "status", "priority"],
+                            "properties": {
+                                "id": { "type": "string", "description": "Unique identifier" },
+                                "content": { "type": "string", "description": "Task description" },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["pending", "in_progress", "completed", "cancelled"],
+                                    "description": "Current status"
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"],
+                                    "description": "Priority level"
+                                }
+                            }
+                        }
+                    }),
+                    true,
+                )
+                .build()
+                .expect("schema serialization should never fail"),
+        )
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -80,8 +108,11 @@ impl TodoReadTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new("TodoRead", "Read the current todo list.")
-            .with_parameters(todo_read_schema().expect("schema serialization should never fail"))
+        ToolDefinition::new("TodoRead", "Read the current todo list.").with_parameters(
+            SchemaBuilder::new()
+                .build()
+                .expect("schema serialization should never fail"),
+        )
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {

@@ -26,8 +26,6 @@ pub mod task;
 pub mod todo;
 pub mod webfetch;
 
-pub(crate) mod schema;
-
 /// Re-export core types for convenience.
 pub use llm_coding_tools_core::{ToolError, ToolOutput, ToolResult};
 
