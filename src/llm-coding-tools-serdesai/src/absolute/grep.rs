@@ -2,19 +2,17 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
-use llm_coding_tools_core::operations::grep_search;
+use llm_coding_tools_core::operations::{DEFAULT_MAX_LINE_LENGTH, grep_search};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use serde::Deserialize;
 use serdes_ai::tools::{
     RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn,
 };
-use std::fmt::Write;
 
 use crate::convert::to_serdes_result;
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 2000;
-const MAX_LINE_LENGTH: usize = 2000;
 
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
@@ -122,31 +120,7 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
                     return Ok(ToolReturn::text("No matches found."));
                 }
 
-                // Format output grouped by file
-                let mut output = String::with_capacity(4096);
-                let _ = writeln!(&mut output, "Found {} matches", grep_output.match_count);
-
-                for file in &grep_output.files {
-                    let _ = writeln!(&mut output, "\n{}:", file.path);
-                    for m in &file.matches {
-                        // Truncate at UTF-8 boundary
-                        let truncated_text = if m.line_text.len() > MAX_LINE_LENGTH {
-                            &m.line_text[..m.line_text.floor_char_boundary(MAX_LINE_LENGTH)]
-                        } else {
-                            &m.line_text
-                        };
-                        if LINE_NUMBERS {
-                            let _ = writeln!(&mut output, "  L{}: {}", m.line_num, truncated_text);
-                        } else {
-                            let _ = writeln!(&mut output, "  {}", truncated_text);
-                        }
-                    }
-                }
-
-                if grep_output.truncated {
-                    let _ = write!(&mut output, "\n(Results truncated at {} matches)", limit);
-                }
-
+                let output = grep_output.format::<LINE_NUMBERS>(limit, DEFAULT_MAX_LINE_LENGTH);
                 Ok(ToolReturn::text(output))
             }
         }
@@ -297,13 +271,13 @@ mod tests {
         // The line should be truncated - it should contain prefix but not suffix
         assert!(text.contains("prefix_"));
         assert!(!text.contains("_suffix"));
-        // Verify the match line doesn't exceed MAX_LINE_LENGTH
+        // Verify the match line doesn't exceed DEFAULT_MAX_LINE_LENGTH
         for line in text.lines() {
             if line.contains("prefix_") {
                 // Line format is "  L1: content", so actual content is line.len() - prefix
                 let content_start = line.find("prefix_").unwrap();
                 let content = &line[content_start..];
-                assert!(content.len() <= MAX_LINE_LENGTH);
+                assert!(content.len() <= DEFAULT_MAX_LINE_LENGTH);
             }
         }
     }

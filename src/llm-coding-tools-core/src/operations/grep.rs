@@ -8,8 +8,15 @@ use grep_searcher::sinks::UTF8;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::Serialize;
+use std::fmt::Write;
 use std::path::Path;
 use std::time::SystemTime;
+
+/// Default maximum line length (in bytes) for formatted grep output.
+pub const DEFAULT_MAX_LINE_LENGTH: usize = 2000;
+
+/// Above average length of a file path.
+const ESTIMATED_CHARS_PER_LINE: usize = 128;
 
 /// A single line match within a file.
 #[derive(Debug, Clone, Serialize)]
@@ -40,6 +47,47 @@ pub struct GrepOutput {
     pub match_count: usize,
     /// Whether results were truncated due to limit.
     pub truncated: bool,
+}
+
+impl GrepOutput {
+    /// Formats grep results as human-readable text.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `LINE_NUMBERS` - When `true`, prefixes each match with `L{num}: `
+    ///
+    /// # Arguments
+    ///
+    /// * `limit` - The original match limit (used in truncation message)
+    /// * `max_line_len` - Truncate lines exceeding this byte length at UTF-8 boundary
+    pub fn format<const LINE_NUMBERS: bool>(&self, limit: usize, max_line_len: usize) -> String {
+        let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_LINE;
+        let mut output = String::with_capacity(estimated_capacity);
+
+        let _ = writeln!(&mut output, "Found {} matches", self.match_count);
+
+        for file in &self.files {
+            let _ = writeln!(&mut output, "\n{}:", file.path);
+            for m in &file.matches {
+                let truncated_text = if m.line_text.len() > max_line_len {
+                    &m.line_text[..m.line_text.floor_char_boundary(max_line_len)]
+                } else {
+                    &m.line_text
+                };
+                if LINE_NUMBERS {
+                    let _ = writeln!(&mut output, "  L{}: {}", m.line_num, truncated_text);
+                } else {
+                    let _ = writeln!(&mut output, "  {}", truncated_text);
+                }
+            }
+        }
+
+        if self.truncated {
+            let _ = write!(&mut output, "\n(Results truncated at {} matches)", limit);
+        }
+
+        output
+    }
 }
 
 /// Searches for content matching a regex pattern.

@@ -1,17 +1,15 @@
 //! Grep content search tool using [`AbsolutePathResolver`].
 
-use llm_coding_tools_core::operations::grep_search;
+use llm_coding_tools_core::operations::{grep_search, DEFAULT_MAX_LINE_LENGTH};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
-use std::fmt::Write;
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 2000;
-const MAX_LINE_LENGTH: usize = 2000;
 
 fn default_limit() -> Option<usize> {
     Some(DEFAULT_LIMIT)
@@ -98,30 +96,7 @@ impl<const LINE_NUMBERS: bool> Tool for GrepTool<LINE_NUMBERS> {
             return Ok(ToolOutput::new("No matches found."));
         }
 
-        // Format output grouped by file
-        let mut output = String::with_capacity(4096);
-        let _ = writeln!(&mut output, "Found {} matches", result.match_count);
-
-        for file in &result.files {
-            let _ = writeln!(&mut output, "\n{}:", file.path);
-            for m in &file.matches {
-                // Use floor_char_boundary to avoid panicking on UTF-8 multibyte boundaries
-                let truncated_text = if m.line_text.len() > MAX_LINE_LENGTH {
-                    &m.line_text[..m.line_text.floor_char_boundary(MAX_LINE_LENGTH)]
-                } else {
-                    &m.line_text
-                };
-                if LINE_NUMBERS {
-                    let _ = writeln!(&mut output, "  L{}: {}", m.line_num, truncated_text);
-                } else {
-                    let _ = writeln!(&mut output, "  {}", truncated_text);
-                }
-            }
-        }
-
-        if result.truncated {
-            let _ = write!(&mut output, "\n(Results truncated at {} matches)", limit);
-        }
+        let output = result.format::<LINE_NUMBERS>(limit, DEFAULT_MAX_LINE_LENGTH);
 
         Ok(if result.truncated {
             ToolOutput::truncated(output)
