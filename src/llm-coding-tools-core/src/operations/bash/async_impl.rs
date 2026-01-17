@@ -65,30 +65,14 @@ pub async fn execute_command(
         .spawn()
         .map_err(|e| ToolError::Execution(e.to_string()))?;
 
-    // Take stdout/stderr handles to drain them in separate tasks.
+    // Take stdout/stderr handles to drain them concurrently with process wait.
     // This prevents deadlock when output exceeds pipe buffer (~64KB Linux, ~4KB Windows).
-    // We keep the child handle available so we can call kill() on timeout.
-    let mut stdout_pipe = child.stdout().take();
-    let mut stderr_pipe = child.stderr().take();
+    let mut stdout_pipe = child.stdout().take().expect("stdout was piped");
+    let mut stderr_pipe = child.stderr().take().expect("stderr was piped");
 
-    // Spawn tasks to drain pipes concurrently
-    let stdout_task = tokio::spawn(async move {
-        let mut buf = Vec::new();
-        if let Some(ref mut io) = stdout_pipe {
-            let _ = io.read_to_end(&mut buf).await;
-        }
-        buf
-    });
-
-    let stderr_task = tokio::spawn(async move {
-        let mut buf = Vec::new();
-        if let Some(ref mut io) = stderr_pipe {
-            let _ = io.read_to_end(&mut buf).await;
-        }
-        buf
-    });
-
-    // Race between timeout and process completion
+    // Race between timeout and (process completion + pipe draining).
+    // Using join! inside select! avoids tokio::spawn overhead while still
+    // providing concurrent I/O for the pipe reads.
     tokio::select! {
         biased;  // Check timeout first for consistent behavior
 
@@ -101,12 +85,23 @@ pub async fn execute_command(
             )))
         }
 
-        status = child.wait() => {
+        result = async {
+            tokio::join!(
+                child.wait(),
+                async {
+                    let mut buf = Vec::with_capacity(32 * 1024);
+                    let _ = stdout_pipe.read_to_end(&mut buf).await;
+                    buf
+                },
+                async {
+                    let mut buf = Vec::with_capacity(32 * 1024);
+                    let _ = stderr_pipe.read_to_end(&mut buf).await;
+                    buf
+                }
+            )
+        } => {
+            let (status, stdout_data, stderr_data) = result;
             let status = status.map_err(|e| ToolError::Execution(e.to_string()))?;
-
-            // Join pipe-draining tasks (they complete once child exits or is killed)
-            let stdout_data = stdout_task.await.unwrap_or_default();
-            let stderr_data = stderr_task.await.unwrap_or_default();
 
             Ok(BashOutput {
                 exit_code: status.code(),
