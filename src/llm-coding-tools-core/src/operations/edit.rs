@@ -21,7 +21,9 @@ pub enum EditError {
     #[error("old_string not found in file content")]
     NotFound,
     /// Multiple matches found when replace_all is false.
-    #[error("oldString found {0} times and requires more code context to uniquely identify the intended match")]
+    #[error(
+        "oldString found {0} times and requires more code context to uniquely identify the intended match"
+    )]
     AmbiguousMatch(usize),
 }
 

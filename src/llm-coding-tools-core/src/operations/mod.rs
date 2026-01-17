@@ -17,7 +17,7 @@ pub mod write;
 pub use bash::{execute_command, BashOutput};
 pub use edit::{edit_file, EditError};
 pub use glob::{glob_files, GlobOutput};
-pub use grep::{grep_search, GrepFileMatches, GrepLineMatch, GrepOutput};
+pub use grep::{grep_search, GrepFileMatches, GrepLineMatch, GrepOutput, DEFAULT_MAX_LINE_LENGTH};
 pub use read::read_file;
 pub use todo::{read_todos, write_todos, Todo, TodoPriority, TodoState, TodoStatus};
 pub use write::write_file;
