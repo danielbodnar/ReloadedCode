@@ -2,14 +2,17 @@
 
 use super::BashOutput;
 use crate::error::{ToolError, ToolResult};
+use process_wrap::tokio::*;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
-use tokio::process::Command;
+use tokio::io::AsyncReadExt;
 
 /// Executes a shell command with optional working directory and timeout.
 ///
-/// Uses bash on Unix, cmd on Windows.
+/// Uses bash on Unix, cmd on Windows. Process tree is killed on timeout via:
+/// - Windows: Job Objects
+/// - Unix: Process groups
 pub async fn execute_command(
     command: &str,
     workdir: Option<&Path>,
@@ -30,38 +33,79 @@ pub async fn execute_command(
         }
     }
 
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/C", command]);
-        c
-    } else {
-        let mut c = Command::new("bash");
-        c.args(["-c", command]);
-        c
-    };
+    #[cfg(windows)]
+    let mut wrap = CommandWrap::with_new("cmd", |cmd| {
+        cmd.args(["/C", command]);
+        if let Some(dir) = workdir {
+            cmd.current_dir(dir);
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    });
 
-    if let Some(dir) = workdir {
-        cmd.current_dir(dir);
-    }
+    #[cfg(not(windows))]
+    let mut wrap = CommandWrap::with_new("bash", |cmd| {
+        cmd.args(["-c", command]);
+        if let Some(dir) = workdir {
+            cmd.current_dir(dir);
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    });
 
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+    // Add platform-specific process tree management
+    #[cfg(windows)]
+    wrap.wrap(JobObject);
+    #[cfg(unix)]
+    wrap.wrap(ProcessGroup::leader());
 
-    let result = tokio::time::timeout(timeout, cmd.output()).await;
+    let mut child: Box<dyn ChildWrapper> = wrap
+        .spawn()
+        .map_err(|e| ToolError::Execution(e.to_string()))?;
 
-    match result {
-        Ok(Ok(output)) => Ok(BashOutput {
-            exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        }),
-        Ok(Err(e)) => Err(ToolError::Execution(e.to_string())),
-        Err(_) => Err(ToolError::Timeout(format!(
-            "command timed out after {}ms",
-            timeout.as_millis()
-        ))),
+    // Take stdout/stderr handles before waiting so we can read them
+    // This is necessary because we need to keep the child alive to call kill() on timeout
+    let mut stdout_handle = child.stdout().take();
+    let mut stderr_handle = child.stderr().take();
+
+    // Race between timeout and process completion
+    // We explicitly call child.kill() on timeout to kill the entire process tree
+    tokio::select! {
+        biased;  // Check timeout first for consistent behavior
+
+        _ = tokio::time::sleep(timeout) => {
+            // Timeout: explicitly kill the process tree (Job Object on Windows, process group on Unix)
+            // The kill() method on ChildWrapper handles the platform-specific killing
+            // Pin the boxed future from process-wrap's kill() method
+            let _ = Pin::from(child.kill()).await;
+            Err(ToolError::Timeout(format!(
+                "command timed out after {}ms",
+                timeout.as_millis()
+            )))
+        }
+
+        status = child.wait() => {
+            let status = status.map_err(|e| ToolError::Execution(e.to_string()))?;
+
+            // Read remaining stdout/stderr after process exits
+            let mut stdout_data = Vec::new();
+            let mut stderr_data = Vec::new();
+
+            if let Some(ref mut stdout) = stdout_handle {
+                let _ = stdout.read_to_end(&mut stdout_data).await;
+            }
+            if let Some(ref mut stderr) = stderr_handle {
+                let _ = stderr.read_to_end(&mut stderr_data).await;
+            }
+
+            Ok(BashOutput {
+                exit_code: status.code(),
+                stdout: String::from_utf8_lossy(&stdout_data).into_owned(),
+                stderr: String::from_utf8_lossy(&stderr_data).into_owned(),
+            })
+        }
     }
 }
 

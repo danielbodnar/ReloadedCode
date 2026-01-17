@@ -2,14 +2,17 @@
 
 use super::BashOutput;
 use crate::error::{ToolError, ToolResult};
+use process_wrap::std::*;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
 /// Executes a shell command with optional working directory and timeout.
 ///
-/// Uses bash on Unix, cmd on Windows.
+/// Uses bash on Unix, cmd on Windows. Process tree is killed on timeout via:
+/// - Windows: Job Objects
+/// - Unix: Process groups
 pub fn execute_command(
     command: &str,
     workdir: Option<&Path>,
@@ -30,28 +33,39 @@ pub fn execute_command(
         }
     }
 
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/C", command]);
-        c
-    } else {
-        let mut c = Command::new("bash");
-        c.args(["-c", command]);
-        c
-    };
+    #[cfg(windows)]
+    let mut wrap = CommandWrap::with_new("cmd", |cmd| {
+        cmd.args(["/C", command]);
+        if let Some(dir) = workdir {
+            cmd.current_dir(dir);
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    });
 
-    if let Some(dir) = workdir {
-        cmd.current_dir(dir);
-    }
+    #[cfg(not(windows))]
+    let mut wrap = CommandWrap::with_new("bash", |cmd| {
+        cmd.args(["-c", command]);
+        if let Some(dir) = workdir {
+            cmd.current_dir(dir);
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    });
 
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    // Add platform-specific process tree management
+    #[cfg(windows)]
+    wrap.wrap(JobObject);
+    #[cfg(unix)]
+    wrap.wrap(ProcessGroup::leader());
 
-    let start = Instant::now();
-    let mut child = cmd
+    let mut child = wrap
         .spawn()
         .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+    let start = Instant::now();
 
     // Poll for completion with timeout
     loop {
@@ -68,6 +82,7 @@ pub fn execute_command(
             }
             Ok(None) => {
                 if start.elapsed() >= timeout {
+                    // Kill entire process tree via Job Object (Windows) or process group (Unix)
                     let _ = child.kill();
                     return Err(ToolError::Timeout(format!(
                         "command timed out after {}ms",
