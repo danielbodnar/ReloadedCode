@@ -71,6 +71,7 @@ File tools come in `absolute::*` (unrestricted) and `allowed::*` (sandboxed) var
 ```rust,no_run
 use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool};
 use llm_coding_tools_serdesai::allowed::{ReadTool as AllowedReadTool, WriteTool as AllowedWriteTool};
+use llm_coding_tools_serdesai::AllowedPathResolver;
 use std::path::PathBuf;
 
 // Unrestricted access (absolute paths)
@@ -78,8 +79,9 @@ let read = ReadTool::<true>::new();
 
 // Sandboxed access (paths relative to allowed directories)
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
-let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(allowed_paths.clone()).unwrap();
-let sandboxed_write = AllowedWriteTool::new(allowed_paths).unwrap();
+let resolver = AllowedPathResolver::new(allowed_paths).unwrap();
+let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone());
+let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoReadTool`, `TodoWriteTool`.

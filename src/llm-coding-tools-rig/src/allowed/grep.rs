@@ -3,12 +3,11 @@
 use llm_coding_tools_core::operations::{grep_search, DEFAULT_MAX_LINE_LENGTH};
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_names;
-use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput, ToolResult};
+use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
-use std::path::Path;
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 2000;
@@ -39,15 +38,10 @@ pub struct GrepTool<const LINE_NUMBERS: bool = true> {
 }
 
 impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
-    /// Creates a new grep tool restricted to the given directories.
-    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
-    }
-
-    /// Creates a new grep tool with an existing resolver.
-    pub fn with_resolver(resolver: AllowedPathResolver) -> Self {
+    /// Creates a new grep tool with a shared resolver.
+    ///
+    /// See [`ReadTool::new`] for usage example.
+    pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }
 }
@@ -128,7 +122,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: GrepTool<true> = GrepTool::new(resolver);
         let result = tool
             .call(GrepArgs {
                 pattern: "hello".to_string(),
@@ -145,7 +140,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool: GrepTool = GrepTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: GrepTool = GrepTool::new(resolver);
         let result = tool
             .call(GrepArgs {
                 pattern: "test".to_string(),
@@ -160,7 +156,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_empty_pattern() {
         let dir = TempDir::new().unwrap();
-        let tool: GrepTool = GrepTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: GrepTool = GrepTool::new(resolver);
         let result = tool
             .call(GrepArgs {
                 pattern: "   ".to_string(),
@@ -187,7 +184,8 @@ mod tests {
 
         std::fs::write(dir.path().join("utf8_test.txt"), &long_line).unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: GrepTool<true> = GrepTool::new(resolver);
         let result = tool
             .call(GrepArgs {
                 pattern: "match_me".to_string(),

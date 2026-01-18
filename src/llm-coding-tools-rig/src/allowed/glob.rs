@@ -3,12 +3,11 @@
 use llm_coding_tools_core::operations::glob_files;
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_names;
-use llm_coding_tools_core::{GlobOutput, ToolContext, ToolError, ToolResult};
+use llm_coding_tools_core::{GlobOutput, ToolContext, ToolError};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
-use std::path::Path;
 
 /// Arguments for the glob tool.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -26,15 +25,10 @@ pub struct GlobTool {
 }
 
 impl GlobTool {
-    /// Creates a new glob tool restricted to the given directories.
-    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
-    }
-
-    /// Creates a new glob tool with an existing resolver.
-    pub fn with_resolver(resolver: AllowedPathResolver) -> Self {
+    /// Creates a new glob tool with a shared resolver.
+    ///
+    /// See [`ReadTool::new`] for usage example.
+    pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }
 }
@@ -82,7 +76,8 @@ mod tests {
         fs::create_dir_all(dir.path().join("src")).unwrap();
         File::create(dir.path().join("src/lib.rs")).unwrap();
 
-        let tool = GlobTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GlobTool::new(resolver);
         let result = tool
             .call(GlobArgs {
                 pattern: "**/*.rs".to_string(),
@@ -96,7 +91,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool = GlobTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GlobTool::new(resolver);
         let result = tool
             .call(GlobArgs {
                 pattern: "*.rs".to_string(),

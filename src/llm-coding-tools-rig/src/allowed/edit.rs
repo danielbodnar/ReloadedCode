@@ -4,12 +4,11 @@ use llm_coding_tools_core::operations::edit_file;
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_names;
 pub use llm_coding_tools_core::EditError;
-use llm_coding_tools_core::{ToolContext, ToolResult};
+use llm_coding_tools_core::ToolContext;
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
-use std::path::Path;
 
 /// Arguments for file editing.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -32,15 +31,10 @@ pub struct EditTool {
 }
 
 impl EditTool {
-    /// Creates a new edit tool restricted to the given directories.
-    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
-    }
-
-    /// Creates a new edit tool with an existing resolver.
-    pub fn with_resolver(resolver: AllowedPathResolver) -> Self {
+    /// Creates a new edit tool with a shared resolver.
+    ///
+    /// See [`ReadTool::new`] for usage example.
+    pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }
 }
@@ -94,7 +88,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool = EditTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
         let result = tool
             .call(EditArgs {
                 file_path: "test.txt".to_string(),
@@ -110,7 +105,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool = EditTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
         let result = tool
             .call(EditArgs {
                 file_path: "../../../etc/passwd".to_string(),

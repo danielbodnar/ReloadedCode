@@ -7,7 +7,6 @@ use llm_coding_tools_core::tool_names;
 use llm_coding_tools_core::{ToolContext, ToolOutput};
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::path::Path;
 
 use crate::convert::to_serdes_result;
 
@@ -27,13 +26,11 @@ pub struct GlobTool {
 }
 
 impl GlobTool {
-    /// Creates a new glob tool restricted to the given directories.
-    pub fn new(
-        allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>,
-    ) -> llm_coding_tools_core::ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
+    /// Creates a new glob tool with a shared resolver.
+    ///
+    /// See [`ReadTool::new`] for usage example.
+    pub fn new(resolver: AllowedPathResolver) -> Self {
+        Self { resolver }
     }
 }
 
@@ -111,7 +108,8 @@ mod tests {
         fs::create_dir_all(dir.path().join("src")).unwrap();
         File::create(dir.path().join("src/lib.rs")).unwrap();
 
-        let tool = GlobTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GlobTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -130,7 +128,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool = GlobTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GlobTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),

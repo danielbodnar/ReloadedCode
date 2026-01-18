@@ -89,8 +89,8 @@ use std::path::PathBuf;
 
 let read = ReadTool::<true>::new();
 let resolver = AllowedPathResolver::new([PathBuf::from("/home/user/project")]).unwrap();
-let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::with_resolver(resolver.clone());
-let sandboxed_write = AllowedWriteTool::with_resolver(resolver);
+let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone());
+let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoTools`.

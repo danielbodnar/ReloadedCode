@@ -9,7 +9,6 @@ use serde::Deserialize;
 use serdes_ai::tools::{
     RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn,
 };
-use std::path::Path;
 
 use crate::common::edit::error_to_serdes;
 
@@ -34,15 +33,11 @@ pub struct EditTool {
 }
 
 impl EditTool {
-    /// Creates a new edit tool restricted to the given directories.
+    /// Creates a new edit tool with a shared resolver.
     ///
-    /// Returns an error if any directory doesn't exist or can't be canonicalized.
-    pub fn new(
-        allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>,
-    ) -> llm_coding_tools_core::ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
+    /// See [`ReadTool::new`] for usage example.
+    pub fn new(resolver: AllowedPathResolver) -> Self {
+        Self { resolver }
     }
 }
 
@@ -114,7 +109,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool = EditTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -134,7 +130,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool = EditTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),

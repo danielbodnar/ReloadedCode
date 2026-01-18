@@ -3,12 +3,11 @@
 use llm_coding_tools_core::operations::read_file;
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_names;
-use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput, ToolResult};
+use llm_coding_tools_core::{ToolContext, ToolError, ToolOutput};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
-use std::path::Path;
 
 const DEFAULT_OFFSET: usize = 1;
 const DEFAULT_LIMIT: usize = 2000;
@@ -43,15 +42,26 @@ pub struct ReadTool<const LINE_NUMBERS: bool = true> {
 }
 
 impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
-    /// Creates a new read tool restricted to the given directories.
-    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> ToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
-    }
-
-    /// Creates a new read tool with an existing resolver.
-    pub fn with_resolver(resolver: AllowedPathResolver) -> Self {
+    /// Creates a new read tool with a shared resolver.
+    ///
+    /// Use a single [`AllowedPathResolver`] across all allowed tools to ensure
+    /// consistent path access:
+    ///
+    /// ```no_run
+    /// use llm_coding_tools_core::path::AllowedPathResolver;
+    /// use llm_coding_tools_rig::allowed::{ReadTool, WriteTool, EditTool};
+    /// use std::path::PathBuf;
+    ///
+    /// let resolver = AllowedPathResolver::new(vec![
+    ///     std::env::current_dir().unwrap(),
+    ///     PathBuf::from("/tmp"),
+    /// ]).unwrap();
+    ///
+    /// let read: ReadTool<true> = ReadTool::new(resolver.clone());
+    /// let write = WriteTool::new(resolver.clone());
+    /// let edit = EditTool::new(resolver);
+    /// ```
+    pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }
 }
@@ -103,7 +113,8 @@ mod tests {
         let file_path = dir.path().join("test.txt");
         std::fs::write(&file_path, "hello\nworld\n").unwrap();
 
-        let tool: ReadTool<true> = ReadTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: ReadTool<true> = ReadTool::new(resolver);
         let args = ReadArgs {
             file_path: "test.txt".to_string(),
             offset: 1,
@@ -116,7 +127,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool: ReadTool = ReadTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: ReadTool = ReadTool::new(resolver);
         let args = ReadArgs {
             file_path: "../../../etc/passwd".to_string(),
             offset: 1,
