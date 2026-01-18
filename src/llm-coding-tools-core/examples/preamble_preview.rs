@@ -9,7 +9,7 @@
 //! Run: cargo run --example preamble_preview -p llm-coding-tools-core
 
 use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::{AllowedPathResolver, PreambleBuilder, context};
+use llm_coding_tools_core::{context, AllowedPathResolver, PreambleBuilder};
 
 fn main() {
     // Use from_canonical to avoid filesystem requirements for the example.

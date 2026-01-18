@@ -9,25 +9,25 @@ Usage:
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
 
-## Parameters
+### Parameters
 
 - `file_path`: Path for the file to write - can be relative or absolute within allowed directories (required)
 - `content`: Content to write to the file (required)
 
-## When to Use This Tool
+### When to Use This Tool
 
 - Creating new files that don't exist yet
 - Completely rewriting a file when most content changes
 - Writing generated output (build artifacts, reports, etc.)
 - Creating new source files when explicitly requested
 
-## When NOT to Use This Tool
+### When NOT to Use This Tool
 
 - Modifying existing files - use Edit tool instead (more precise, less error-prone)
 - Creating documentation unless explicitly requested
 - Writing files you haven't read first (if they exist)
 
-## Examples
+### Examples
 
 Creating a new file:
 ```
@@ -35,7 +35,7 @@ file_path: "src/new_module.rs"
 content: "//! New module\n\npub fn hello() {\n    println!(\"Hello!\");\n}\n"
 ```
 
-## Best Practices
+### Best Practices
 
 1. ALWAYS read existing files with Read tool before overwriting them
 2. Prefer Edit tool for making changes to existing files - it's safer and more precise
@@ -43,7 +43,7 @@ content: "//! New module\n\npub fn hello() {\n    println!(\"Hello!\");\n}\n"
 4. Don't create files proactively - wait for explicit user requests
 5. Relative paths are resolved against allowed directories
 
-## Error Handling
+### Error Handling
 
 - If you try to overwrite a file you haven't read, the operation will fail
 - Paths outside allowed directories will be rejected

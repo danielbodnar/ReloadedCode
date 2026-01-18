@@ -6,14 +6,14 @@ Fetches content from a specified URL and processes it for analysis.
 - Other content types are returned as-is
 - Use this tool when you need to retrieve and analyze web content
 
-## Parameters
+### Parameters
 
 - `url`: The URL to fetch content from (required)
   - Must be a fully-formed valid URL
   - HTTP URLs will be automatically upgraded to HTTPS
 - `timeout_ms`: Optional timeout in milliseconds (default varies by implementation)
 
-## Usage Notes
+### Usage Notes
 
 - IMPORTANT: If another tool is present that offers better web fetching capabilities, is more targeted to the task, or has fewer restrictions, prefer using that tool instead of this one.
 - The URL must be a fully-formed valid URL (e.g., "https://example.com/page")
@@ -22,20 +22,20 @@ Fetches content from a specified URL and processes it for analysis.
 - This tool is read-only and does not modify any files
 - Results may be summarized if the content is very large
 
-## When to Use This Tool
+### When to Use This Tool
 
 - Fetching documentation from the web
 - Reading API references or library documentation
 - Retrieving content from URLs provided by the user
 - Checking website content for analysis
 
-## When NOT to Use This Tool
+### When NOT to Use This Tool
 
 - For local file operations - use Read tool instead
 - For searching the web - this only fetches specific URLs
 - When another MCP tool offers better web capabilities
 
-## Examples
+### Examples
 
 Fetching a documentation page:
 ```
@@ -48,7 +48,7 @@ url: "https://api.example.com/large-response"
 timeout_ms: 30000
 ```
 
-## Best Practices
+### Best Practices
 
 1. Provide complete URLs including the protocol (https://)
 2. Use this tool for specific URLs, not for web searching

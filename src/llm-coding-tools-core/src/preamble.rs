@@ -1031,8 +1031,8 @@ mod tests {
         assert!(preamble.contains("## Git Workflow"));
         // Verify actual content from git_workflow.txt is included
         assert!(
-            preamble.contains("# Committing changes with git"),
-            "Should contain git commit workflow header"
+            preamble.contains("Only create commits when requested"),
+            "Should contain git commit workflow content"
         );
         assert!(
             preamble.contains("Git Safety Protocol"),

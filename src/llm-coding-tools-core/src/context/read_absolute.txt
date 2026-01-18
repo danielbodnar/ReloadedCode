@@ -13,7 +13,7 @@ Usage:
 
 You can call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
 
-## When to Use This Tool
+### When to Use This Tool
 
 - Reading source code files to understand implementation
 - Viewing configuration files
@@ -21,13 +21,13 @@ You can call multiple tools in a single response. It is always better to specula
 - Reading log files for debugging
 - Viewing images and screenshots provided by the user
 
-## When NOT to Use This Tool
+### When NOT to Use This Tool
 
 - To list directory contents - use bash with `ls` instead
 - To search for patterns across files - use Grep instead
 - To find files by name - use Glob instead
 
-## Examples
+### Examples
 
 Reading a full file:
 ```
@@ -41,7 +41,7 @@ offset: 100
 limit: 100
 ```
 
-## Best Practices
+### Best Practices
 
 1. Read files before editing them - the Edit tool requires you to have read the file first
 2. When exploring a codebase, read multiple related files in parallel to save time

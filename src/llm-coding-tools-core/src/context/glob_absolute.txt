@@ -6,7 +6,7 @@ Fast file pattern matching tool that works with any codebase size.
 - Use this tool when you need to find files by name patterns
 - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead
 
-## Parameters
+### Parameters
 
 - `pattern`: Glob pattern to match files against (required)
   - `*` matches any characters except path separators
@@ -16,20 +16,20 @@ Fast file pattern matching tool that works with any codebase size.
   - `{a,b}` matches either pattern
 - `path`: Absolute directory path to search in (required)
 
-## When to Use This Tool
+### When to Use This Tool
 
 - Finding files by extension: `**/*.rs`, `**/*.tsx`
 - Finding files by name pattern: `**/test_*.py`, `**/*_spec.js`
 - Locating configuration files: `**/Cargo.toml`, `**/package.json`
 - Finding files in specific directories: `src/**/*.rs`
 
-## When NOT to Use This Tool
+### When NOT to Use This Tool
 
 - Searching for content inside files - use Grep instead
 - Reading file contents - use Read instead
 - Complex multi-step searches - use Task tool instead
 
-## Examples
+### Examples
 
 Find all Rust files:
 ```
@@ -55,7 +55,7 @@ pattern: "**/Cargo.toml"
 path: "/home/user/project"
 ```
 
-## Best Practices
+### Best Practices
 
 1. You can call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.
 2. Start with broader patterns and narrow down if needed
