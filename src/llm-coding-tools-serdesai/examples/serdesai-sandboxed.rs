@@ -36,10 +36,17 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let write = WriteTool::new(resolver.clone());
     let edit = EditTool::new(resolver.clone());
     let glob = GlobTool::new(resolver.clone());
-    let grep: GrepTool<true> = GrepTool::new(resolver);
+    let grep: GrepTool<true> = GrepTool::new(resolver.clone());
 
-    // === Build agent with sandboxed tools - call .system_prompt() last ===
-    let mut pb = PreambleBuilder::<false>::new();
+    // === Build agent with sandboxed tools ===
+    //
+    // Use PreambleBuilder<true> with fluent chaining:
+    // - working_directory() and allowed_paths() consume self (chaining)
+    // - track() takes &mut self (passthrough for agent builder)
+    let mut pb = PreambleBuilder::<true>::new()
+        .working_directory(std::env::current_dir()?.display().to_string())
+        .allowed_paths(&resolver);
+
     let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
         .tool(pb.track(read))
         .tool(pb.track(write))

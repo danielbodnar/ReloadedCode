@@ -4,6 +4,7 @@
 //! preambles containing tool usage context.
 
 use crate::context::ToolContext;
+use crate::path::AllowedPathResolver;
 
 /// Entry storing tool name and context string.
 struct ContextEntry {
@@ -71,6 +72,7 @@ struct ContextEntry {
 pub struct PreambleBuilder<const ENV: bool = false> {
     entries: Vec<ContextEntry>,
     working_directory: Option<String>,
+    allowed_paths: Option<Vec<String>>,
 }
 
 impl<const ENV: bool> Default for PreambleBuilder<ENV> {
@@ -78,6 +80,7 @@ impl<const ENV: bool> Default for PreambleBuilder<ENV> {
         Self {
             entries: Vec::new(),
             working_directory: None,
+            allowed_paths: None,
         }
     }
 }
@@ -156,6 +159,39 @@ impl PreambleBuilder<true> {
         self.working_directory = Some(path.into());
         self
     }
+
+    /// Sets the allowed directories to display in the environment section.
+    ///
+    /// Takes an [`AllowedPathResolver`] reference and extracts its allowed paths
+    /// for display. Paths are already canonicalized (absolute, symlinks resolved)
+    /// by the resolver during construction.
+    ///
+    /// Only available when environment section is enabled.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use llm_coding_tools_core::{AllowedPathResolver, PreambleBuilder};
+    ///
+    /// let resolver = AllowedPathResolver::new(vec!["/home/user/project", "/tmp"]).unwrap();
+    /// let _pb = PreambleBuilder::<true>::new()
+    ///     .working_directory("/home/user/project")
+    ///     .allowed_paths(&resolver);
+    /// ```
+    #[inline]
+    pub fn allowed_paths(mut self, resolver: &AllowedPathResolver) -> Self {
+        // AllowedPathResolver::allowed_paths() returns &[PathBuf] where paths
+        // are already canonicalized (absolute, symlinks resolved) during
+        // AllowedPathResolver::new() construction.
+        self.allowed_paths = Some(
+            resolver
+                .allowed_paths()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+        );
+        self
+    }
 }
 
 impl PreambleBuilder<false> {
@@ -198,11 +234,17 @@ impl PreambleBuilder<true> {
         // Environment section size: ~50 bytes header + path length
         // "# Environment\n\nWorking directory: \n\n" = ~38 bytes
         const ENV_HEADER_SIZE: usize = 50;
+        // "Allowed directories:\n- " per path + path length
+        const ALLOWED_DIR_PER_ITEM: usize = 25;
 
         let env_size = self
             .working_directory
             .as_ref()
             .map_or(0, |d| d.len() + ENV_HEADER_SIZE);
+
+        let allowed_size = self.allowed_paths.as_ref().map_or(0, |paths| {
+            paths.iter().map(|p| p.len() + ALLOWED_DIR_PER_ITEM).sum()
+        });
 
         let tools_size: usize = self
             .entries
@@ -211,22 +253,34 @@ impl PreambleBuilder<true> {
             .sum();
 
         let has_tools = !self.entries.is_empty();
-        let has_env = self.working_directory.is_some();
+        let has_env = self.working_directory.is_some() || self.allowed_paths.is_some();
 
         // Return empty if nothing to output
         if !has_tools && !has_env {
             return String::new();
         }
 
-        let total_size = env_size + tools_size + if has_tools { 30 } else { 0 };
+        let total_size = env_size + allowed_size + tools_size + if has_tools { 30 } else { 0 };
         let mut output = String::with_capacity(total_size);
 
         // Environment section
-        if let Some(ref dir) = self.working_directory {
+        if has_env {
             output.push_str("# Environment\n");
-            output.push_str("Working directory: ");
-            output.push_str(dir);
-            output.push('\n');
+
+            if let Some(ref dir) = self.working_directory {
+                output.push_str("Working directory: ");
+                output.push_str(dir);
+                output.push('\n');
+            }
+
+            if let Some(ref paths) = self.allowed_paths {
+                output.push_str("Allowed directories:\n");
+                for path in paths {
+                    output.push_str("- ");
+                    output.push_str(path);
+                    output.push('\n');
+                }
+            }
         }
 
         // Tool section
@@ -561,5 +615,109 @@ mod tests {
 
         assert!(preamble.contains("# Tool Usage Guidelines"));
         assert!(preamble.contains("## Mock Tool"));
+    }
+
+    #[test]
+    fn builder_with_allowed_paths_shows_paths() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
+
+        let pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user")
+            .allowed_paths(&resolver);
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Environment"));
+        assert!(preamble.contains("Working directory: /home/user"));
+        assert!(preamble.contains("Allowed directories:"));
+        // Check that the temp dir path appears (canonicalized)
+        assert!(preamble.contains(&dir.path().canonicalize().unwrap().display().to_string()));
+    }
+
+    #[test]
+    fn builder_with_only_allowed_paths_no_working_dir() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
+
+        let pb = PreambleBuilder::<true>::new().allowed_paths(&resolver);
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Environment"));
+        assert!(!preamble.contains("Working directory:"));
+        assert!(preamble.contains("Allowed directories:"));
+    }
+
+    #[test]
+    fn allowed_paths_format_is_bulleted_absolute_paths() {
+        use std::path::Path;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        let dir2 = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new(vec![dir1.path(), dir2.path()]).unwrap();
+
+        let pb = PreambleBuilder::<true>::new().allowed_paths(&resolver);
+        let preamble = pb.build();
+
+        // Check format: "- <absolute_path>" (cross-platform)
+        let lines: Vec<&str> = preamble.lines().collect();
+        let allowed_idx = lines
+            .iter()
+            .position(|l| l.contains("Allowed directories"))
+            .unwrap();
+
+        for i in 1..=2 {
+            let line = lines[allowed_idx + i];
+            assert!(
+                line.starts_with("- "),
+                "Line should start with '- ': {}",
+                line
+            );
+            let path_str = line.strip_prefix("- ").unwrap();
+            assert!(
+                Path::new(path_str).is_absolute(),
+                "Path should be absolute: {}",
+                path_str
+            );
+        }
+    }
+
+    #[test]
+    fn allowed_paths_appears_after_working_directory() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
+
+        let pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user")
+            .allowed_paths(&resolver);
+        let preamble = pb.build();
+
+        let working_dir_pos = preamble.find("Working directory:").unwrap();
+        let allowed_pos = preamble.find("Allowed directories:").unwrap();
+        assert!(
+            working_dir_pos < allowed_pos,
+            "Working directory should appear before allowed paths"
+        );
+    }
+
+    #[test]
+    fn builder_with_only_working_dir_no_allowed_paths() {
+        // Backward compatibility: PreambleBuilder<true> with only working_directory()
+        // should NOT render "Allowed directories:" section
+        let pb = PreambleBuilder::<true>::new().working_directory("/home/user/project");
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Environment"));
+        assert!(preamble.contains("Working directory: /home/user/project"));
+        assert!(
+            !preamble.contains("Allowed directories:"),
+            "Should not render Allowed directories when not explicitly set"
+        );
     }
 }
