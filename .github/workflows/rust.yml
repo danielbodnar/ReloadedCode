@@ -47,6 +47,7 @@ jobs:
           target: ${{ matrix.target }}
           use-cross: ${{ matrix.use-cross }}
           additional-test-args: "-p llm-coding-tools-core"
+          additional-tarpaulin-args: "--exclude llm-coding-tools-rig --exclude llm-coding-tools-serdesai"
           no-default-features: true
           features: "blocking"
 
