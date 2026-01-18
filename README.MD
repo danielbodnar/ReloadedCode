@@ -38,32 +38,30 @@ Add to your `Cargo.toml`:
 llm-coding-tools-rig = "0.1"
 ```
 
-```rust
+```rust,no_run
 use llm_coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
 use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
-use rig::tool::ToolSet;
+use rig::providers::openai;
+use rig::completion::Prompt;
 
 // Track tools and generate LLM guidance
-let mut pb = PreambleBuilder::new();
+let mut pb = PreambleBuilder::<false>::new();
 let todos = TodoTools::new();
 
-let toolset = ToolSet::builder()
-    .static_tool(pb.track(ReadTool::<true>::new()))
-    .static_tool(pb.track(WriteTool::new()))
-    .static_tool(pb.track(GlobTool::new()))
-    .static_tool(pb.track(BashTool::new()))
-    .static_tool(pb.track(todos.read))
-    .static_tool(pb.track(todos.write))
+let client = openai::Client::from_env();
+let agent = client
+    .agent("gpt-4o")
+    .tool(pb.track(ReadTool::<true>::new()))
+    .tool(pb.track(WriteTool::new()))
+    .tool(pb.track(GlobTool::new()))
+    .tool(pb.track(BashTool::new()))
+    .tool(pb.track(todos.read))
+    .tool(pb.track(todos.write))
+    .preamble(&pb.build())
     .build();
 
-// Generate preamble for agent system prompt
-let preamble = pb.build();
-
-// Use with rig agent:
-// let agent = client.agent("gpt-4o")
-//     .preamble(&preamble)
-//     .tools(toolset)
-//     .build();
+// Use the agent
+// let response = agent.prompt("List all files").await?;
 ```
 
 ## Examples

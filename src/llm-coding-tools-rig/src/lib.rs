@@ -1,21 +1,4 @@
-//! Rig framework Tool implementations for coding tools.
-//!
-//! This crate provides `rig_core::tool::Tool` implementations wrapping
-//! the core operations from [`llm_coding_tools_core`].
-//!
-//! # Module Organization
-//!
-//! - [`absolute`] - Tools requiring absolute paths (no path restriction)
-//! - [`allowed`] - Tools restricted to allowed directories
-//! - Standalone tools (bash, todo, webfetch) at crate root
-//!
-//! # Example
-//!
-//! ```no_run
-//! use llm_coding_tools_rig::absolute::ReadTool;
-//! use llm_coding_tools_rig::BashTool;
-//! ```
-
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 #![warn(missing_docs)]
 
 pub mod absolute;

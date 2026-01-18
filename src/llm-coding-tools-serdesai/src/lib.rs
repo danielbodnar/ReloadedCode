@@ -1,24 +1,8 @@
-//! serdesAI framework Tool implementations for coding tools.
-//!
-//! This crate provides `serdes_ai::Tool` implementations wrapping
-//! the core operations from [`llm_coding_tools_core`].
-//!
-//! # Module Organization
-//!
-//! - [`absolute`] - Tools requiring absolute paths (no path restriction)
-//! - [`allowed`] - Tools restricted to allowed directories
-//! - Standalone tools (bash, todo, webfetch) at crate root
-//!
-//! # Example
-//!
-//! ```no_run
-//! use llm_coding_tools_serdesai::absolute::ReadTool;
-//! use llm_coding_tools_serdesai::BashTool;
-//! ```
-
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 #![warn(missing_docs)]
 
 pub mod absolute;
+pub mod agent_ext;
 pub mod allowed;
 pub mod bash;
 pub mod convert;

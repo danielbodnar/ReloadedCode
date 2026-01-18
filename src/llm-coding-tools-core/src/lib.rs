@@ -1,16 +1,5 @@
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 #![warn(missing_docs)]
-//! Core types and utilities for coding tools.
-//!
-//! This crate provides framework-agnostic building blocks:
-//! - [`ToolError`] and [`ToolResult`] for error handling
-//! - [`ToolOutput`] for tool responses with truncation metadata
-//! - Utility functions for text processing
-//!
-//! # Features
-//!
-//! - `async`: Enables async function signatures and async-only modules.
-//! - `tokio` (default): Enables async via tokio runtime (implies `async`).
-//!   When disabled, all operations are synchronous.
 
 // Validate feature combinations at compile time
 #[cfg(all(feature = "async", not(feature = "tokio")))]

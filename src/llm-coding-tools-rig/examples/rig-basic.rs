@@ -1,40 +1,46 @@
-//! PreambleBuilder example - pass-through tracking for ToolSet.
+//! PreambleBuilder example - building a complete rig agent.
 //!
 //! Demonstrates:
-//! - Using PreambleBuilder alongside ToolSet::builder()
-//! - Full access to Rig's API (no wrapper limitations)
+//! - Using PreambleBuilder with rig's agent builder
+//! - Chained .tool() calls for registering tools
 //! - TodoTools with shared state
 //! - Generating and using the preamble string
 //!
-//! Run: cargo run --example rig-basic -p llm-coding-tools-rig
+//! Run: OPENAI_API_KEY=... cargo run --example rig-basic -p llm-coding-tools-rig
 
 use llm_coding_tools_rig::absolute::{GlobTool, GrepTool, ReadTool};
 use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
-use rig::tool::ToolSet;
+use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::Prompt;
+use rig::providers::openai;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // === Create shared state for todos ===
     let todos = TodoTools::new();
 
     // === Create preamble builder to track tools ===
     let mut pb = PreambleBuilder::<false>::new();
 
-    // === Use ToolSet::builder() directly - full Rig API! ===
-    let _toolset = ToolSet::builder()
-        .static_tool(pb.track(ReadTool::<true>::new()))
-        .static_tool(pb.track(GlobTool::new()))
-        .static_tool(pb.track(GrepTool::<true>::new()))
-        .static_tool(pb.track(BashTool::new()))
+    // === Build agent with chained .tool() calls ===
+    let client = openai::Client::from_env();
+    let agent = client
+        .agent("gpt-4o")
+        .tool(pb.track(ReadTool::<true>::new()))
+        .tool(pb.track(GlobTool::new()))
+        .tool(pb.track(GrepTool::<true>::new()))
+        .tool(pb.track(BashTool::new()))
         // Todo tools share state for read/write coordination
-        .static_tool(pb.track(todos.read))
-        .static_tool(pb.track(todos.write))
-        // Can use any ToolSet method here - dynamic_tool, etc.
+        .tool(pb.track(todos.read))
+        .tool(pb.track(todos.write))
+        .preamble(&pb.build())
         .build();
 
-    // === Generate preamble string ===
-    let preamble = pb.build();
+    // === Use the agent ===
+    let response = agent
+        .prompt("What files are in the current directory?")
+        .await?;
+    println!("{response}");
 
-    // Print the preamble
-    println!("{preamble}");
+    Ok(())
 }

@@ -7,11 +7,13 @@
 //! - Security-conscious deployments limiting filesystem exposure
 //! - Project-scoped agents that shouldn't touch system files
 //!
-//! Run: cargo run --example rig-sandboxed -p llm-coding-tools-rig
+//! Run: OPENAI_API_KEY=... cargo run --example rig-sandboxed -p llm-coding-tools-rig
 
 use llm_coding_tools_rig::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 use llm_coding_tools_rig::{AllowedPathResolver, PreambleBuilder};
-use rig::tool::ToolSet;
+use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::Prompt;
+use rig::providers::openai;
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -40,20 +42,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let glob = GlobTool::with_resolver(resolver.clone());
     let grep: GrepTool<true> = GrepTool::with_resolver(resolver);
 
-    // === Build toolset ===
+    // === Build agent with sandboxed tools ===
     let mut pb = PreambleBuilder::<false>::new();
-    let _toolset = ToolSet::builder()
-        .static_tool(pb.track(read))
-        .static_tool(pb.track(write))
-        .static_tool(pb.track(edit))
-        .static_tool(pb.track(glob))
-        .static_tool(pb.track(grep))
+    let client = openai::Client::from_env();
+    let agent = client
+        .agent("gpt-4o")
+        .tool(pb.track(read))
+        .tool(pb.track(write))
+        .tool(pb.track(edit))
+        .tool(pb.track(glob))
+        .tool(pb.track(grep))
+        .preamble(&pb.build())
         .build();
 
-    let preamble = pb.build();
-
-    // Print the preamble
-    println!("{preamble}");
+    // === Use the agent ===
+    let response = agent
+        .prompt("List all Rust files in the current directory")
+        .await?;
+    println!("{response}");
 
     Ok(())
 }
