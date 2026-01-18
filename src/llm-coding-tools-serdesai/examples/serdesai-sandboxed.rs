@@ -26,11 +26,11 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     ];
 
     // === Create tools with allowed paths ===
-    let read: ReadTool<true> = ReadTool::new(allowed_paths.clone()).unwrap();
-    let write = WriteTool::new(allowed_paths.clone()).unwrap();
-    let edit = EditTool::new(allowed_paths.clone()).unwrap();
-    let glob = GlobTool::new(allowed_paths.clone()).unwrap();
-    let grep: GrepTool<true> = GrepTool::new(allowed_paths).unwrap();
+    let read: ReadTool<true> = ReadTool::new(allowed_paths.clone())?;
+    let write = WriteTool::new(allowed_paths.clone())?;
+    let edit = EditTool::new(allowed_paths.clone())?;
+    let glob = GlobTool::new(allowed_paths.clone())?;
+    let grep: GrepTool<true> = GrepTool::new(allowed_paths)?;
 
     // === Build agent with sandboxed tools - call .system_prompt() last ===
     let mut pb = PreambleBuilder::<false>::new();
