@@ -40,6 +40,8 @@ impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
     /// Creates a new grep tool with a shared resolver.
     ///
     /// See [`ReadTool::new`] for usage example.
+    ///
+    /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }

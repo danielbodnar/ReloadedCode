@@ -29,6 +29,8 @@ impl GlobTool {
     /// Creates a new glob tool with a shared resolver.
     ///
     /// See [`ReadTool::new`] for usage example.
+    ///
+    /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
         Self { resolver }
     }

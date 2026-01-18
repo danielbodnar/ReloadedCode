@@ -39,6 +39,8 @@
 //! - [`EditTool`] - Edit file with search/replace within allowed paths
 //! - [`GlobTool`] - Find files by pattern within allowed paths
 //! - [`GrepTool`] - Search file contents within allowed paths
+//!
+//! [`AllowedPathResolver`]: llm_coding_tools_core::path::AllowedPathResolver
 
 mod edit;
 mod glob;

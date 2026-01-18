@@ -75,7 +75,7 @@ This is a high-performance library. Optimize aggressively.
 All must pass without warnings:
 
 ```bash
-cargo build -p llm-coding-tools-core && cargo build -p llm-coding-tools-rig --quiet && cargo build -p llm-coding-tools-serdesai --quiet && cargo test -p llm-coding-tools-core && cargo test -p llm-coding-tools-rig --quiet && cargo test -p llm-coding-tools-serdesai --quiet && cargo clippy -p llm-coding-tools-core -- -D warnings && cargo clippy -p llm-coding-tools-rig --quiet -- -D warnings && cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings && cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet && cargo doc --workspace --no-deps --quiet && cargo fmt --all
+cargo build -p llm-coding-tools-core && cargo build -p llm-coding-tools-rig --quiet && cargo build -p llm-coding-tools-serdesai --quiet && cargo test -p llm-coding-tools-core && cargo test -p llm-coding-tools-rig --quiet && cargo test -p llm-coding-tools-serdesai --quiet && cargo clippy -p llm-coding-tools-core -- -D warnings && cargo clippy -p llm-coding-tools-rig --quiet -- -D warnings && cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings && cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet && RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet && cargo fmt --all
 ```
 
 Note: `llm-coding-tools-rig` and `llm-coding-tools-serdesai` are async-only (implement async `Tool` traits).
