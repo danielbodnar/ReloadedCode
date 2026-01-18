@@ -45,7 +45,3 @@ pub use operations::{
 // Re-export webfetch operations (requires async or blocking feature)
 #[cfg(any(feature = "async", feature = "blocking"))]
 pub use operations::{fetch_url, format_json, html_to_markdown, WebFetchOutput};
-
-// Re-export async-only operations (requires async feature)
-#[cfg(feature = "async")]
-pub use operations::{MockTaskExecutor, TaskArgs, TaskExecutor, TaskResult};
