@@ -68,12 +68,9 @@ Example preamble output (truncated):
 ```text
 # Tool Usage Guidelines
 
-## Read Tool
-
+## `Read` Tool
 Reads files from disk.
-
-## Bash Tool
-
+## `Bash` Tool
 Executes shell commands.
 ```
 

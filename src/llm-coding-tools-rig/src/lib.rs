@@ -58,8 +58,8 @@ mod tests {
 
         let preamble = pb.build();
 
-        assert!(preamble.contains("## Read Tool"));
-        assert!(preamble.contains("## Bash Tool"));
+        assert!(preamble.contains("## `Read` Tool"));
+        assert!(preamble.contains("## `Bash` Tool"));
         assert!(preamble.contains("absolute path")); // From READ_ABSOLUTE
 
         // Tools are returned unchanged

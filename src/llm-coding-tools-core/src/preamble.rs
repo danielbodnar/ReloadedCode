@@ -54,9 +54,10 @@ struct ContextEntry {
 ///
 /// ```text
 /// # Tool Usage Guidelines
-/// ## Read Tool
+///
+/// ## `Read` Tool
 /// Reads files from disk.
-/// ## Bash Tool
+/// ## `Bash` Tool
 /// Executes shell commands.
 /// ```
 ///
@@ -64,9 +65,12 @@ struct ContextEntry {
 ///
 /// ```text
 /// # Environment
+///
 /// Working directory: /home/user/project
+///
 /// # Tool Usage Guidelines
-/// ## Read Tool
+///
+/// ## `Read` Tool
 /// Reads files from disk.
 /// ```
 pub struct PreambleBuilder<const ENV: bool = false> {
@@ -321,31 +325,37 @@ impl PreambleBuilder<false> {
 
         // Tool section
         if has_tools {
-            output.push_str("# Tool Usage Guidelines\n");
+            output.push_str("# Tool Usage Guidelines\n\n");
 
             for entry in self.entries {
-                output.push_str("## ");
+                output.push_str("## `");
                 let mut chars = entry.name.chars();
                 if let Some(first) = chars.next() {
                     output.push(first.to_ascii_uppercase());
                     output.push_str(chars.as_str());
+                } else {
+                    output.push_str(entry.name);
                 }
-                output.push_str(" Tool\n");
+                output.push_str("` Tool\n");
                 output.push_str(entry.context);
-                output.push('\n');
+                if !entry.context.ends_with('\n') {
+                    output.push('\n');
+                }
             }
         }
 
         // Supplemental context section
         if has_supplemental {
-            output.push_str("# Supplemental Context\n");
+            output.push_str("\n# Supplemental Context\n\n");
 
             for (name, context) in self.supplemental {
                 output.push_str("## ");
                 output.push_str(name);
-                output.push('\n');
+                output.push_str("\n\n");
                 output.push_str(context);
-                output.push('\n');
+                if !context.ends_with('\n') {
+                    output.push('\n');
+                }
             }
         }
 
@@ -411,7 +421,7 @@ impl PreambleBuilder<true> {
 
         // Environment section
         if has_env {
-            output.push_str("# Environment\n");
+            output.push_str("# Environment\n\n");
 
             if let Some(ref dir) = self.working_directory {
                 output.push_str("Working directory: ");
@@ -427,35 +437,46 @@ impl PreambleBuilder<true> {
                     output.push('\n');
                 }
             }
+
+            // Blank line before next section
+            if has_tools || has_supplemental {
+                output.push('\n');
+            }
         }
 
         // Tool section
         if has_tools {
-            output.push_str("# Tool Usage Guidelines\n");
+            output.push_str("# Tool Usage Guidelines\n\n");
 
             for entry in self.entries {
-                output.push_str("## ");
+                output.push_str("## `");
                 let mut chars = entry.name.chars();
                 if let Some(first) = chars.next() {
                     output.push(first.to_ascii_uppercase());
                     output.push_str(chars.as_str());
+                } else {
+                    output.push_str(entry.name);
                 }
-                output.push_str(" Tool\n");
+                output.push_str("` Tool\n");
                 output.push_str(entry.context);
-                output.push('\n');
+                if !entry.context.ends_with('\n') {
+                    output.push('\n');
+                }
             }
         }
 
         // Supplemental context section
         if has_supplemental {
-            output.push_str("# Supplemental Context\n\n");
+            output.push_str("\n# Supplemental Context\n\n");
 
             for (name, context) in self.supplemental {
                 output.push_str("## ");
                 output.push_str(name);
                 output.push_str("\n\n");
                 output.push_str(context);
-                output.push('\n');
+                if !context.ends_with('\n') {
+                    output.push('\n');
+                }
             }
         }
 
@@ -561,7 +582,7 @@ mod tests {
         let preamble = pb.build();
 
         assert!(preamble.contains("# Tool Usage Guidelines"));
-        assert!(preamble.contains("## Mock Tool"));
+        assert!(preamble.contains("## `Mock` Tool"));
         assert!(preamble.contains("Mock tool context."));
     }
 
@@ -572,8 +593,8 @@ mod tests {
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
 
-        let mock_pos = preamble.find("## Mock Tool").unwrap();
-        let other_pos = preamble.find("## Other Tool").unwrap();
+        let mock_pos = preamble.find("## `Mock` Tool").unwrap();
+        let other_pos = preamble.find("## `Other` Tool").unwrap();
         assert!(
             mock_pos < other_pos,
             "Tools should appear in insertion order"
@@ -587,23 +608,22 @@ mod tests {
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
 
-        // Verify exact transition: context ends, separator adds \n, then next tool header
-        // Pattern: "Mock tool context.\n## Other Tool"
+        // Verify exact transition: context ends, then next tool header
         assert!(
-            preamble.contains("Mock tool context.\n## Other Tool"),
+            preamble.contains("Mock tool context.\n## `Other` Tool"),
             "Expected single newline between tool sections.\nGot:\n{preamble}"
         );
 
-        // Verify single newline after section header
+        // Verify single newline after tool header
         assert!(
-            preamble.contains("## Mock Tool\nMock tool context."),
+            preamble.contains("## `Mock` Tool\nMock tool context."),
             "Expected single newline after tool header.\nGot:\n{preamble}"
         );
 
-        // Verify no double newlines anywhere
+        // Verify blank line after section header
         assert!(
-            !preamble.contains("\n\n"),
-            "Found double newline in preamble.\nGot:\n{preamble}"
+            preamble.contains("# Tool Usage Guidelines\n\n## `Mock` Tool"),
+            "Expected blank line after section header.\nGot:\n{preamble}"
         );
 
         // Verify no trailing whitespace at end of preamble
@@ -621,23 +641,28 @@ mod tests {
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
 
-        // Verify exact transition: context ends, separator adds \n, then next tool header
-        // Pattern: "Mock tool context.\n## Other Tool"
+        // Verify exact transition: context ends, then next tool header
         assert!(
-            preamble.contains("Mock tool context.\n## Other Tool"),
+            preamble.contains("Mock tool context.\n## `Other` Tool"),
             "Expected single newline between tool sections.\nGot:\n{preamble}"
         );
 
-        // Verify single newline after section header
+        // Verify single newline after tool header
         assert!(
-            preamble.contains("## Mock Tool\nMock tool context."),
+            preamble.contains("## `Mock` Tool\nMock tool context."),
             "Expected single newline after tool header.\nGot:\n{preamble}"
         );
 
-        // Verify no double newlines anywhere
+        // Verify blank line after Environment header
         assert!(
-            !preamble.contains("\n\n"),
-            "Found double newline in preamble.\nGot:\n{preamble}"
+            preamble.contains("# Environment\n\nWorking directory:"),
+            "Expected blank line after Environment header.\nGot:\n{preamble}"
+        );
+
+        // Verify blank line after Tool Usage Guidelines header
+        assert!(
+            preamble.contains("# Tool Usage Guidelines\n\n## `Mock` Tool"),
+            "Expected blank line after section header.\nGot:\n{preamble}"
         );
 
         // Verify no trailing whitespace at end of preamble
@@ -773,7 +798,7 @@ mod tests {
         let preamble = pb.build();
 
         assert!(preamble.contains("# Tool Usage Guidelines"));
-        assert!(preamble.contains("## Mock Tool"));
+        assert!(preamble.contains("## `Mock` Tool"));
     }
 
     #[test]
