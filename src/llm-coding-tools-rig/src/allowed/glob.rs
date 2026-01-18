@@ -6,7 +6,7 @@ use llm_coding_tools_core::tool_names;
 use llm_coding_tools_core::{GlobOutput, ToolContext, ToolError};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
-use schemars::{JsonSchema, schema_for};
+use schemars::{schema_for, JsonSchema};
 use serde::Deserialize;
 
 /// Arguments for the glob tool.

@@ -9,42 +9,7 @@
 //! Run: cargo run --example preamble_preview -p llm-coding-tools-core
 
 use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::{context, AllowedPathResolver, PreambleBuilder};
-
-// Mock tools implementing ToolContext for demonstration.
-// In real usage, these would be actual tool structs from llm-coding-tools-rig.
-
-struct MockReadTool;
-impl ToolContext for MockReadTool {
-    const NAME: &'static str = "read";
-    fn context(&self) -> &'static str {
-        context::READ_ALLOWED
-    }
-}
-
-struct MockWriteTool;
-impl ToolContext for MockWriteTool {
-    const NAME: &'static str = "write";
-    fn context(&self) -> &'static str {
-        context::WRITE_ALLOWED
-    }
-}
-
-struct MockBashTool;
-impl ToolContext for MockBashTool {
-    const NAME: &'static str = "bash";
-    fn context(&self) -> &'static str {
-        context::BASH
-    }
-}
-
-struct MockGlobTool;
-impl ToolContext for MockGlobTool {
-    const NAME: &'static str = "glob";
-    fn context(&self) -> &'static str {
-        context::GLOB_ALLOWED
-    }
-}
+use llm_coding_tools_core::{AllowedPathResolver, PreambleBuilder, context};
 
 fn main() {
     // Use from_canonical to avoid filesystem requirements for the example.
@@ -68,8 +33,13 @@ fn main() {
     // For the preview, we just register them without using the returned tool.
     let _ = pb.track(MockReadTool);
     let _ = pb.track(MockWriteTool);
+    let _ = pb.track(MockEditTool);
     let _ = pb.track(MockBashTool);
     let _ = pb.track(MockGlobTool);
+    let _ = pb.track(MockGrepTool);
+    let _ = pb.track(MockWebFetchTool);
+    let _ = pb.track(MockTodoWriteTool);
+    let _ = pb.track(MockTodoReadTool);
 
     let preamble = pb.build();
 
@@ -82,4 +52,79 @@ fn main() {
     println!("  Characters: {}", preamble.len());
     println!("  Lines: {}", preamble.lines().count());
     println!("  Estimated tokens: ~{} (chars/4)", preamble.len() / 4);
+}
+
+// Mock tools implementing ToolContext for demonstration.
+// In real usage, these would be actual tool structs from llm-coding-tools-rig.
+
+struct MockReadTool;
+impl ToolContext for MockReadTool {
+    const NAME: &'static str = "read";
+    fn context(&self) -> &'static str {
+        context::READ_ALLOWED
+    }
+}
+
+struct MockWriteTool;
+impl ToolContext for MockWriteTool {
+    const NAME: &'static str = "write";
+    fn context(&self) -> &'static str {
+        context::WRITE_ALLOWED
+    }
+}
+
+struct MockEditTool;
+impl ToolContext for MockEditTool {
+    const NAME: &'static str = "edit";
+    fn context(&self) -> &'static str {
+        context::EDIT_ALLOWED
+    }
+}
+
+struct MockBashTool;
+impl ToolContext for MockBashTool {
+    const NAME: &'static str = "bash";
+    fn context(&self) -> &'static str {
+        context::BASH
+    }
+}
+
+struct MockGlobTool;
+impl ToolContext for MockGlobTool {
+    const NAME: &'static str = "glob";
+    fn context(&self) -> &'static str {
+        context::GLOB_ALLOWED
+    }
+}
+
+struct MockGrepTool;
+impl ToolContext for MockGrepTool {
+    const NAME: &'static str = "grep";
+    fn context(&self) -> &'static str {
+        context::GREP_ALLOWED
+    }
+}
+
+struct MockWebFetchTool;
+impl ToolContext for MockWebFetchTool {
+    const NAME: &'static str = "webfetch";
+    fn context(&self) -> &'static str {
+        context::WEBFETCH
+    }
+}
+
+struct MockTodoWriteTool;
+impl ToolContext for MockTodoWriteTool {
+    const NAME: &'static str = "todowrite";
+    fn context(&self) -> &'static str {
+        context::TODO_WRITE
+    }
+}
+
+struct MockTodoReadTool;
+impl ToolContext for MockTodoReadTool {
+    const NAME: &'static str = "todoread";
+    fn context(&self) -> &'static str {
+        context::TODO_READ
+    }
 }
