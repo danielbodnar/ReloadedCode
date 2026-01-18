@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Post-change verification script
 # All steps must pass without warnings
+# Keep in sync with verify.ps1
+#
+# Note: llm-coding-tools-rig and llm-coding-tools-serdesai are async-only (implement async Tool traits).
+# The blocking feature only applies to llm-coding-tools-core.
 
 set -e
 
@@ -27,5 +31,10 @@ cargo doc --workspace --no-deps --quiet
 
 echo "Formatting..."
 cargo fmt --all
+
+echo "Publish dry-run..."
+cargo publish --dry-run -p llm-coding-tools-core --quiet
+cargo publish --dry-run -p llm-coding-tools-rig --quiet
+cargo publish --dry-run -p llm-coding-tools-serdesai --quiet
 
 echo "All checks passed!"

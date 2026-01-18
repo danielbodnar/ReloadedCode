@@ -1,5 +1,9 @@
 # Post-change verification script
 # All steps must pass without warnings
+# Keep in sync with verify.sh
+#
+# Note: llm-coding-tools-rig and llm-coding-tools-serdesai are async-only (implement async Tool traits).
+# The blocking feature only applies to llm-coding-tools-core.
 
 $ErrorActionPreference = "Stop"
 
@@ -26,5 +30,10 @@ cargo doc --workspace --no-deps --quiet
 
 Write-Host "Formatting..."
 cargo fmt --all
+
+Write-Host "Publish dry-run..."
+cargo publish --dry-run -p llm-coding-tools-core --quiet
+cargo publish --dry-run -p llm-coding-tools-rig --quiet
+cargo publish --dry-run -p llm-coding-tools-serdesai --quiet
 
 Write-Host "All checks passed!"
