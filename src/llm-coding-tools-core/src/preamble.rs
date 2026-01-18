@@ -73,6 +73,7 @@ pub struct PreambleBuilder<const ENV: bool = false> {
     entries: Vec<ContextEntry>,
     working_directory: Option<String>,
     allowed_paths: Option<Vec<String>>,
+    supplemental: Vec<(&'static str, &'static str)>,
 }
 
 impl<const ENV: bool> Default for PreambleBuilder<ENV> {
@@ -81,6 +82,7 @@ impl<const ENV: bool> Default for PreambleBuilder<ENV> {
             entries: Vec::new(),
             working_directory: None,
             allowed_paths: None,
+            supplemental: Vec::new(),
         }
     }
 }
@@ -129,6 +131,52 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
             context: tool.context(),
         });
         tool
+    }
+
+    /// Adds supplemental context to the preamble.
+    ///
+    /// Supplemental context appears in a separate "Supplemental Context" section
+    /// after tool usage guidelines. Use this for guidance that isn't inherent
+    /// to a specific tool, such as git workflows or GitHub CLI patterns.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Section header (e.g., "Git Workflow", "GitHub CLI")
+    /// * `context` - Context string content (e.g., [`GIT_WORKFLOW`](crate::context::GIT_WORKFLOW))
+    ///
+    /// # Examples
+    ///
+    /// Adding both git and GitHub CLI context:
+    ///
+    /// ```rust
+    /// use llm_coding_tools_core::{PreambleBuilder, context};
+    ///
+    /// let pb = PreambleBuilder::<false>::new()
+    ///     .add_context("Git Workflow", context::GIT_WORKFLOW)
+    ///     .add_context("GitHub CLI", context::GITHUB_CLI);
+    ///
+    /// let preamble = pb.build();
+    /// assert!(preamble.contains("# Supplemental Context"));
+    /// assert!(preamble.contains("## Git Workflow"));
+    /// ```
+    ///
+    /// Selective inclusion - adding only Git Workflow when not using GitHub features:
+    ///
+    /// ```rust
+    /// use llm_coding_tools_core::{PreambleBuilder, context};
+    ///
+    /// // Only include git workflow for agents that use git but not GitHub
+    /// let pb = PreambleBuilder::<false>::new()
+    ///     .add_context("Git Workflow", context::GIT_WORKFLOW);
+    ///
+    /// let preamble = pb.build();
+    /// assert!(preamble.contains("## Git Workflow"));
+    /// assert!(!preamble.contains("## GitHub CLI"));
+    /// ```
+    #[inline]
+    pub fn add_context(mut self, name: &'static str, context: &'static str) -> Self {
+        self.supplemental.push((name, context));
+        self
     }
 }
 
@@ -197,7 +245,10 @@ impl PreambleBuilder<true> {
 impl PreambleBuilder<false> {
     /// Generates the preamble string without environment section.
     pub fn build(self) -> String {
-        if self.entries.is_empty() {
+        let has_tools = !self.entries.is_empty();
+        let has_supplemental = !self.supplemental.is_empty();
+
+        if !has_tools && !has_supplemental {
             return String::new();
         }
 
@@ -207,20 +258,42 @@ impl PreambleBuilder<false> {
             .map(|e| e.context.len() + e.name.len() + 20)
             .sum();
 
-        let mut output = String::with_capacity(tools_size + 30);
+        let supplemental_size: usize = self
+            .supplemental
+            .iter()
+            .map(|(n, c)| c.len() + n.len() + 20)
+            .sum();
 
-        output.push_str("# Tool Usage Guidelines\n");
+        let mut output = String::with_capacity(tools_size + supplemental_size + 60);
 
-        for entry in self.entries {
-            output.push_str("## ");
-            let mut chars = entry.name.chars();
-            if let Some(first) = chars.next() {
-                output.push(first.to_ascii_uppercase());
-                output.push_str(chars.as_str());
+        // Tool section
+        if has_tools {
+            output.push_str("# Tool Usage Guidelines\n");
+
+            for entry in self.entries {
+                output.push_str("## ");
+                let mut chars = entry.name.chars();
+                if let Some(first) = chars.next() {
+                    output.push(first.to_ascii_uppercase());
+                    output.push_str(chars.as_str());
+                }
+                output.push_str(" Tool\n");
+                output.push_str(entry.context);
+                output.push('\n');
             }
-            output.push_str(" Tool\n");
-            output.push_str(entry.context);
-            output.push('\n');
+        }
+
+        // Supplemental context section
+        if has_supplemental {
+            output.push_str("# Supplemental Context\n");
+
+            for (name, context) in self.supplemental {
+                output.push_str("## ");
+                output.push_str(name);
+                output.push('\n');
+                output.push_str(context);
+                output.push('\n');
+            }
         }
 
         output.truncate(output.trim_end().len());
@@ -252,15 +325,22 @@ impl PreambleBuilder<true> {
             .map(|e| e.context.len() + e.name.len() + 20)
             .sum();
 
+        let supplemental_size: usize = self
+            .supplemental
+            .iter()
+            .map(|(n, c)| c.len() + n.len() + 20)
+            .sum();
+
         let has_tools = !self.entries.is_empty();
         let has_env = self.working_directory.is_some() || self.allowed_paths.is_some();
+        let has_supplemental = !self.supplemental.is_empty();
 
         // Return empty if nothing to output
-        if !has_tools && !has_env {
+        if !has_tools && !has_env && !has_supplemental {
             return String::new();
         }
 
-        let total_size = env_size + allowed_size + tools_size + if has_tools { 30 } else { 0 };
+        let total_size = env_size + allowed_size + tools_size + supplemental_size + 90;
         let mut output = String::with_capacity(total_size);
 
         // Environment section
@@ -296,6 +376,19 @@ impl PreambleBuilder<true> {
                 }
                 output.push_str(" Tool\n");
                 output.push_str(entry.context);
+                output.push('\n');
+            }
+        }
+
+        // Supplemental context section
+        if has_supplemental {
+            output.push_str("# Supplemental Context\n\n");
+
+            for (name, context) in self.supplemental {
+                output.push_str("## ");
+                output.push_str(name);
+                output.push_str("\n\n");
+                output.push_str(context);
                 output.push('\n');
             }
         }
@@ -718,6 +811,193 @@ mod tests {
         assert!(
             !preamble.contains("Allowed directories:"),
             "Should not render Allowed directories when not explicitly set"
+        );
+    }
+
+    #[test]
+    fn add_context_includes_supplemental_section() {
+        let pb =
+            PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance content.");
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Supplemental Context"));
+        assert!(preamble.contains("## Git Workflow"));
+        assert!(preamble.contains("Git guidance content."));
+    }
+
+    #[test]
+    fn add_context_appears_after_tools() {
+        let mut pb = PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance.");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
+        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
+        assert!(
+            tools_pos < supplemental_pos,
+            "Tools should appear before supplemental context"
+        );
+    }
+
+    #[test]
+    fn add_context_multiple_sections_preserve_order() {
+        let pb = PreambleBuilder::<false>::new()
+            .add_context("Git Workflow", "Git content.")
+            .add_context("GitHub CLI", "GitHub content.");
+
+        let preamble = pb.build();
+
+        let git_pos = preamble.find("## Git Workflow").unwrap();
+        let github_pos = preamble.find("## GitHub CLI").unwrap();
+        assert!(
+            git_pos < github_pos,
+            "Contexts should appear in insertion order"
+        );
+    }
+
+    #[test]
+    fn add_context_only_no_tools() {
+        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance.");
+
+        let preamble = pb.build();
+
+        assert!(!preamble.contains("# Tool Usage Guidelines"));
+        assert!(preamble.contains("# Supplemental Context"));
+        assert!(preamble.contains("## Git Workflow"));
+    }
+
+    #[test]
+    fn add_context_with_env_section() {
+        let pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance.");
+
+        let preamble = pb.build();
+
+        let env_pos = preamble.find("# Environment").unwrap();
+        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
+        assert!(env_pos < supplemental_pos);
+    }
+
+    #[test]
+    fn add_context_with_env_and_tools() {
+        let mut pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance.");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        let env_pos = preamble.find("# Environment").unwrap();
+        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
+        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
+
+        assert!(env_pos < tools_pos);
+        assert!(tools_pos < supplemental_pos);
+    }
+
+    #[test]
+    fn add_context_no_triple_newlines() {
+        let mut pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance.\n");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn add_context_chains_fluently() {
+        // Verify fluent chaining works
+        let pb = PreambleBuilder::<false>::new()
+            .add_context("A", "a")
+            .add_context("B", "b")
+            .add_context("C", "c");
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## A"));
+        assert!(preamble.contains("## B"));
+        assert!(preamble.contains("## C"));
+    }
+
+    #[test]
+    fn add_context_with_actual_git_workflow_constant() {
+        use crate::context::GIT_WORKFLOW;
+
+        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", GIT_WORKFLOW);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Supplemental Context"));
+        assert!(preamble.contains("## Git Workflow"));
+        // Verify actual content from git_workflow.txt is included
+        assert!(
+            preamble.contains("# Committing changes with git"),
+            "Should contain git commit workflow header"
+        );
+        assert!(
+            preamble.contains("Git Safety Protocol"),
+            "Should contain safety protocol section"
+        );
+    }
+
+    #[test]
+    fn add_context_with_actual_github_cli_constant() {
+        use crate::context::GITHUB_CLI;
+
+        let pb = PreambleBuilder::<false>::new().add_context("GitHub CLI", GITHUB_CLI);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# Supplemental Context"));
+        assert!(preamble.contains("## GitHub CLI"));
+        // Verify actual content from github_cli.txt is included
+        assert!(
+            preamble.contains("gh pr create"),
+            "Should contain gh pr create example"
+        );
+    }
+
+    #[test]
+    fn add_context_selective_inclusion_git_only() {
+        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
+
+        // Only include git workflow (not GitHub CLI)
+        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", GIT_WORKFLOW);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Git Workflow"));
+        assert!(!preamble.contains("## GitHub CLI"));
+        assert!(!preamble.contains(GITHUB_CLI));
+    }
+
+    #[test]
+    fn add_context_both_git_and_github() {
+        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
+
+        let pb = PreambleBuilder::<false>::new()
+            .add_context("Git Workflow", GIT_WORKFLOW)
+            .add_context("GitHub CLI", GITHUB_CLI);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Git Workflow"));
+        assert!(preamble.contains("## GitHub CLI"));
+        // Verify order preserved
+        let git_pos = preamble.find("## Git Workflow").unwrap();
+        let github_pos = preamble.find("## GitHub CLI").unwrap();
+        assert!(
+            git_pos < github_pos,
+            "Git Workflow should appear before GitHub CLI"
         );
     }
 }
