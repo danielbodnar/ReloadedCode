@@ -53,13 +53,9 @@ struct ContextEntry {
 ///
 /// ```text
 /// # Tool Usage Guidelines
-///
 /// ## Read Tool
-///
 /// Reads files from disk.
-///
 /// ## Bash Tool
-///
 /// Executes shell commands.
 /// ```
 ///
@@ -67,13 +63,9 @@ struct ContextEntry {
 ///
 /// ```text
 /// # Environment
-///
 /// Working directory: /home/user/project
-///
 /// # Tool Usage Guidelines
-///
 /// ## Read Tool
-///
 /// Reads files from disk.
 /// ```
 pub struct PreambleBuilder<const ENV: bool = false> {
@@ -181,7 +173,7 @@ impl PreambleBuilder<false> {
 
         let mut output = String::with_capacity(tools_size + 30);
 
-        output.push_str("# Tool Usage Guidelines\n\n");
+        output.push_str("# Tool Usage Guidelines\n");
 
         for entry in self.entries {
             output.push_str("## ");
@@ -190,9 +182,9 @@ impl PreambleBuilder<false> {
                 output.push(first.to_ascii_uppercase());
                 output.push_str(chars.as_str());
             }
-            output.push_str(" Tool\n\n");
+            output.push_str(" Tool\n");
             output.push_str(entry.context);
-            output.push_str("\n\n");
+            output.push('\n');
         }
 
         output.truncate(output.trim_end().len());
@@ -231,15 +223,15 @@ impl PreambleBuilder<true> {
 
         // Environment section
         if let Some(ref dir) = self.working_directory {
-            output.push_str("# Environment\n\n");
+            output.push_str("# Environment\n");
             output.push_str("Working directory: ");
             output.push_str(dir);
-            output.push_str("\n\n");
+            output.push('\n');
         }
 
         // Tool section
         if has_tools {
-            output.push_str("# Tool Usage Guidelines\n\n");
+            output.push_str("# Tool Usage Guidelines\n");
 
             for entry in self.entries {
                 output.push_str("## ");
@@ -248,9 +240,9 @@ impl PreambleBuilder<true> {
                     output.push(first.to_ascii_uppercase());
                     output.push_str(chars.as_str());
                 }
-                output.push_str(" Tool\n\n");
+                output.push_str(" Tool\n");
                 output.push_str(entry.context);
-                output.push_str("\n\n");
+                output.push('\n');
             }
         }
 
@@ -326,6 +318,15 @@ mod tests {
         }
     }
 
+    struct OtherTool;
+
+    impl ToolContext for OtherTool {
+        const NAME: &'static str = "other";
+        fn context(&self) -> &'static str {
+            "Other context."
+        }
+    }
+
     #[test]
     fn empty_builder_returns_empty_string() {
         let preamble = PreambleBuilder::<false>::new().build();
@@ -353,14 +354,6 @@ mod tests {
 
     #[test]
     fn multiple_tools_preserve_order() {
-        struct OtherTool;
-        impl ToolContext for OtherTool {
-            const NAME: &'static str = "other";
-            fn context(&self) -> &'static str {
-                "Other context."
-            }
-        }
-
         let mut pb = PreambleBuilder::<false>::new();
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
@@ -371,6 +364,74 @@ mod tests {
         assert!(
             mock_pos < other_pos,
             "Tools should appear in insertion order"
+        );
+    }
+
+    #[test]
+    fn multiple_tools_have_single_newline_between() {
+        let mut pb = PreambleBuilder::<false>::new();
+        let _ = pb.track(MockTool { id: 1 });
+        let _ = pb.track(OtherTool);
+        let preamble = pb.build();
+
+        // Verify exact transition: context ends, separator adds \n, then next tool header
+        // Pattern: "Mock tool context.\n## Other Tool"
+        assert!(
+            preamble.contains("Mock tool context.\n## Other Tool"),
+            "Expected single newline between tool sections.\nGot:\n{preamble}"
+        );
+
+        // Verify single newline after section header
+        assert!(
+            preamble.contains("## Mock Tool\nMock tool context."),
+            "Expected single newline after tool header.\nGot:\n{preamble}"
+        );
+
+        // Verify no double newlines anywhere
+        assert!(
+            !preamble.contains("\n\n"),
+            "Found double newline in preamble.\nGot:\n{preamble}"
+        );
+
+        // Verify no trailing whitespace at end of preamble
+        assert_eq!(
+            preamble,
+            preamble.trim_end(),
+            "Preamble has trailing whitespace"
+        );
+    }
+
+    #[test]
+    fn multiple_tools_with_env_have_single_newline_between() {
+        let mut pb = PreambleBuilder::<true>::new().working_directory("/test");
+        let _ = pb.track(MockTool { id: 1 });
+        let _ = pb.track(OtherTool);
+        let preamble = pb.build();
+
+        // Verify exact transition: context ends, separator adds \n, then next tool header
+        // Pattern: "Mock tool context.\n## Other Tool"
+        assert!(
+            preamble.contains("Mock tool context.\n## Other Tool"),
+            "Expected single newline between tool sections.\nGot:\n{preamble}"
+        );
+
+        // Verify single newline after section header
+        assert!(
+            preamble.contains("## Mock Tool\nMock tool context."),
+            "Expected single newline after tool header.\nGot:\n{preamble}"
+        );
+
+        // Verify no double newlines anywhere
+        assert!(
+            !preamble.contains("\n\n"),
+            "Found double newline in preamble.\nGot:\n{preamble}"
+        );
+
+        // Verify no trailing whitespace at end of preamble
+        assert_eq!(
+            preamble,
+            preamble.trim_end(),
+            "Preamble has trailing whitespace"
         );
     }
 
