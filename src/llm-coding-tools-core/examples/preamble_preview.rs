@@ -17,7 +17,7 @@ fn main() {
     let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
     // Build preamble with all features demonstrated
-    let mut pb = PreambleBuilder::<true>::new()
+    let mut pb = PreambleBuilder::new()
         .system_prompt(
             "# System Instructions\n\n\
              You are a helpful coding assistant. Follow best practices and \

@@ -44,11 +44,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // === Build agent with sandboxed tools ===
     //
-    // Use PreambleBuilder<true> with fluent chaining:
+    // Use PreambleBuilder with fluent chaining:
     // - working_directory() and allowed_paths() consume self (chaining)
     // - track() takes &mut self (passthrough for agent builder)
-    let mut pb = PreambleBuilder::<true>::new()
-        .working_directory(std::env::current_dir()?.display().to_string())
+    let mut pb = PreambleBuilder::new()
+        .working_directory(std::env::current_dir()?.to_string())
         .allowed_paths(&resolver);
 
     let client = openai::Client::from_env();

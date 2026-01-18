@@ -39,7 +39,7 @@ use rig::completion::Prompt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let todos = TodoTools::new();
-    let mut pb = PreambleBuilder::<false>::new();
+    let mut pb = PreambleBuilder::new();
 
     // Build agent with preamble tracking
     let client = openai::Client::from_env();
@@ -66,6 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Example preamble output (truncated):
 
 ```text
+# Environment
+
+Working directory: /home/user/project
+
 # Tool Usage Guidelines
 
 ## `Read` Tool
@@ -91,7 +95,7 @@ let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoTools`.
-Use `PreambleBuilder` to register tools and pass `pb.build()` to `.preamble()`.
+Use `PreambleBuilder` to register tools and pass `pb.build()` to `.preamble()`. Set `working_directory()` so the environment section is populated.
 Context strings are re-exported in `llm_coding_tools_rig::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 
 ## Examples

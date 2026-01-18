@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let todos = TodoTools::new();
 
     // === Create preamble builder to track tools ===
-    let mut pb = PreambleBuilder::<false>::new();
+    let mut pb = PreambleBuilder::new().working_directory(std::env::current_dir()?.to_string());
 
     // === Build agent with chained .tool() calls ===
     let client = openai::Client::from_env();

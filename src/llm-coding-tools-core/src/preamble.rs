@@ -14,10 +14,7 @@ struct ContextEntry {
 
 /// Builder that tracks tools and generates formatted preambles.
 ///
-/// # Generic Parameters
-///
-/// - `ENV`: When `true`, includes an environment section with working directory
-///   before tool listings. Defaults to `false` for backwards compatibility.
+/// The environment section is always included and appears before tool listings.
 ///
 /// # Example
 ///
@@ -35,12 +32,7 @@ struct ContextEntry {
 ///     }
 /// }
 ///
-/// // Without environment section (default)
-/// let mut pb = PreambleBuilder::<false>::new();
-/// let _preamble = pb.build();
-///
-/// // With environment section
-/// let mut pb = PreambleBuilder::<true>::new()
+/// let mut pb = PreambleBuilder::new()
 ///     .working_directory(std::env::current_dir().unwrap().display().to_string());
 ///
 /// pb.track(ReadTool);
@@ -53,17 +45,6 @@ struct ContextEntry {
 /// The generated preamble is Markdown. For example, with two tools:
 ///
 /// ```text
-/// # Tool Usage Guidelines
-///
-/// ## `Read` Tool
-/// Reads files from disk.
-/// ## `Bash` Tool
-/// Executes shell commands.
-/// ```
-///
-/// When the environment section is enabled and a working directory is provided:
-///
-/// ```text
 /// # Environment
 ///
 /// Working directory: /home/user/project
@@ -72,8 +53,11 @@ struct ContextEntry {
 ///
 /// ## `Read` Tool
 /// Reads files from disk.
+/// ## `Bash` Tool
+/// Executes shell commands.
 /// ```
-pub struct PreambleBuilder<const ENV: bool = false> {
+#[derive(Default)]
+pub struct PreambleBuilder {
     entries: Vec<ContextEntry>,
     working_directory: Option<String>,
     allowed_paths: Option<Vec<String>>,
@@ -81,19 +65,7 @@ pub struct PreambleBuilder<const ENV: bool = false> {
     system_prompt: Option<String>,
 }
 
-impl<const ENV: bool> Default for PreambleBuilder<ENV> {
-    fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-            working_directory: None,
-            allowed_paths: None,
-            supplemental: Vec::new(),
-            system_prompt: None,
-        }
-    }
-}
-
-impl<const ENV: bool> PreambleBuilder<ENV> {
+impl PreambleBuilder {
     /// Creates a new preamble builder.
     #[inline]
     pub fn new() -> Self {
@@ -117,7 +89,7 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     ///     }
     /// }
     ///
-    /// let mut pb = PreambleBuilder::<false>::new();
+    /// let mut pb = PreambleBuilder::new();
     /// let _my_tool = pb.track(MyTool);
     /// // register _my_tool with your tool collection
     /// ```
@@ -157,7 +129,7 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     /// ```rust
     /// use llm_coding_tools_core::{PreambleBuilder, context};
     ///
-    /// let pb = PreambleBuilder::<false>::new()
+    /// let pb = PreambleBuilder::new()
     ///     .add_context("Git Workflow", context::GIT_WORKFLOW)
     ///     .add_context("GitHub CLI", context::GITHUB_CLI);
     ///
@@ -172,7 +144,7 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     /// use llm_coding_tools_core::{PreambleBuilder, context};
     ///
     /// // Only include git workflow for agents that use git but not GitHub
-    /// let pb = PreambleBuilder::<false>::new()
+    /// let pb = PreambleBuilder::new()
     ///     .add_context("Git Workflow", context::GIT_WORKFLOW);
     ///
     /// let preamble = pb.build();
@@ -196,7 +168,7 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     /// ```rust
     /// use llm_coding_tools_core::PreambleBuilder;
     ///
-    /// let pb = PreambleBuilder::<false>::new()
+    /// let pb = PreambleBuilder::new()
     ///     .system_prompt("# System Instructions\n\nYou are a helpful assistant.");
     ///
     /// let preamble = pb.build();
@@ -209,7 +181,7 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     }
 }
 
-impl PreambleBuilder<true> {
+impl PreambleBuilder {
     /// Sets the working directory to display in the environment section.
     ///
     /// Accepts any type that can be converted to String, including:
@@ -217,18 +189,16 @@ impl PreambleBuilder<true> {
     /// - `String`
     /// - `PathBuf` or `&Path` (via `.display().to_string()`)
     ///
-    /// Only available when environment section is enabled (`PreambleBuilder<true>`).
-    ///
     /// # Example
     ///
     /// ```no_run
     /// use llm_coding_tools_core::PreambleBuilder;
     ///
-    /// let _pb = PreambleBuilder::<true>::new()
+    /// let _pb = PreambleBuilder::new()
     ///     .working_directory("/home/user/project");
     ///
     /// // With runtime-computed path
-    /// let _pb = PreambleBuilder::<true>::new()
+    /// let _pb = PreambleBuilder::new()
     ///     .working_directory(std::env::current_dir().unwrap().display().to_string());
     /// ```
     #[inline]
@@ -243,15 +213,13 @@ impl PreambleBuilder<true> {
     /// for display. Paths are already canonicalized (absolute, symlinks resolved)
     /// by the resolver during construction.
     ///
-    /// Only available when environment section is enabled.
-    ///
     /// # Example
     ///
     /// ```no_run
     /// use llm_coding_tools_core::{AllowedPathResolver, PreambleBuilder};
     ///
     /// let resolver = AllowedPathResolver::new(vec!["/home/user/project", "/tmp"]).unwrap();
-    /// let _pb = PreambleBuilder::<true>::new()
+    /// let _pb = PreambleBuilder::new()
     ///     .working_directory("/home/user/project")
     ///     .allowed_paths(&resolver);
     /// ```
@@ -286,85 +254,7 @@ fn section_separator(s: &str) -> &'static str {
     }
 }
 
-impl PreambleBuilder<false> {
-    /// Generates the preamble string without environment section.
-    pub fn build(self) -> String {
-        let has_tools = !self.entries.is_empty();
-        let has_supplemental = !self.supplemental.is_empty();
-        let has_system_prompt = self.system_prompt.is_some();
-
-        if !has_tools && !has_supplemental && !has_system_prompt {
-            return String::new();
-        }
-
-        let system_prompt_size = self.system_prompt.as_ref().map_or(0, |p| p.len() + 2);
-
-        let tools_size: usize = self
-            .entries
-            .iter()
-            .map(|e| e.context.len() + e.name.len() + 20)
-            .sum();
-
-        let supplemental_size: usize = self
-            .supplemental
-            .iter()
-            .map(|(n, c)| c.len() + n.len() + 20)
-            .sum();
-
-        let mut output =
-            String::with_capacity(system_prompt_size + tools_size + supplemental_size + 60);
-
-        // System prompt (first)
-        if let Some(ref prompt) = self.system_prompt {
-            output.push_str(prompt);
-            // Smart separator: ensure exactly one blank line before next section
-            if has_tools || has_supplemental {
-                output.push_str(section_separator(prompt));
-            }
-        }
-
-        // Tool section
-        if has_tools {
-            output.push_str("# Tool Usage Guidelines\n\n");
-
-            for entry in self.entries {
-                output.push_str("## `");
-                let mut chars = entry.name.chars();
-                if let Some(first) = chars.next() {
-                    output.push(first.to_ascii_uppercase());
-                    output.push_str(chars.as_str());
-                } else {
-                    output.push_str(entry.name);
-                }
-                output.push_str("` Tool\n");
-                output.push_str(entry.context);
-                if !entry.context.ends_with('\n') {
-                    output.push('\n');
-                }
-            }
-        }
-
-        // Supplemental context section
-        if has_supplemental {
-            output.push_str("\n# Supplemental Context\n");
-
-            for (name, context) in self.supplemental {
-                output.push_str("## ");
-                output.push_str(name);
-                output.push('\n');
-                output.push_str(context);
-                if !context.ends_with('\n') {
-                    output.push('\n');
-                }
-            }
-        }
-
-        output.truncate(output.trim_end().len());
-        output
-    }
-}
-
-impl PreambleBuilder<true> {
+impl PreambleBuilder {
     /// Generates the preamble string with environment section.
     pub fn build(self) -> String {
         // Environment section size: ~50 bytes header + path length
@@ -375,10 +265,16 @@ impl PreambleBuilder<true> {
 
         let system_prompt_size = self.system_prompt.as_ref().map_or(0, |p| p.len() + 2);
 
-        let env_size = self
-            .working_directory
-            .as_ref()
-            .map_or(0, |d| d.len() + ENV_HEADER_SIZE);
+        let env_size = if self.working_directory.is_some() || self.allowed_paths.is_some() {
+            ENV_HEADER_SIZE + self.working_directory.as_ref().map_or(0, |d| d.len())
+        } else if self.system_prompt.is_some()
+            || !self.entries.is_empty()
+            || !self.supplemental.is_empty()
+        {
+            ENV_HEADER_SIZE
+        } else {
+            0
+        };
 
         let allowed_size = self.allowed_paths.as_ref().map_or(0, |paths| {
             paths.iter().map(|p| p.len() + ALLOWED_DIR_PER_ITEM).sum()
@@ -397,30 +293,28 @@ impl PreambleBuilder<true> {
             .sum();
 
         let has_tools = !self.entries.is_empty();
-        let has_env = self.working_directory.is_some() || self.allowed_paths.is_some();
         let has_supplemental = !self.supplemental.is_empty();
         let has_system_prompt = self.system_prompt.is_some();
-
-        // Return empty if nothing to output
-        if !has_tools && !has_env && !has_supplemental && !has_system_prompt {
-            return String::new();
-        }
+        let has_env_content = self.working_directory.is_some() || self.allowed_paths.is_some();
 
         let total_size =
             system_prompt_size + env_size + allowed_size + tools_size + supplemental_size + 90;
         let mut output = String::with_capacity(total_size);
 
+        // Return empty if nothing to output
+        if !has_tools && !has_supplemental && !has_system_prompt && !has_env_content {
+            return String::new();
+        }
+
         // System prompt (first)
         if let Some(ref prompt) = self.system_prompt {
             output.push_str(prompt);
             // Smart separator: ensure exactly one blank line before next section
-            if has_env || has_tools || has_supplemental {
-                output.push_str(section_separator(prompt));
-            }
+            output.push_str(section_separator(prompt));
         }
 
         // Environment section
-        if has_env {
+        if has_env_content || has_system_prompt || has_tools || has_supplemental {
             output.push_str("# Environment\n\n");
 
             if let Some(ref dir) = self.working_directory {
@@ -438,8 +332,10 @@ impl PreambleBuilder<true> {
                 }
             }
 
-            // Blank line before next section
-            if has_tools || has_supplemental {
+            if (has_tools || has_supplemental) && has_env_content {
+                if !output.ends_with('\n') {
+                    output.push('\n');
+                }
                 output.push('\n');
             }
         }
@@ -563,13 +459,13 @@ mod tests {
 
     #[test]
     fn empty_builder_returns_empty_string() {
-        let preamble = PreambleBuilder::<false>::new().build();
+        let preamble = PreambleBuilder::new().build();
         assert!(preamble.is_empty());
     }
 
     #[test]
     fn track_returns_tool_unchanged() {
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new();
         let tool = MockTool { id: 42 };
         let returned = pb.track(tool);
         assert_eq!(returned.id, 42);
@@ -577,10 +473,12 @@ mod tests {
 
     #[test]
     fn single_tool_formats_correctly() {
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
+        assert!(preamble.contains("# Environment"));
+        assert!(preamble.contains("Working directory: /home/user"));
         assert!(preamble.contains("# Tool Usage Guidelines"));
         assert!(preamble.contains("## `Mock` Tool"));
         assert!(preamble.contains("Mock tool context."));
@@ -588,7 +486,7 @@ mod tests {
 
     #[test]
     fn multiple_tools_preserve_order() {
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -603,7 +501,7 @@ mod tests {
 
     #[test]
     fn multiple_tools_have_single_newline_between() {
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -635,8 +533,8 @@ mod tests {
     }
 
     #[test]
-    fn multiple_tools_with_env_have_single_newline_between() {
-        let mut pb = PreambleBuilder::<true>::new().working_directory("/test");
+    fn multiple_tools_with_working_dir_have_single_newline_between() {
+        let mut pb = PreambleBuilder::new().working_directory("/test");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -674,19 +572,8 @@ mod tests {
     }
 
     #[test]
-    fn builder_without_env_omits_environment_section() {
-        let mut pb = PreambleBuilder::<false>::new();
-        let _ = pb.track(MockTool { id: 1 });
-        let preamble = pb.build();
-
-        assert!(!preamble.contains("# Environment"));
-        assert!(!preamble.contains("Working directory"));
-        assert!(preamble.contains("# Tool Usage Guidelines"));
-    }
-
-    #[test]
-    fn builder_with_env_includes_environment_section() {
-        let mut pb = PreambleBuilder::<true>::new().working_directory("/home/user/project");
+    fn builder_includes_environment_section() {
+        let mut pb = PreambleBuilder::new().working_directory("/home/user/project");
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
@@ -699,16 +586,16 @@ mod tests {
     }
 
     #[test]
-    fn builder_with_env_no_working_dir_no_tools_returns_empty() {
-        let pb = PreambleBuilder::<true>::new();
+    fn builder_without_env_data_and_tools_returns_empty() {
+        let pb = PreambleBuilder::new();
         let preamble = pb.build();
         assert!(preamble.is_empty());
     }
 
     #[test]
-    fn builder_with_env_and_working_dir_but_no_tools() {
+    fn builder_with_working_dir_but_no_tools() {
         // Environment section should render even without tools tracked
-        let pb = PreambleBuilder::<true>::new().working_directory("/home/user/project");
+        let pb = PreambleBuilder::new().working_directory("/home/user/project");
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -720,7 +607,7 @@ mod tests {
     fn working_directory_accepts_runtime_string() {
         // Simulates std::env::current_dir().unwrap().display().to_string()
         let runtime_path = String::from("/runtime/computed/path");
-        let pb = PreambleBuilder::<true>::new().working_directory(runtime_path);
+        let pb = PreambleBuilder::new().working_directory(runtime_path);
         let preamble = pb.build();
 
         assert!(preamble.contains("Working directory: /runtime/computed/path"));
@@ -728,7 +615,7 @@ mod tests {
 
     #[test]
     fn working_directory_accepts_str() {
-        let pb = PreambleBuilder::<true>::new().working_directory("/static/path");
+        let pb = PreambleBuilder::new().working_directory("/static/path");
         let preamble = pb.build();
 
         assert!(preamble.contains("Working directory: /static/path"));
@@ -780,20 +667,14 @@ mod tests {
     }
 
     #[test]
-    fn generic_flag_is_compile_time() {
-        // This test verifies the generic works at compile time
-        // If it compiles, the generic system works
-        let _pb_no_env: PreambleBuilder<false> = PreambleBuilder::new();
-        let _pb_with_env: PreambleBuilder<true> = PreambleBuilder::new();
-
-        // Type inference defaults to false
+    fn default_builder_compiles() {
         let _pb_default: PreambleBuilder = PreambleBuilder::new();
     }
 
     #[test]
     fn backwards_compatibility_existing_api() {
         // Existing code should work unchanged
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new();
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
@@ -808,7 +689,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::<true>::new()
+        let pb = PreambleBuilder::new()
             .working_directory("/home/user")
             .allowed_paths(&resolver);
         let preamble = pb.build();
@@ -827,7 +708,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::<true>::new().allowed_paths(&resolver);
+        let pb = PreambleBuilder::new().allowed_paths(&resolver);
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -844,7 +725,7 @@ mod tests {
         let dir2 = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir1.path(), dir2.path()]).unwrap();
 
-        let pb = PreambleBuilder::<true>::new().allowed_paths(&resolver);
+        let pb = PreambleBuilder::new().allowed_paths(&resolver);
         let preamble = pb.build();
 
         // Check format: "- <absolute_path>" (cross-platform)
@@ -877,7 +758,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::<true>::new()
+        let pb = PreambleBuilder::new()
             .working_directory("/home/user")
             .allowed_paths(&resolver);
         let preamble = pb.build();
@@ -892,9 +773,8 @@ mod tests {
 
     #[test]
     fn builder_with_only_working_dir_no_allowed_paths() {
-        // Backward compatibility: PreambleBuilder<true> with only working_directory()
-        // should NOT render "Allowed directories:" section
-        let pb = PreambleBuilder::<true>::new().working_directory("/home/user/project");
+        // Only working_directory() should not render "Allowed directories:" section
+        let pb = PreambleBuilder::new().working_directory("/home/user/project");
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -907,8 +787,9 @@ mod tests {
 
     #[test]
     fn add_context_includes_supplemental_section() {
-        let pb =
-            PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance content.");
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance content.");
 
         let preamble = pb.build();
 
@@ -919,7 +800,7 @@ mod tests {
 
     #[test]
     fn add_context_appears_after_tools() {
-        let mut pb = PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance.");
+        let mut pb = PreambleBuilder::new().add_context("Git Workflow", "Git guidance.");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -934,7 +815,8 @@ mod tests {
 
     #[test]
     fn add_context_multiple_sections_preserve_order() {
-        let pb = PreambleBuilder::<false>::new()
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
             .add_context("Git Workflow", "Git content.")
             .add_context("GitHub CLI", "GitHub content.");
 
@@ -950,7 +832,9 @@ mod tests {
 
     #[test]
     fn add_context_only_no_tools() {
-        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", "Git guidance.");
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance.");
 
         let preamble = pb.build();
 
@@ -961,7 +845,7 @@ mod tests {
 
     #[test]
     fn add_context_with_env_section() {
-        let pb = PreambleBuilder::<true>::new()
+        let pb = PreambleBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
 
@@ -974,7 +858,7 @@ mod tests {
 
     #[test]
     fn add_context_with_env_and_tools() {
-        let mut pb = PreambleBuilder::<true>::new()
+        let mut pb = PreambleBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
         let _ = pb.track(MockTool { id: 1 });
@@ -991,7 +875,7 @@ mod tests {
 
     #[test]
     fn add_context_no_triple_newlines() {
-        let mut pb = PreambleBuilder::<true>::new()
+        let mut pb = PreambleBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.\n");
         let _ = pb.track(MockTool { id: 1 });
@@ -1007,7 +891,7 @@ mod tests {
     #[test]
     fn add_context_chains_fluently() {
         // Verify fluent chaining works
-        let pb = PreambleBuilder::<false>::new()
+        let pb = PreambleBuilder::new()
             .add_context("A", "a")
             .add_context("B", "b")
             .add_context("C", "c");
@@ -1023,7 +907,9 @@ mod tests {
     fn add_context_with_actual_git_workflow_constant() {
         use crate::context::GIT_WORKFLOW;
 
-        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", GIT_WORKFLOW);
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", GIT_WORKFLOW);
 
         let preamble = pb.build();
 
@@ -1044,7 +930,9 @@ mod tests {
     fn add_context_with_actual_github_cli_constant() {
         use crate::context::GITHUB_CLI;
 
-        let pb = PreambleBuilder::<false>::new().add_context("GitHub CLI", GITHUB_CLI);
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
+            .add_context("GitHub CLI", GITHUB_CLI);
 
         let preamble = pb.build();
 
@@ -1062,7 +950,9 @@ mod tests {
         use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
 
         // Only include git workflow (not GitHub CLI)
-        let pb = PreambleBuilder::<false>::new().add_context("Git Workflow", GIT_WORKFLOW);
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
+            .add_context("Git Workflow", GIT_WORKFLOW);
 
         let preamble = pb.build();
 
@@ -1075,7 +965,8 @@ mod tests {
     fn add_context_both_git_and_github() {
         use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
 
-        let pb = PreambleBuilder::<false>::new()
+        let pb = PreambleBuilder::new()
+            .working_directory("/home/user")
             .add_context("Git Workflow", GIT_WORKFLOW)
             .add_context("GitHub CLI", GITHUB_CLI);
 
@@ -1093,21 +984,8 @@ mod tests {
     }
 
     #[test]
-    fn system_prompt_appears_first_without_env() {
-        let pb = PreambleBuilder::<false>::new()
-            .system_prompt("# System Instructions\n\nYou are a helpful assistant.");
-
-        let preamble = pb.build();
-
-        assert!(
-            preamble.starts_with("# System Instructions"),
-            "System prompt should appear first.\nGot:\n{preamble}"
-        );
-    }
-
-    #[test]
-    fn system_prompt_appears_first_with_env() {
-        let pb = PreambleBuilder::<true>::new()
+    fn system_prompt_appears_first() {
+        let pb = PreambleBuilder::new()
             .system_prompt("# System Instructions\n\nYou are a helpful assistant.")
             .working_directory("/home/user");
 
@@ -1128,8 +1006,8 @@ mod tests {
 
     #[test]
     fn system_prompt_appears_before_tools() {
-        let mut pb = PreambleBuilder::<false>::new()
-            .system_prompt("# Custom Header\n\nMy custom instructions.");
+        let mut pb =
+            PreambleBuilder::new().system_prompt("# Custom Header\n\nMy custom instructions.");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1146,7 +1024,7 @@ mod tests {
     fn system_prompt_no_modification() {
         // User provides exact content, no auto-header added
         let custom = "My custom content without header";
-        let pb = PreambleBuilder::<false>::new().system_prompt(custom);
+        let pb = PreambleBuilder::new().system_prompt(custom);
 
         let preamble = pb.build();
 
@@ -1159,20 +1037,20 @@ mod tests {
     #[test]
     fn system_prompt_optional_default_behavior() {
         // Without system_prompt, existing behavior preserved
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new();
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
 
         assert!(
-            preamble.starts_with("# Tool Usage Guidelines"),
-            "Without system prompt, should start with Tool Usage Guidelines.\nGot:\n{preamble}"
+            preamble.starts_with("# Environment"),
+            "Without system prompt, should start with Environment.\nGot:\n{preamble}"
         );
     }
 
     #[test]
     fn system_prompt_only_produces_output() {
-        let pb = PreambleBuilder::<false>::new()
+        let pb = PreambleBuilder::new()
             .system_prompt("# Just Instructions\n\nOnly system prompt, no tools.");
 
         let preamble = pb.build();
@@ -1184,7 +1062,7 @@ mod tests {
 
     #[test]
     fn system_prompt_with_env_and_tools_and_supplemental() {
-        let mut pb = PreambleBuilder::<true>::new()
+        let mut pb = PreambleBuilder::new()
             .system_prompt("# System\n\nInstructions.")
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
@@ -1205,15 +1083,14 @@ mod tests {
     #[test]
     fn system_prompt_no_trailing_newline_gets_separator() {
         // System prompt without trailing newline should get "\n\n" separator
-        let mut pb =
-            PreambleBuilder::<false>::new().system_prompt("# System\n\nNo trailing newline");
+        let mut pb = PreambleBuilder::new().system_prompt("# System\n\nNo trailing newline");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
 
-        // Should have exactly one blank line between system prompt and tools
+        // Should have exactly one blank line between system prompt and environment
         assert!(
-            preamble.contains("No trailing newline\n\n# Tool Usage Guidelines"),
+            preamble.contains("No trailing newline\n\n# Environment"),
             "Expected one blank line after system prompt.\nGot:\n{preamble}"
         );
         assert!(
@@ -1225,15 +1102,14 @@ mod tests {
     #[test]
     fn system_prompt_single_trailing_newline_gets_one_more() {
         // System prompt ending with \n should get "\n" to make "\n\n"
-        let mut pb =
-            PreambleBuilder::<false>::new().system_prompt("# System\n\nEnds with single newline\n");
+        let mut pb = PreambleBuilder::new().system_prompt("# System\n\nEnds with single newline\n");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
 
-        // Should have exactly one blank line between system prompt and tools
+        // Should have exactly one blank line between system prompt and environment
         assert!(
-            preamble.contains("Ends with single newline\n\n# Tool Usage Guidelines"),
+            preamble.contains("Ends with single newline\n\n# Environment"),
             "Expected one blank line after system prompt.\nGot:\n{preamble}"
         );
         assert!(
@@ -1245,15 +1121,15 @@ mod tests {
     #[test]
     fn system_prompt_double_trailing_newline_no_extra() {
         // System prompt ending with \n\n should get no extra separator
-        let mut pb = PreambleBuilder::<false>::new()
-            .system_prompt("# System\n\nEnds with double newline\n\n");
+        let mut pb =
+            PreambleBuilder::new().system_prompt("# System\n\nEnds with double newline\n\n");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
 
-        // Should have exactly one blank line between system prompt and tools
+        // Should have exactly one blank line between system prompt and environment
         assert!(
-            preamble.contains("Ends with double newline\n\n# Tool Usage Guidelines"),
+            preamble.contains("Ends with double newline\n\n# Environment"),
             "Expected one blank line after system prompt.\nGot:\n{preamble}"
         );
         assert!(
@@ -1263,9 +1139,8 @@ mod tests {
     }
 
     #[test]
-    fn system_prompt_trailing_newlines_with_env() {
-        // Test separator logic with ENV=true builder
-        let pb = PreambleBuilder::<true>::new()
+    fn system_prompt_trailing_newlines_with_environment() {
+        let pb = PreambleBuilder::new()
             .system_prompt("# System\n\nEnds with single newline\n")
             .working_directory("/home/user");
 
@@ -1284,7 +1159,7 @@ mod tests {
     #[test]
     fn system_prompt_chains_fluently() {
         // Verify fluent chaining with other methods
-        let pb = PreambleBuilder::<true>::new()
+        let pb = PreambleBuilder::new()
             .system_prompt("# System\n\nContent.")
             .working_directory("/home/user")
             .add_context("A", "a");
@@ -1311,7 +1186,7 @@ mod tests {
         // Mirrors the example binary to verify structure
         let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
-        let mut pb = PreambleBuilder::<true>::new()
+        let mut pb = PreambleBuilder::new()
             .system_prompt("# System Instructions\n\nYou are helpful.")
             .working_directory("/home/user/project")
             .allowed_paths(&resolver)
@@ -1381,7 +1256,7 @@ mod tests {
     fn preamble_preview_allowed_paths_rendered_correctly() {
         let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
-        let pb = PreambleBuilder::<true>::new()
+        let pb = PreambleBuilder::new()
             .working_directory("/home/user/project")
             .allowed_paths(&resolver);
 
