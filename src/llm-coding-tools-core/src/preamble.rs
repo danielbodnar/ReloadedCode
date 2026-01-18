@@ -1280,4 +1280,93 @@ mod tests {
         assert_eq!(section_separator("triple newline\n\n\n"), "");
         assert_eq!(section_separator(""), "\n\n");
     }
+
+    #[test]
+    fn preamble_preview_structure_has_correct_section_order() {
+        // Mirrors the example binary to verify structure
+        let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
+
+        let mut pb = PreambleBuilder::<true>::new()
+            .system_prompt("# System Instructions\n\nYou are helpful.")
+            .working_directory("/home/user/project")
+            .allowed_paths(&resolver)
+            .add_context("Git Workflow", "Git guidance content.")
+            .add_context("GitHub CLI", "GitHub guidance content.");
+
+        let _ = pb.track(MockTool { id: 1 });
+        let _ = pb.track(OtherTool);
+
+        let preamble = pb.build();
+
+        // Verify all sections present
+        assert!(
+            preamble.contains("# System Instructions"),
+            "Missing system prompt"
+        );
+        assert!(
+            preamble.contains("# Environment"),
+            "Missing environment section"
+        );
+        assert!(
+            preamble.contains("Working directory:"),
+            "Missing working directory"
+        );
+        assert!(
+            preamble.contains("Allowed directories:"),
+            "Missing allowed directories"
+        );
+        assert!(
+            preamble.contains("# Tool Usage Guidelines"),
+            "Missing tools section"
+        );
+        assert!(
+            preamble.contains("# Supplemental Context"),
+            "Missing supplemental section"
+        );
+
+        // Verify section order: system -> env -> tools -> supplemental
+        let system_pos = preamble.find("# System Instructions").unwrap();
+        let env_pos = preamble.find("# Environment").unwrap();
+        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
+        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
+
+        assert!(
+            system_pos < env_pos,
+            "System prompt should come before environment"
+        );
+        assert!(env_pos < tools_pos, "Environment should come before tools");
+        assert!(
+            tools_pos < supplemental_pos,
+            "Tools should come before supplemental"
+        );
+
+        // Verify no formatting issues
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline (double blank line)"
+        );
+        assert_eq!(
+            preamble,
+            preamble.trim_end(),
+            "Preamble has trailing whitespace"
+        );
+    }
+
+    #[test]
+    fn preamble_preview_allowed_paths_rendered_correctly() {
+        let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
+
+        let pb = PreambleBuilder::<true>::new()
+            .working_directory("/home/user/project")
+            .allowed_paths(&resolver);
+
+        let preamble = pb.build();
+
+        // Verify both paths appear as bullet points
+        assert!(
+            preamble.contains("- /home/user/project"),
+            "Missing project path"
+        );
+        assert!(preamble.contains("- /tmp"), "Missing tmp path");
+    }
 }
