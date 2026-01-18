@@ -74,6 +74,7 @@ pub struct PreambleBuilder<const ENV: bool = false> {
     working_directory: Option<String>,
     allowed_paths: Option<Vec<String>>,
     supplemental: Vec<(&'static str, &'static str)>,
+    system_prompt: Option<String>,
 }
 
 impl<const ENV: bool> Default for PreambleBuilder<ENV> {
@@ -83,6 +84,7 @@ impl<const ENV: bool> Default for PreambleBuilder<ENV> {
             working_directory: None,
             allowed_paths: None,
             supplemental: Vec::new(),
+            system_prompt: None,
         }
     }
 }
@@ -178,6 +180,29 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
         self.supplemental.push((name, context));
         self
     }
+
+    /// Sets a custom system prompt that appears first in the generated preamble.
+    ///
+    /// The provided prompt is prepended before all other sections (environment,
+    /// tools, supplemental context). User provides exactly what they want,
+    /// including any markdown headers - no auto-modification is applied.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use llm_coding_tools_core::PreambleBuilder;
+    ///
+    /// let pb = PreambleBuilder::<false>::new()
+    ///     .system_prompt("# System Instructions\n\nYou are a helpful assistant.");
+    ///
+    /// let preamble = pb.build();
+    /// assert!(preamble.starts_with("# System Instructions"));
+    /// ```
+    #[inline]
+    pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompt = Some(prompt.into());
+        self
+    }
 }
 
 impl PreambleBuilder<true> {
@@ -242,15 +267,33 @@ impl PreambleBuilder<true> {
     }
 }
 
+/// Returns the separator needed to ensure exactly `\n\n` between content and next section.
+///
+/// Given a string, determines how many newlines to append so that the result
+/// ends with exactly `\n\n` (one blank line). Does not modify the user's content.
+#[inline]
+fn section_separator(s: &str) -> &'static str {
+    if s.ends_with("\n\n") {
+        ""
+    } else if s.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    }
+}
+
 impl PreambleBuilder<false> {
     /// Generates the preamble string without environment section.
     pub fn build(self) -> String {
         let has_tools = !self.entries.is_empty();
         let has_supplemental = !self.supplemental.is_empty();
+        let has_system_prompt = self.system_prompt.is_some();
 
-        if !has_tools && !has_supplemental {
+        if !has_tools && !has_supplemental && !has_system_prompt {
             return String::new();
         }
+
+        let system_prompt_size = self.system_prompt.as_ref().map_or(0, |p| p.len() + 2);
 
         let tools_size: usize = self
             .entries
@@ -264,7 +307,17 @@ impl PreambleBuilder<false> {
             .map(|(n, c)| c.len() + n.len() + 20)
             .sum();
 
-        let mut output = String::with_capacity(tools_size + supplemental_size + 60);
+        let mut output =
+            String::with_capacity(system_prompt_size + tools_size + supplemental_size + 60);
+
+        // System prompt (first)
+        if let Some(ref prompt) = self.system_prompt {
+            output.push_str(prompt);
+            // Smart separator: ensure exactly one blank line before next section
+            if has_tools || has_supplemental {
+                output.push_str(section_separator(prompt));
+            }
+        }
 
         // Tool section
         if has_tools {
@@ -310,6 +363,8 @@ impl PreambleBuilder<true> {
         // "Allowed directories:\n- " per path + path length
         const ALLOWED_DIR_PER_ITEM: usize = 25;
 
+        let system_prompt_size = self.system_prompt.as_ref().map_or(0, |p| p.len() + 2);
+
         let env_size = self
             .working_directory
             .as_ref()
@@ -334,14 +389,25 @@ impl PreambleBuilder<true> {
         let has_tools = !self.entries.is_empty();
         let has_env = self.working_directory.is_some() || self.allowed_paths.is_some();
         let has_supplemental = !self.supplemental.is_empty();
+        let has_system_prompt = self.system_prompt.is_some();
 
         // Return empty if nothing to output
-        if !has_tools && !has_env && !has_supplemental {
+        if !has_tools && !has_env && !has_supplemental && !has_system_prompt {
             return String::new();
         }
 
-        let total_size = env_size + allowed_size + tools_size + supplemental_size + 90;
+        let total_size =
+            system_prompt_size + env_size + allowed_size + tools_size + supplemental_size + 90;
         let mut output = String::with_capacity(total_size);
+
+        // System prompt (first)
+        if let Some(ref prompt) = self.system_prompt {
+            output.push_str(prompt);
+            // Smart separator: ensure exactly one blank line before next section
+            if has_env || has_tools || has_supplemental {
+                output.push_str(section_separator(prompt));
+            }
+        }
 
         // Environment section
         if has_env {
@@ -999,5 +1065,219 @@ mod tests {
             git_pos < github_pos,
             "Git Workflow should appear before GitHub CLI"
         );
+    }
+
+    #[test]
+    fn system_prompt_appears_first_without_env() {
+        let pb = PreambleBuilder::<false>::new()
+            .system_prompt("# System Instructions\n\nYou are a helpful assistant.");
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.starts_with("# System Instructions"),
+            "System prompt should appear first.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_appears_first_with_env() {
+        let pb = PreambleBuilder::<true>::new()
+            .system_prompt("# System Instructions\n\nYou are a helpful assistant.")
+            .working_directory("/home/user");
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.starts_with("# System Instructions"),
+            "System prompt should appear first.\nGot:\n{preamble}"
+        );
+
+        let system_pos = preamble.find("# System Instructions").unwrap();
+        let env_pos = preamble.find("# Environment").unwrap();
+        assert!(
+            system_pos < env_pos,
+            "System prompt should appear before environment section"
+        );
+    }
+
+    #[test]
+    fn system_prompt_appears_before_tools() {
+        let mut pb = PreambleBuilder::<false>::new()
+            .system_prompt("# Custom Header\n\nMy custom instructions.");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        let system_pos = preamble.find("# Custom Header").unwrap();
+        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
+        assert!(
+            system_pos < tools_pos,
+            "System prompt should appear before tools section"
+        );
+    }
+
+    #[test]
+    fn system_prompt_no_modification() {
+        // User provides exact content, no auto-header added
+        let custom = "My custom content without header";
+        let pb = PreambleBuilder::<false>::new().system_prompt(custom);
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.starts_with("My custom content without header"),
+            "System prompt should not be modified.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_optional_default_behavior() {
+        // Without system_prompt, existing behavior preserved
+        let mut pb = PreambleBuilder::<false>::new();
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.starts_with("# Tool Usage Guidelines"),
+            "Without system prompt, should start with Tool Usage Guidelines.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_only_produces_output() {
+        let pb = PreambleBuilder::<false>::new()
+            .system_prompt("# Just Instructions\n\nOnly system prompt, no tools.");
+
+        let preamble = pb.build();
+
+        assert!(!preamble.is_empty());
+        assert!(preamble.contains("# Just Instructions"));
+        assert!(!preamble.contains("# Tool Usage Guidelines"));
+    }
+
+    #[test]
+    fn system_prompt_with_env_and_tools_and_supplemental() {
+        let mut pb = PreambleBuilder::<true>::new()
+            .system_prompt("# System\n\nInstructions.")
+            .working_directory("/home/user")
+            .add_context("Git Workflow", "Git guidance.");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        let system_pos = preamble.find("# System").unwrap();
+        let env_pos = preamble.find("# Environment").unwrap();
+        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
+        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
+
+        assert!(system_pos < env_pos);
+        assert!(env_pos < tools_pos);
+        assert!(tools_pos < supplemental_pos);
+    }
+
+    #[test]
+    fn system_prompt_no_trailing_newline_gets_separator() {
+        // System prompt without trailing newline should get "\n\n" separator
+        let mut pb =
+            PreambleBuilder::<false>::new().system_prompt("# System\n\nNo trailing newline");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        // Should have exactly one blank line between system prompt and tools
+        assert!(
+            preamble.contains("No trailing newline\n\n# Tool Usage Guidelines"),
+            "Expected one blank line after system prompt.\nGot:\n{preamble}"
+        );
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_single_trailing_newline_gets_one_more() {
+        // System prompt ending with \n should get "\n" to make "\n\n"
+        let mut pb =
+            PreambleBuilder::<false>::new().system_prompt("# System\n\nEnds with single newline\n");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        // Should have exactly one blank line between system prompt and tools
+        assert!(
+            preamble.contains("Ends with single newline\n\n# Tool Usage Guidelines"),
+            "Expected one blank line after system prompt.\nGot:\n{preamble}"
+        );
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_double_trailing_newline_no_extra() {
+        // System prompt ending with \n\n should get no extra separator
+        let mut pb = PreambleBuilder::<false>::new()
+            .system_prompt("# System\n\nEnds with double newline\n\n");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        // Should have exactly one blank line between system prompt and tools
+        assert!(
+            preamble.contains("Ends with double newline\n\n# Tool Usage Guidelines"),
+            "Expected one blank line after system prompt.\nGot:\n{preamble}"
+        );
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_trailing_newlines_with_env() {
+        // Test separator logic with ENV=true builder
+        let pb = PreambleBuilder::<true>::new()
+            .system_prompt("# System\n\nEnds with single newline\n")
+            .working_directory("/home/user");
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.contains("Ends with single newline\n\n# Environment"),
+            "Expected one blank line after system prompt.\nGot:\n{preamble}"
+        );
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn system_prompt_chains_fluently() {
+        // Verify fluent chaining with other methods
+        let pb = PreambleBuilder::<true>::new()
+            .system_prompt("# System\n\nContent.")
+            .working_directory("/home/user")
+            .add_context("A", "a");
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("# System"));
+        assert!(preamble.contains("# Environment"));
+        assert!(preamble.contains("# Supplemental Context"));
+    }
+
+    #[test]
+    fn section_separator_returns_correct_suffix() {
+        // Direct unit test for section_separator helper
+        assert_eq!(section_separator("no newline"), "\n\n");
+        assert_eq!(section_separator("single newline\n"), "\n");
+        assert_eq!(section_separator("double newline\n\n"), "");
+        assert_eq!(section_separator("triple newline\n\n\n"), "");
+        assert_eq!(section_separator(""), "\n\n");
     }
 }
