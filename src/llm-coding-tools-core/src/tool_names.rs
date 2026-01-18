@@ -14,8 +14,6 @@ pub const GREP: &str = "Grep";
 pub const BASH: &str = "Bash";
 /// The "WebFetch" tool name constant.
 pub const WEBFETCH: &str = "WebFetch";
-/// The "Task" tool name constant.
-pub const TASK: &str = "Task";
 /// The "TodoWrite" tool name constant.
 pub const TODO_WRITE: &str = "TodoWrite";
 /// The "TodoRead" tool name constant.

@@ -26,9 +26,6 @@
 /// Bash tool context - shell command execution guidance.
 pub const BASH: &str = include_str!("bash.txt");
 
-/// Task tool context - agent delegation guidance.
-pub const TASK: &str = include_str!("task.txt");
-
 /// Todo read tool context - reading task lists.
 pub const TODO_READ: &str = include_str!("todoread.txt");
 
@@ -109,7 +106,6 @@ mod tests {
     fn context_strings_are_not_empty() {
         // Non-path tools
         assert!(!BASH.is_empty(), "BASH context should not be empty");
-        assert!(!TASK.is_empty(), "TASK context should not be empty");
         assert!(
             !TODO_READ.is_empty(),
             "TODO_READ context should not be empty"

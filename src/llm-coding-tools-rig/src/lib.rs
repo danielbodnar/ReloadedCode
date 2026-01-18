@@ -7,7 +7,7 @@
 //!
 //! - [`absolute`] - Tools requiring absolute paths (no path restriction)
 //! - [`allowed`] - Tools restricted to allowed directories
-//! - Standalone tools (bash, task, todo, webfetch) at crate root
+//! - Standalone tools (bash, todo, webfetch) at crate root
 //!
 //! # Example
 //!
@@ -21,7 +21,6 @@
 pub mod absolute;
 pub mod allowed;
 pub mod bash;
-pub mod task;
 pub mod todo;
 pub mod webfetch;
 
@@ -40,9 +39,8 @@ pub use llm_coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver,
 
 // Re-export core operation types used by tools
 pub use llm_coding_tools_core::{
-    BashOutput, EditError, GlobOutput, GrepFileMatches, GrepLineMatch, GrepOutput,
-    MockTaskExecutor, TaskExecutor, TaskResult, Todo, TodoPriority, TodoState, TodoStatus,
-    WebFetchOutput,
+    BashOutput, EditError, GlobOutput, GrepFileMatches, GrepLineMatch, GrepOutput, Todo,
+    TodoPriority, TodoState, TodoStatus, WebFetchOutput,
 };
 
 // Re-export absolute module tool types
@@ -61,7 +59,6 @@ pub mod allowed_tools {
 
 // Re-export standalone tools
 pub use bash::{BashArgs, BashTool};
-pub use task::{TaskArgs, TaskTool};
 pub use todo::{TodoReadArgs, TodoReadTool, TodoTools, TodoWriteArgs, TodoWriteTool};
 pub use webfetch::{WebFetchArgs, WebFetchTool};
 
