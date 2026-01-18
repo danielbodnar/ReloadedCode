@@ -5,6 +5,7 @@ pub mod absolute;
 pub mod agent_ext;
 pub mod allowed;
 pub mod bash;
+mod common;
 pub mod convert;
 pub mod todo;
 pub mod webfetch;

@@ -5,8 +5,6 @@
 //!
 //! [`llm_coding_tools_core`]: llm_coding_tools_core
 
-use llm_coding_tools_core::operations::EditError;
-use llm_coding_tools_core::tool_names;
 use llm_coding_tools_core::{ToolError as CoreError, ToolOutput, ToolResult as CoreResult};
 use serde_json::json;
 use serdes_ai::tools::{ToolError as SerdesError, ToolReturn};
@@ -57,41 +55,6 @@ pub fn to_serdes_result(
     result
         .map(output_to_return)
         .map_err(|err| core_error_to_serdes(tool_name, err))
-}
-
-/// Convert [`EditError`] to serdesAI error.
-///
-/// Maps edit-specific errors to appropriate error types:
-/// - Validation errors: `NotFound`, `AmbiguousMatch`, `EmptyOldString`, `IdenticalStrings`
-/// - Execution errors: `Tool(ToolError)` (IO, path errors)
-///
-/// [`EditError`]: llm_coding_tools_core::operations::EditError
-pub fn edit_error_to_serdes(err: EditError) -> SerdesError {
-    match err {
-        EditError::NotFound => SerdesError::validation_error(
-            tool_names::EDIT,
-            Some("old_string".to_string()),
-            "old_string not found in file content".to_string(),
-        ),
-        EditError::AmbiguousMatch(count) => SerdesError::validation_error(
-            tool_names::EDIT,
-            Some("old_string".to_string()),
-            format!(
-                "old_string found {count} times and requires more code context to uniquely identify the intended match"
-            ),
-        ),
-        EditError::EmptyOldString => SerdesError::validation_error(
-            tool_names::EDIT,
-            Some("old_string".to_string()),
-            "old_string must not be empty".to_string(),
-        ),
-        EditError::IdenticalStrings => SerdesError::validation_error(
-            tool_names::EDIT,
-            None,
-            "old_string and new_string must be different".to_string(),
-        ),
-        EditError::Tool(tool_err) => core_error_to_serdes(tool_names::EDIT, tool_err),
-    }
 }
 
 /// Convert core [`ToolError`][core] to serdesAI [`ToolError`][serdes] with tool name context.

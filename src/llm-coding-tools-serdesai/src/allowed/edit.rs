@@ -11,7 +11,7 @@ use serdes_ai::tools::{
 };
 use std::path::Path;
 
-use crate::convert::edit_error_to_serdes;
+use crate::common::edit::error_to_serdes;
 
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
@@ -86,7 +86,7 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
         )
         .await;
 
-        result.map(ToolReturn::text).map_err(edit_error_to_serdes)
+        result.map(ToolReturn::text).map_err(error_to_serdes)
     }
 }
 
