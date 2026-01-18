@@ -29,33 +29,29 @@ llm-coding-tools-rig = "0.1"
 
 Minimal runnable agent (requires `OPENAI_API_KEY`):
 
-```rust
+```rust,no_run
 use llm_coding_tools_rig::absolute::{GlobTool, GrepTool, ReadTool};
 use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
 use rig::providers::openai;
-use rig::tool::ToolSet;
+use rig::client::{ProviderClient, CompletionClient};
+use rig::completion::Prompt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let todos = TodoTools::new();
     let mut pb = PreambleBuilder::<false>::new();
 
-    let toolset = ToolSet::builder()
-        .static_tool(pb.track(ReadTool::<true>::new()))
-        .static_tool(pb.track(GlobTool::new()))
-        .static_tool(pb.track(GrepTool::<true>::new()))
-        .static_tool(pb.track(BashTool::new()))
-        .static_tool(pb.track(todos.read))
-        .static_tool(pb.track(todos.write))
-        .build();
-
-    let preamble = pb.build();
-
+    // Build agent with preamble tracking
     let client = openai::Client::from_env();
     let agent = client
         .agent("gpt-4o")
-        .preamble(&preamble)
-        .tools(toolset)
+        .tool(pb.track(ReadTool::<true>::new()))
+        .tool(pb.track(GlobTool::new()))
+        .tool(pb.track(GrepTool::<true>::new()))
+        .tool(pb.track(BashTool::new()))
+        .tool(pb.track(todos.read))
+        .tool(pb.track(todos.write))
+        .preamble(&pb.build())  // Build preamble after tracking tools
         .build();
 
     let response = agent
@@ -85,7 +81,7 @@ Executes shell commands.
 
 File tools come in `absolute::*` (unrestricted) and `allowed::*` (sandboxed) variants:
 
-```rust
+```rust,no_run
 use llm_coding_tools_rig::absolute::{ReadTool, WriteTool};
 use llm_coding_tools_rig::allowed::{ReadTool as AllowedReadTool, WriteTool as AllowedWriteTool};
 use llm_coding_tools_rig::AllowedPathResolver;

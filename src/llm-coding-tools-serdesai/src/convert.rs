@@ -144,9 +144,7 @@ mod tests {
     #[test]
     fn invalid_path_error_maps_to_validation_error() {
         let core_err = CoreError::InvalidPath("not absolute".into());
-        let result: Result<ToolReturn, SerdesError> =
-            Err(core_error_to_serdes("test_tool", core_err));
-        let serdes_err = result.unwrap_err();
+        let serdes_err = core_error_to_serdes("test_tool", core_err);
         // Use pattern matching - is_validation_error() doesn't exist
         assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
     }
@@ -154,18 +152,14 @@ mod tests {
     #[test]
     fn invalid_pattern_error_maps_to_validation_error() {
         let core_err = CoreError::InvalidPattern("bad regex".into());
-        let result: Result<ToolReturn, SerdesError> =
-            Err(core_error_to_serdes("test_tool", core_err));
-        let serdes_err = result.unwrap_err();
+        let serdes_err = core_error_to_serdes("test_tool", core_err);
         assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
     }
 
     #[test]
     fn out_of_bounds_error_maps_to_validation_error() {
         let core_err = CoreError::OutOfBounds("offset too large".into());
-        let result: Result<ToolReturn, SerdesError> =
-            Err(core_error_to_serdes("test_tool", core_err));
-        let serdes_err = result.unwrap_err();
+        let serdes_err = core_error_to_serdes("test_tool", core_err);
         assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
     }
 

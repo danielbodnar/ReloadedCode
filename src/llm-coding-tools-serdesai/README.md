@@ -28,39 +28,47 @@ llm-coding-tools-serdesai = "0.1"
 
 ## Quick Start
 
-```rust
+Minimal runnable agent (requires `OPENAI_API_KEY`):
+
+```rust,no_run
 use llm_coding_tools_serdesai::absolute::{GlobTool, GrepTool, ReadTool};
+use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::{BashTool, PreambleBuilder, create_todo_tools};
-use serdes_ai::tools::ToolRegistry;
+use serdes_ai::prelude::*;
 
 #[tokio::main]
-async fn main() {
-    let mut pb = PreambleBuilder::<false>::new();
-    let mut registry = ToolRegistry::<()>::new();
-
-    registry.register(pb.track(ReadTool::<true>::new()));
-    registry.register(pb.track(GlobTool::new()));
-    registry.register(pb.track(GrepTool::<true>::new()));
-    registry.register(pb.track(BashTool::new()));
-
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (todo_read, todo_write, _state) = create_todo_tools();
-    registry.register(pb.track(todo_read));
-    registry.register(pb.track(todo_write));
+    let mut pb = PreambleBuilder::<false>::new();
 
-    let preamble = pb.build();
+    // Build agent with tools - call .system_prompt() last
+    let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
+        .tool(pb.track(ReadTool::<true>::new()))
+        .tool(pb.track(GlobTool::new()))
+        .tool(pb.track(GrepTool::<true>::new()))
+        .tool(pb.track(BashTool::new()))
+        .tool(pb.track(todo_read))
+        .tool(pb.track(todo_write))
+        .system_prompt(pb.build())  // Last, after tracking all tools
+        .build();
 
-    // Pass `preamble` to your agent's system prompt
-    // Pass `registry` to your agent's tools
+    // Run agent with tools
+    let response = agent
+        .run("Search for TODO comments in src/", ())
+        .await?;
+    println!("{}", response.output());
+
+    Ok(())
 }
 ```
 
-See the [basic example](examples/basic.rs) for a complete working setup.
+See the [serdesai-basic example](examples/serdesai-basic.rs) for a complete working setup.
 
 ## Usage
 
 File tools come in `absolute::*` (unrestricted) and `allowed::*` (sandboxed) variants:
 
-```rust
+```rust,no_run
 use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool};
 use llm_coding_tools_serdesai::allowed::{ReadTool as AllowedReadTool, WriteTool as AllowedWriteTool};
 use std::path::PathBuf;
@@ -70,22 +78,23 @@ let read = ReadTool::<true>::new();
 
 // Sandboxed access (paths relative to allowed directories)
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
-let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(allowed_paths.clone());
-let sandboxed_write = AllowedWriteTool::new(allowed_paths);
+let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(allowed_paths.clone()).unwrap();
+let sandboxed_write = AllowedWriteTool::new(allowed_paths).unwrap();
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoReadTool`, `TodoWriteTool`.
-Use `PreambleBuilder` to register tools and pass `pb.build()` to your agent's system prompt.
+Use `PreambleBuilder` to track tools and pass `pb.build()` to `.system_prompt()`.
+Use `AgentBuilderExt::tool()` to add tools that implement `Tool<Deps>` to the agent.
 Context strings are re-exported in `llm_coding_tools_serdesai::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 
 ## Examples
 
 ```bash
-# Basic toolset setup with PreambleBuilder
-cargo run --example basic -p llm-coding-tools-serdesai
+# Basic agent setup with AgentBuilderExt
+cargo run --example serdesai-basic -p llm-coding-tools-serdesai
 
 # Sandboxed file access with allowed::* tools
-cargo run --example sandboxed -p llm-coding-tools-serdesai
+cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 ```
 
 ## License

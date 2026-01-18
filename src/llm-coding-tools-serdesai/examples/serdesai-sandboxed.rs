@@ -7,14 +7,15 @@
 //! - Security-conscious deployments limiting filesystem exposure
 //! - Project-scoped agents that shouldn't touch system files
 //!
-//! Run: cargo run --example sandboxed -p llm-coding-tools-serdesai
+//! Run: OPENAI_API_KEY=... cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 
 use llm_coding_tools_serdesai::PreambleBuilder;
+use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-use serdes_ai::tools::ToolRegistry;
+use serdes_ai::prelude::*;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // === Define allowed directories ===
     //
     // Only these directories (and their subdirectories) will be accessible.
@@ -25,29 +26,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // === Create tools with allowed paths ===
-    //
-    // Each tool is initialized with the same set of allowed directories.
-    // The `allowed` module tools use `AllowedPathResolver` internally.
     let read: ReadTool<true> = ReadTool::new(allowed_paths.clone())?;
     let write = WriteTool::new(allowed_paths.clone())?;
     let edit = EditTool::new(allowed_paths.clone())?;
     let glob = GlobTool::new(allowed_paths.clone())?;
     let grep: GrepTool<true> = GrepTool::new(allowed_paths)?;
 
-    // === Build registry with preamble tracking ===
+    // === Build agent with sandboxed tools - call .system_prompt() last ===
     let mut pb = PreambleBuilder::<false>::new();
-    let mut registry = ToolRegistry::<()>::new();
+    let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
+        .tool(pb.track(read))
+        .tool(pb.track(write))
+        .tool(pb.track(edit))
+        .tool(pb.track(glob))
+        .tool(pb.track(grep))
+        .system_prompt(pb.build())
+        .build();
 
-    registry.register(pb.track(read));
-    registry.register(pb.track(write));
-    registry.register(pb.track(edit));
-    registry.register(pb.track(glob));
-    registry.register(pb.track(grep));
+    // === Print info ===
+    println!(
+        "=== Sandboxed Agent Ready ({} tools) ===",
+        agent.tools().len()
+    );
+    println!("Allowed paths:");
+    println!("  - Current directory: {:?}", std::env::current_dir()?);
+    println!("  - Temp directory: {:?}", std::env::temp_dir());
 
-    let preamble = pb.build();
-
-    // Print the preamble
-    println!("{preamble}");
+    // === Run the agent ===
+    println!("\n=== Running Agent ===");
+    let result = agent
+        .run("List all Rust source files in the current directory", ())
+        .await?;
+    println!("\n=== Response ===\n{}", result.output());
 
     Ok(())
 }

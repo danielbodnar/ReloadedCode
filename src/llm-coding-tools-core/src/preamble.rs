@@ -119,11 +119,13 @@ impl<const ENV: bool> PreambleBuilder<ENV> {
     /// // register _my_tool with your tool collection
     /// ```
     ///
-    /// For example, if working with rig's ToolSet builder:
+    /// For example, if working with rig's agent builder:
     /// ```text
     /// let mut pb = PreambleBuilder::new();
-    /// let toolset = ToolSet::builder()
-    ///     .static_tool(pb.track(ReadTool::new()))
+    /// let agent = client
+    ///     .agent("gpt-4o")
+    ///     .tool(pb.track(ReadTool::new()))
+    ///     .preamble(&pb.build())
     ///     .build();
     /// ```
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
