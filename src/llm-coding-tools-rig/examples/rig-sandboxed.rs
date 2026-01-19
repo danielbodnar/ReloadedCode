@@ -36,14 +36,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // More efficient and ensures consistency.
     let resolver = AllowedPathResolver::new(allowed_paths)?;
 
-    let read: ReadTool<true> = ReadTool::with_resolver(resolver.clone());
-    let write = WriteTool::with_resolver(resolver.clone());
-    let edit = EditTool::with_resolver(resolver.clone());
-    let glob = GlobTool::with_resolver(resolver.clone());
-    let grep: GrepTool<true> = GrepTool::with_resolver(resolver);
+    let read: ReadTool<true> = ReadTool::new(resolver.clone());
+    let write = WriteTool::new(resolver.clone());
+    let edit = EditTool::new(resolver.clone());
+    let glob = GlobTool::new(resolver.clone());
+    let grep: GrepTool<true> = GrepTool::new(resolver.clone());
 
     // === Build agent with sandboxed tools ===
-    let mut pb = PreambleBuilder::<false>::new();
+    //
+    // Use PreambleBuilder with fluent chaining:
+    // - working_directory() and allowed_paths() consume self (chaining)
+    // - track() takes &mut self (passthrough for agent builder)
+    let mut pb = PreambleBuilder::new()
+        .working_directory(std::env::current_dir()?.to_string())
+        .allowed_paths(&resolver);
+
     let client = openai::Client::from_env();
     let agent = client
         .agent("gpt-4o")

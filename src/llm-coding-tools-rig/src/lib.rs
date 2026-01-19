@@ -52,14 +52,14 @@ mod tests {
 
     #[test]
     fn preamble_builder_with_real_tools() {
-        let mut pb = PreambleBuilder::<false>::new();
+        let mut pb = PreambleBuilder::new();
         let read: absolute::ReadTool<true> = pb.track(absolute::ReadTool::new());
         let bash = pb.track(BashTool::new());
 
         let preamble = pb.build();
 
-        assert!(preamble.contains("## Read Tool"));
-        assert!(preamble.contains("## Bash Tool"));
+        assert!(preamble.contains("## `Read` Tool"));
+        assert!(preamble.contains("## `Bash` Tool"));
         assert!(preamble.contains("absolute path")); // From READ_ABSOLUTE
 
         // Tools are returned unchanged

@@ -16,7 +16,7 @@ use serdes_ai::prelude::*;
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // === Create preamble builder to track tools ===
-    let mut pb = PreambleBuilder::<false>::new();
+    let mut pb = PreambleBuilder::new().working_directory(std::env::current_dir()?.to_string());
 
     // === Create todo tools with shared state ===
     let (todo_read, todo_write, _state) = create_todo_tools();

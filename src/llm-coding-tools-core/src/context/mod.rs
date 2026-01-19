@@ -26,6 +26,18 @@
 /// Bash tool context - shell command execution guidance.
 pub const BASH: &str = include_str!("bash.txt");
 
+/// Git workflow context - commit creation guidance.
+///
+/// Supplemental context for agents using git via the Bash tool.
+/// Include via [`PreambleBuilder::add_context`](crate::PreambleBuilder::add_context).
+pub const GIT_WORKFLOW: &str = include_str!("git_workflow.txt");
+
+/// GitHub CLI context - gh command usage guidance.
+///
+/// Supplemental context for agents using the GitHub CLI via the Bash tool.
+/// Include via [`PreambleBuilder::add_context`](crate::PreambleBuilder::add_context).
+pub const GITHUB_CLI: &str = include_str!("github_cli.txt");
+
 /// Todo read tool context - reading task lists.
 pub const TODO_READ: &str = include_str!("todoread.txt");
 
@@ -106,6 +118,14 @@ mod tests {
     fn context_strings_are_not_empty() {
         // Non-path tools
         assert!(!BASH.is_empty(), "BASH context should not be empty");
+        assert!(
+            !GIT_WORKFLOW.is_empty(),
+            "GIT_WORKFLOW context should not be empty"
+        );
+        assert!(
+            !GITHUB_CLI.is_empty(),
+            "GITHUB_CLI context should not be empty"
+        );
         assert!(
             !TODO_READ.is_empty(),
             "TODO_READ context should not be empty"
@@ -190,6 +210,46 @@ mod tests {
         assert!(
             GREP_ALLOWED.contains("allowed directories"),
             "GREP_ALLOWED should mention allowed directories"
+        );
+    }
+
+    #[test]
+    fn git_workflow_contains_expected_content() {
+        assert!(
+            GIT_WORKFLOW.contains("git commit"),
+            "GIT_WORKFLOW should mention git commit"
+        );
+        assert!(
+            GIT_WORKFLOW.contains("NEVER"),
+            "GIT_WORKFLOW should contain safety rules"
+        );
+    }
+
+    #[test]
+    fn github_cli_contains_expected_content() {
+        assert!(
+            GITHUB_CLI.contains("gh "),
+            "GITHUB_CLI should mention gh command"
+        );
+        assert!(
+            GITHUB_CLI.contains("pull request"),
+            "GITHUB_CLI should mention pull requests"
+        );
+    }
+
+    #[test]
+    fn bash_does_not_contain_git_workflow() {
+        assert!(
+            !BASH.contains("# Committing changes with git"),
+            "BASH should not contain git workflow section"
+        );
+    }
+
+    #[test]
+    fn bash_does_not_contain_github_cli() {
+        assert!(
+            !BASH.contains("# Creating pull requests"),
+            "BASH should not contain GitHub CLI section"
         );
     }
 }

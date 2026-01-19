@@ -9,6 +9,7 @@
 //!
 //! Run: OPENAI_API_KEY=... cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 
+use llm_coding_tools_serdesai::AllowedPathResolver;
 use llm_coding_tools_serdesai::PreambleBuilder;
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
@@ -25,15 +26,27 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         std::env::temp_dir(),     // Temp directory (cross-platform)
     ];
 
-    // === Create tools with allowed paths ===
-    let read: ReadTool<true> = ReadTool::new(allowed_paths.clone())?;
-    let write = WriteTool::new(allowed_paths.clone())?;
-    let edit = EditTool::new(allowed_paths.clone())?;
-    let glob = GlobTool::new(allowed_paths.clone())?;
-    let grep: GrepTool<true> = GrepTool::new(allowed_paths)?;
+    // === Create resolver and tools ===
+    //
+    // Create one resolver and share it across tools.
+    // More efficient and ensures consistency.
+    let resolver = AllowedPathResolver::new(allowed_paths)?;
 
-    // === Build agent with sandboxed tools - call .system_prompt() last ===
-    let mut pb = PreambleBuilder::<false>::new();
+    let read: ReadTool<true> = ReadTool::new(resolver.clone());
+    let write = WriteTool::new(resolver.clone());
+    let edit = EditTool::new(resolver.clone());
+    let glob = GlobTool::new(resolver.clone());
+    let grep: GrepTool<true> = GrepTool::new(resolver.clone());
+
+    // === Build agent with sandboxed tools ===
+    //
+    // Use PreambleBuilder with fluent chaining:
+    // - working_directory() and allowed_paths() consume self (chaining)
+    // - track() takes &mut self (passthrough for agent builder)
+    let mut pb = PreambleBuilder::new()
+        .working_directory(std::env::current_dir()?.to_string())
+        .allowed_paths(&resolver);
+
     let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
         .tool(pb.track(read))
         .tool(pb.track(write))

@@ -1,13 +1,12 @@
 //! Read file tool using [`AllowedPathResolver`].
 
 use async_trait::async_trait;
+use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::operations::read_file;
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_names;
-use llm_coding_tools_core::{ToolContext, ToolResult as CoreToolResult};
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::path::Path;
 
 use crate::convert::to_serdes_result;
 
@@ -44,13 +43,27 @@ pub struct ReadTool<const LINE_NUMBERS: bool = true> {
 }
 
 impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
-    /// Creates a new read tool restricted to the given directories.
+    /// Creates a new read tool with a shared resolver.
     ///
-    /// Returns an error if any directory doesn't exist or can't be canonicalized.
-    pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> CoreToolResult<Self> {
-        Ok(Self {
-            resolver: AllowedPathResolver::new(allowed_paths)?,
-        })
+    /// Use a single [`AllowedPathResolver`] across all allowed tools to ensure
+    /// consistent path access:
+    ///
+    /// ```no_run
+    /// use llm_coding_tools_core::path::AllowedPathResolver;
+    /// use llm_coding_tools_serdesai::allowed::{ReadTool, WriteTool, EditTool};
+    /// use std::path::PathBuf;
+    ///
+    /// let resolver = AllowedPathResolver::new(vec![
+    ///     std::env::current_dir().unwrap(),
+    ///     PathBuf::from("/tmp"),
+    /// ]).unwrap();
+    ///
+    /// let read: ReadTool<true> = ReadTool::new(resolver.clone());
+    /// let write = WriteTool::new(resolver.clone());
+    /// let edit = EditTool::new(resolver);
+    /// ```
+    pub fn new(resolver: AllowedPathResolver) -> Self {
+        Self { resolver }
     }
 }
 
@@ -125,7 +138,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello\nworld\n").unwrap();
 
-        let tool: ReadTool<true> = ReadTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: ReadTool<true> = ReadTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -146,7 +160,8 @@ mod tests {
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let tool: ReadTool<true> = ReadTool::new([dir.path()]).unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool: ReadTool<true> = ReadTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),

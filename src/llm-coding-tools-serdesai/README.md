@@ -39,7 +39,7 @@ use serdes_ai::prelude::*;
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (todo_read, todo_write, _state) = create_todo_tools();
-    let mut pb = PreambleBuilder::<false>::new();
+    let mut pb = PreambleBuilder::new();
 
     // Build agent with tools - call .system_prompt() last
     let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
@@ -71,6 +71,7 @@ File tools come in `absolute::*` (unrestricted) and `allowed::*` (sandboxed) var
 ```rust,no_run
 use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool};
 use llm_coding_tools_serdesai::allowed::{ReadTool as AllowedReadTool, WriteTool as AllowedWriteTool};
+use llm_coding_tools_serdesai::AllowedPathResolver;
 use std::path::PathBuf;
 
 // Unrestricted access (absolute paths)
@@ -78,12 +79,13 @@ let read = ReadTool::<true>::new();
 
 // Sandboxed access (paths relative to allowed directories)
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
-let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(allowed_paths.clone()).unwrap();
-let sandboxed_write = AllowedWriteTool::new(allowed_paths).unwrap();
+let resolver = AllowedPathResolver::new(allowed_paths).unwrap();
+let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone());
+let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoReadTool`, `TodoWriteTool`.
-Use `PreambleBuilder` to track tools and pass `pb.build()` to `.system_prompt()`.
+Use `PreambleBuilder` to track tools and pass `pb.build()` to `.system_prompt()`. Set `working_directory()` so the environment section is populated.
 Use `AgentBuilderExt::tool()` to add tools that implement `Tool<Deps>` to the agent.
 Context strings are re-exported in `llm_coding_tools_serdesai::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 
