@@ -31,7 +31,7 @@ Minimal runnable agent (requires `OPENAI_API_KEY`):
 
 ```rust,no_run
 use llm_coding_tools_rig::absolute::{GlobTool, GrepTool, ReadTool};
-use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
+use llm_coding_tools_rig::{BashTool, SystemPromptBuilder, TodoTools};
 use rig::providers::openai;
 use rig::client::{ProviderClient, CompletionClient};
 use rig::completion::Prompt;
@@ -39,9 +39,9 @@ use rig::completion::Prompt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let todos = TodoTools::new();
-    let mut pb = PreambleBuilder::new();
+    let mut pb = SystemPromptBuilder::new();
 
-    // Build agent with preamble tracking
+    // Build agent with system prompt tracking
     let client = openai::Client::from_env();
     let agent = client
         .agent("gpt-4o")
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .tool(pb.track(BashTool::new()))
         .tool(pb.track(todos.read))
         .tool(pb.track(todos.write))
-        .preamble(&pb.build())  // Build preamble after tracking tools
+        .preamble(&pb.build())  // Build system prompt after tracking tools
         .build();
 
     let response = agent
@@ -95,13 +95,13 @@ let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoTools`.
-Use `PreambleBuilder` to register tools and pass `pb.build()` to `.preamble()`. Set `working_directory()` so the environment section is populated.
+Use `SystemPromptBuilder` to register tools and pass `pb.build()` to `.preamble()`. Set `working_directory()` so the environment section is populated.
 Context strings are re-exported in `llm_coding_tools_rig::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 
 ## Examples
 
 ```bash
-# Basic toolset setup with PreambleBuilder
+# Basic toolset setup with SystemPromptBuilder
 cargo run --example basic -p llm-coding-tools-rig
 
 # Sandboxed file access with allowed::* tools

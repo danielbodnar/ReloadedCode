@@ -33,13 +33,13 @@ Minimal runnable agent (requires `OPENAI_API_KEY`):
 ```rust,no_run
 use llm_coding_tools_serdesai::absolute::{GlobTool, GrepTool, ReadTool};
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
-use llm_coding_tools_serdesai::{BashTool, PreambleBuilder, create_todo_tools};
+use llm_coding_tools_serdesai::{BashTool, SystemPromptBuilder, create_todo_tools};
 use serdes_ai::prelude::*;
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (todo_read, todo_write, _state) = create_todo_tools();
-    let mut pb = PreambleBuilder::new();
+    let mut pb = SystemPromptBuilder::new();
 
     // Build agent with tools - call .system_prompt() last
     let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
@@ -85,7 +85,7 @@ let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
 Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoReadTool`, `TodoWriteTool`.
-Use `PreambleBuilder` to track tools and pass `pb.build()` to `.system_prompt()`. Set `working_directory()` so the environment section is populated.
+Use `SystemPromptBuilder` to track tools and pass `pb.build()` to `.system_prompt()`. Set `working_directory()` so the environment section is populated.
 Use `AgentBuilderExt::tool()` to add tools that implement `Tool<Deps>` to the agent.
 Context strings are re-exported in `llm_coding_tools_serdesai::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 

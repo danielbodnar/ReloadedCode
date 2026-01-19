@@ -14,8 +14,8 @@ pub use llm_coding_tools_core::{ToolError, ToolOutput, ToolResult};
 pub use llm_coding_tools_core::context;
 pub use llm_coding_tools_core::ToolContext;
 
-// Re-export PreambleBuilder and Substitute from core
-pub use llm_coding_tools_core::{PreambleBuilder, Substitute};
+// Re-export SystemPromptBuilder and Substitute from core
+pub use llm_coding_tools_core::{Substitute, SystemPromptBuilder};
 
 // Re-export path resolvers
 pub use llm_coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
@@ -51,16 +51,16 @@ mod tests {
     use llm_coding_tools_core::tool_names;
 
     #[test]
-    fn preamble_builder_with_real_tools() {
-        let mut pb = PreambleBuilder::new();
+    fn system_prompt_builder_with_real_tools() {
+        let mut pb = SystemPromptBuilder::new();
         let read: absolute::ReadTool<true> = pb.track(absolute::ReadTool::new());
         let bash = pb.track(BashTool::new());
 
-        let preamble = pb.build();
+        let prompt = pb.build();
 
-        assert!(preamble.contains("## `Read` Tool"));
-        assert!(preamble.contains("## `Bash` Tool"));
-        assert!(preamble.contains("absolute path")); // From READ_ABSOLUTE
+        assert!(prompt.contains("## `Read` Tool"));
+        assert!(prompt.contains("## `Bash` Tool"));
+        assert!(prompt.contains("absolute path")); // From READ_ABSOLUTE
 
         // Tools are returned unchanged
         assert_eq!(

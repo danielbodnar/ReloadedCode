@@ -2,7 +2,7 @@
 //!
 //! Shows:
 //! - Creating tools individually
-//! - Using [`PreambleBuilder`] for context generation
+//! - Using [`SystemPromptBuilder`] for context generation
 //! - Using [`AgentBuilderExt`] to add tools to an agent
 //! - Running the agent with tools
 //!
@@ -10,13 +10,13 @@
 
 use llm_coding_tools_serdesai::absolute::{GlobTool, GrepTool, ReadTool};
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
-use llm_coding_tools_serdesai::{BashTool, PreambleBuilder, WebFetchTool, create_todo_tools};
+use llm_coding_tools_serdesai::{BashTool, SystemPromptBuilder, WebFetchTool, create_todo_tools};
 use serdes_ai::prelude::*;
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // === Create preamble builder to track tools ===
-    let mut pb = PreambleBuilder::new().working_directory(std::env::current_dir()?.to_string());
+    // === Create system prompt builder to track tools ===
+    let mut pb = SystemPromptBuilder::new().working_directory(std::env::current_dir()?.to_string());
 
     // === Create todo tools with shared state ===
     let (todo_read, todo_write, _state) = create_todo_tools();

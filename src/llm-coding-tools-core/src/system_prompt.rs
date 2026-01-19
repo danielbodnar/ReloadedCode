@@ -1,7 +1,7 @@
-//! Preamble generation for LLM agents.
+//! System prompt generation for LLM agents.
 //!
-//! Provides [`PreambleBuilder`] for tracking tools and generating formatted
-//! preambles containing tool usage context.
+//! Provides [`SystemPromptBuilder`] for tracking tools and generating formatted
+//! system prompts containing tool usage context.
 
 use crate::context::ToolContext;
 use crate::path::AllowedPathResolver;
@@ -12,7 +12,7 @@ struct ContextEntry {
     context: &'static str,
 }
 
-/// Builder that tracks tools and generates formatted preambles.
+/// Builder that tracks tools and generates formatted system prompts.
 ///
 /// The environment section is always included and appears before tool listings.
 ///
@@ -20,7 +20,7 @@ struct ContextEntry {
 ///
 /// ```no_run
 /// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
-/// use llm_coding_tools_core::PreambleBuilder;
+/// use llm_coding_tools_core::SystemPromptBuilder;
 ///
 /// struct ReadTool;
 ///
@@ -32,17 +32,17 @@ struct ContextEntry {
 ///     }
 /// }
 ///
-/// let mut pb = PreambleBuilder::new()
+/// let mut pb = SystemPromptBuilder::new()
 ///     .working_directory(std::env::current_dir().unwrap().display().to_string());
 ///
 /// pb.track(ReadTool);
 ///
-/// let _preamble = pb.build();
+/// let _prompt = pb.build();
 /// ```
 ///
 /// # Output
 ///
-/// The generated preamble is Markdown. For example, with two tools:
+/// The generated system prompt is Markdown. For example, with two tools:
 ///
 /// ```text
 /// # Environment
@@ -57,7 +57,7 @@ struct ContextEntry {
 /// Executes shell commands.
 /// ```
 #[derive(Default)]
-pub struct PreambleBuilder {
+pub struct SystemPromptBuilder {
     entries: Vec<ContextEntry>,
     working_directory: Option<String>,
     allowed_paths: Option<Vec<String>>,
@@ -65,8 +65,8 @@ pub struct PreambleBuilder {
     system_prompt: Option<String>,
 }
 
-impl PreambleBuilder {
-    /// Creates a new preamble builder.
+impl SystemPromptBuilder {
+    /// Creates a new system prompt builder.
     #[inline]
     pub fn new() -> Self {
         Self::default()
@@ -77,7 +77,7 @@ impl PreambleBuilder {
     /// Use this to wrap tools before registering them with your tool collection:
     /// ```no_run
     /// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
-    /// use llm_coding_tools_core::PreambleBuilder;
+    /// use llm_coding_tools_core::SystemPromptBuilder;
     ///
     /// struct MyTool;
     ///
@@ -89,18 +89,18 @@ impl PreambleBuilder {
     ///     }
     /// }
     ///
-    /// let mut pb = PreambleBuilder::new();
+    /// let mut pb = SystemPromptBuilder::new();
     /// let _my_tool = pb.track(MyTool);
     /// // register _my_tool with your tool collection
     /// ```
     ///
     /// For example, if working with rig's agent builder:
     /// ```text
-    /// let mut pb = PreambleBuilder::new();
+    /// let mut pb = SystemPromptBuilder::new();
     /// let agent = client
     ///     .agent("gpt-4o")
     ///     .tool(pb.track(ReadTool::new()))
-    ///     .preamble(&pb.build())
+    ///     .system prompt(&pb.build())
     ///     .build();
     /// ```
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
@@ -111,7 +111,7 @@ impl PreambleBuilder {
         tool
     }
 
-    /// Adds supplemental context to the preamble.
+    /// Adds supplemental context to the system prompt.
     ///
     /// Supplemental context appears in a separate "Supplemental Context" section
     /// after tool usage guidelines. Use this for guidance that isn't inherent
@@ -127,29 +127,29 @@ impl PreambleBuilder {
     /// Adding both git and GitHub CLI context:
     ///
     /// ```rust
-    /// use llm_coding_tools_core::{PreambleBuilder, context};
+    /// use llm_coding_tools_core::{SystemPromptBuilder, context};
     ///
-    /// let pb = PreambleBuilder::new()
+    /// let pb = SystemPromptBuilder::new()
     ///     .add_context("Git Workflow", context::GIT_WORKFLOW)
     ///     .add_context("GitHub CLI", context::GITHUB_CLI);
     ///
-    /// let preamble = pb.build();
-    /// assert!(preamble.contains("# Supplemental Context"));
-    /// assert!(preamble.contains("## Git Workflow"));
+    /// let prompt = pb.build();
+    /// assert!(prompt.contains("# Supplemental Context"));
+    /// assert!(prompt.contains("## Git Workflow"));
     /// ```
     ///
     /// Selective inclusion - adding only Git Workflow when not using GitHub features:
     ///
     /// ```rust
-    /// use llm_coding_tools_core::{PreambleBuilder, context};
+    /// use llm_coding_tools_core::{SystemPromptBuilder, context};
     ///
     /// // Only include git workflow for agents that use git but not GitHub
-    /// let pb = PreambleBuilder::new()
+    /// let pb = SystemPromptBuilder::new()
     ///     .add_context("Git Workflow", context::GIT_WORKFLOW);
     ///
-    /// let preamble = pb.build();
-    /// assert!(preamble.contains("## Git Workflow"));
-    /// assert!(!preamble.contains("## GitHub CLI"));
+    /// let prompt = pb.build();
+    /// assert!(prompt.contains("## Git Workflow"));
+    /// assert!(!prompt.contains("## GitHub CLI"));
     /// ```
     #[inline]
     pub fn add_context(mut self, name: &'static str, context: &'static str) -> Self {
@@ -157,7 +157,7 @@ impl PreambleBuilder {
         self
     }
 
-    /// Sets a custom system prompt that appears first in the generated preamble.
+    /// Sets a custom system prompt that appears first in the generated system prompt.
     ///
     /// The provided prompt is prepended before all other sections (environment,
     /// tools, supplemental context). User provides exactly what they want,
@@ -166,13 +166,13 @@ impl PreambleBuilder {
     /// # Example
     ///
     /// ```rust
-    /// use llm_coding_tools_core::PreambleBuilder;
+    /// use llm_coding_tools_core::SystemPromptBuilder;
     ///
-    /// let pb = PreambleBuilder::new()
+    /// let pb = SystemPromptBuilder::new()
     ///     .system_prompt("# System Instructions\n\nYou are a helpful assistant.");
     ///
-    /// let preamble = pb.build();
-    /// assert!(preamble.starts_with("# System Instructions"));
+    /// let prompt = pb.build();
+    /// assert!(prompt.starts_with("# System Instructions"));
     /// ```
     #[inline]
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
@@ -181,7 +181,7 @@ impl PreambleBuilder {
     }
 }
 
-impl PreambleBuilder {
+impl SystemPromptBuilder {
     /// Sets the working directory to display in the environment section.
     ///
     /// Accepts any type that can be converted to String, including:
@@ -192,13 +192,13 @@ impl PreambleBuilder {
     /// # Example
     ///
     /// ```no_run
-    /// use llm_coding_tools_core::PreambleBuilder;
+    /// use llm_coding_tools_core::SystemPromptBuilder;
     ///
-    /// let _pb = PreambleBuilder::new()
+    /// let _pb = SystemPromptBuilder::new()
     ///     .working_directory("/home/user/project");
     ///
     /// // With runtime-computed path
-    /// let _pb = PreambleBuilder::new()
+    /// let _pb = SystemPromptBuilder::new()
     ///     .working_directory(std::env::current_dir().unwrap().display().to_string());
     /// ```
     #[inline]
@@ -216,10 +216,10 @@ impl PreambleBuilder {
     /// # Example
     ///
     /// ```no_run
-    /// use llm_coding_tools_core::{AllowedPathResolver, PreambleBuilder};
+    /// use llm_coding_tools_core::{AllowedPathResolver, SystemPromptBuilder};
     ///
     /// let resolver = AllowedPathResolver::new(vec!["/home/user/project", "/tmp"]).unwrap();
-    /// let _pb = PreambleBuilder::new()
+    /// let _pb = SystemPromptBuilder::new()
     ///     .working_directory("/home/user/project")
     ///     .allowed_paths(&resolver);
     /// ```
@@ -254,8 +254,8 @@ fn section_separator(s: &str) -> &'static str {
     }
 }
 
-impl PreambleBuilder {
-    /// Generates the preamble string with environment section.
+impl SystemPromptBuilder {
+    /// Generates the system prompt string with environment section.
     pub fn build(self) -> String {
         // Environment section size: ~50 bytes header + path length
         // "# Environment\n\nWorking directory: \n\n" = ~38 bytes
@@ -381,18 +381,18 @@ impl PreambleBuilder {
     }
 }
 
-/// Extension trait for placeholder substitution on preamble strings.
+/// Extension trait for placeholder substitution on system prompt strings.
 ///
-/// Provides simple `{key}` placeholder replacement after building a preamble.
+/// Provides simple `{key}` placeholder replacement after building a system prompt.
 /// Unmatched placeholders are left as-is.
 ///
 /// # Example
 ///
 /// ```rust
-/// use llm_coding_tools_core::preamble::Substitute;
+/// use llm_coding_tools_core::Substitute;
 ///
-/// let preamble = "Available agents: {agents}".to_string();
-/// let result = preamble
+/// let text = "Available agents: {agents}".to_string();
+/// let result = text
 ///     .substitute("agents", "code-review, research")
 ///     .substitute("missing", "ignored");
 ///
@@ -459,13 +459,13 @@ mod tests {
 
     #[test]
     fn empty_builder_returns_empty_string() {
-        let preamble = PreambleBuilder::new().build();
+        let preamble = SystemPromptBuilder::new().build();
         assert!(preamble.is_empty());
     }
 
     #[test]
     fn track_returns_tool_unchanged() {
-        let mut pb = PreambleBuilder::new();
+        let mut pb = SystemPromptBuilder::new();
         let tool = MockTool { id: 42 };
         let returned = pb.track(tool);
         assert_eq!(returned.id, 42);
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn single_tool_formats_correctly() {
-        let mut pb = PreambleBuilder::new().working_directory("/home/user");
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn multiple_tools_preserve_order() {
-        let mut pb = PreambleBuilder::new().working_directory("/home/user");
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn multiple_tools_have_single_newline_between() {
-        let mut pb = PreambleBuilder::new().working_directory("/home/user");
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn multiple_tools_with_working_dir_have_single_newline_between() {
-        let mut pb = PreambleBuilder::new().working_directory("/test");
+        let mut pb = SystemPromptBuilder::new().working_directory("/test");
         let _ = pb.track(MockTool { id: 1 });
         let _ = pb.track(OtherTool);
         let preamble = pb.build();
@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn builder_includes_environment_section() {
-        let mut pb = PreambleBuilder::new().working_directory("/home/user/project");
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn builder_without_env_data_and_tools_returns_empty() {
-        let pb = PreambleBuilder::new();
+        let pb = SystemPromptBuilder::new();
         let preamble = pb.build();
         assert!(preamble.is_empty());
     }
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn builder_with_working_dir_but_no_tools() {
         // Environment section should render even without tools tracked
-        let pb = PreambleBuilder::new().working_directory("/home/user/project");
+        let pb = SystemPromptBuilder::new().working_directory("/home/user/project");
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -607,7 +607,7 @@ mod tests {
     fn working_directory_accepts_runtime_string() {
         // Simulates std::env::current_dir().unwrap().display().to_string()
         let runtime_path = String::from("/runtime/computed/path");
-        let pb = PreambleBuilder::new().working_directory(runtime_path);
+        let pb = SystemPromptBuilder::new().working_directory(runtime_path);
         let preamble = pb.build();
 
         assert!(preamble.contains("Working directory: /runtime/computed/path"));
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn working_directory_accepts_str() {
-        let pb = PreambleBuilder::new().working_directory("/static/path");
+        let pb = SystemPromptBuilder::new().working_directory("/static/path");
         let preamble = pb.build();
 
         assert!(preamble.contains("Working directory: /static/path"));
@@ -668,13 +668,13 @@ mod tests {
 
     #[test]
     fn default_builder_compiles() {
-        let _pb_default: PreambleBuilder = PreambleBuilder::new();
+        let _pb_default: SystemPromptBuilder = SystemPromptBuilder::new();
     }
 
     #[test]
     fn backwards_compatibility_existing_api() {
         // Existing code should work unchanged
-        let mut pb = PreambleBuilder::new();
+        let mut pb = SystemPromptBuilder::new();
         let _ = pb.track(MockTool { id: 1 });
         let preamble = pb.build();
 
@@ -689,7 +689,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .allowed_paths(&resolver);
         let preamble = pb.build();
@@ -708,7 +708,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::new().allowed_paths(&resolver);
+        let pb = SystemPromptBuilder::new().allowed_paths(&resolver);
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -725,7 +725,7 @@ mod tests {
         let dir2 = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir1.path(), dir2.path()]).unwrap();
 
-        let pb = PreambleBuilder::new().allowed_paths(&resolver);
+        let pb = SystemPromptBuilder::new().allowed_paths(&resolver);
         let preamble = pb.build();
 
         // Check format: "- <absolute_path>" (cross-platform)
@@ -758,7 +758,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new(vec![dir.path()]).unwrap();
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .allowed_paths(&resolver);
         let preamble = pb.build();
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn builder_with_only_working_dir_no_allowed_paths() {
         // Only working_directory() should not render "Allowed directories:" section
-        let pb = PreambleBuilder::new().working_directory("/home/user/project");
+        let pb = SystemPromptBuilder::new().working_directory("/home/user/project");
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn add_context_includes_supplemental_section() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance content.");
 
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn add_context_appears_after_tools() {
-        let mut pb = PreambleBuilder::new().add_context("Git Workflow", "Git guidance.");
+        let mut pb = SystemPromptBuilder::new().add_context("Git Workflow", "Git guidance.");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -815,7 +815,7 @@ mod tests {
 
     #[test]
     fn add_context_multiple_sections_preserve_order() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git content.")
             .add_context("GitHub CLI", "GitHub content.");
@@ -832,7 +832,7 @@ mod tests {
 
     #[test]
     fn add_context_only_no_tools() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
 
@@ -845,7 +845,7 @@ mod tests {
 
     #[test]
     fn add_context_with_env_section() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
 
@@ -858,7 +858,7 @@ mod tests {
 
     #[test]
     fn add_context_with_env_and_tools() {
-        let mut pb = PreambleBuilder::new()
+        let mut pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
         let _ = pb.track(MockTool { id: 1 });
@@ -875,7 +875,7 @@ mod tests {
 
     #[test]
     fn add_context_no_triple_newlines() {
-        let mut pb = PreambleBuilder::new()
+        let mut pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.\n");
         let _ = pb.track(MockTool { id: 1 });
@@ -891,7 +891,7 @@ mod tests {
     #[test]
     fn add_context_chains_fluently() {
         // Verify fluent chaining works
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .add_context("A", "a")
             .add_context("B", "b")
             .add_context("C", "c");
@@ -907,7 +907,7 @@ mod tests {
     fn add_context_with_actual_git_workflow_constant() {
         use crate::context::GIT_WORKFLOW;
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", GIT_WORKFLOW);
 
@@ -930,7 +930,7 @@ mod tests {
     fn add_context_with_actual_github_cli_constant() {
         use crate::context::GITHUB_CLI;
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("GitHub CLI", GITHUB_CLI);
 
@@ -947,10 +947,10 @@ mod tests {
 
     #[test]
     fn add_context_selective_inclusion_git_only() {
-        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
+        use crate::context::{GIT_WORKFLOW, GITHUB_CLI};
 
         // Only include git workflow (not GitHub CLI)
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", GIT_WORKFLOW);
 
@@ -963,9 +963,9 @@ mod tests {
 
     #[test]
     fn add_context_both_git_and_github() {
-        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
+        use crate::context::{GIT_WORKFLOW, GITHUB_CLI};
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", GIT_WORKFLOW)
             .add_context("GitHub CLI", GITHUB_CLI);
@@ -985,7 +985,7 @@ mod tests {
 
     #[test]
     fn system_prompt_appears_first() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .system_prompt("# System Instructions\n\nYou are a helpful assistant.")
             .working_directory("/home/user");
 
@@ -1007,7 +1007,7 @@ mod tests {
     #[test]
     fn system_prompt_appears_before_tools() {
         let mut pb =
-            PreambleBuilder::new().system_prompt("# Custom Header\n\nMy custom instructions.");
+            SystemPromptBuilder::new().system_prompt("# Custom Header\n\nMy custom instructions.");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1024,7 +1024,7 @@ mod tests {
     fn system_prompt_no_modification() {
         // User provides exact content, no auto-header added
         let custom = "My custom content without header";
-        let pb = PreambleBuilder::new().system_prompt(custom);
+        let pb = SystemPromptBuilder::new().system_prompt(custom);
 
         let preamble = pb.build();
 
@@ -1037,7 +1037,7 @@ mod tests {
     #[test]
     fn system_prompt_optional_default_behavior() {
         // Without system_prompt, existing behavior preserved
-        let mut pb = PreambleBuilder::new();
+        let mut pb = SystemPromptBuilder::new();
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1050,7 +1050,7 @@ mod tests {
 
     #[test]
     fn system_prompt_only_produces_output() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .system_prompt("# Just Instructions\n\nOnly system prompt, no tools.");
 
         let preamble = pb.build();
@@ -1062,7 +1062,7 @@ mod tests {
 
     #[test]
     fn system_prompt_with_env_and_tools_and_supplemental() {
-        let mut pb = PreambleBuilder::new()
+        let mut pb = SystemPromptBuilder::new()
             .system_prompt("# System\n\nInstructions.")
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance.");
@@ -1083,7 +1083,7 @@ mod tests {
     #[test]
     fn system_prompt_no_trailing_newline_gets_separator() {
         // System prompt without trailing newline should get "\n\n" separator
-        let mut pb = PreambleBuilder::new().system_prompt("# System\n\nNo trailing newline");
+        let mut pb = SystemPromptBuilder::new().system_prompt("# System\n\nNo trailing newline");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1102,7 +1102,8 @@ mod tests {
     #[test]
     fn system_prompt_single_trailing_newline_gets_one_more() {
         // System prompt ending with \n should get "\n" to make "\n\n"
-        let mut pb = PreambleBuilder::new().system_prompt("# System\n\nEnds with single newline\n");
+        let mut pb =
+            SystemPromptBuilder::new().system_prompt("# System\n\nEnds with single newline\n");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1122,7 +1123,7 @@ mod tests {
     fn system_prompt_double_trailing_newline_no_extra() {
         // System prompt ending with \n\n should get no extra separator
         let mut pb =
-            PreambleBuilder::new().system_prompt("# System\n\nEnds with double newline\n\n");
+            SystemPromptBuilder::new().system_prompt("# System\n\nEnds with double newline\n\n");
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1140,7 +1141,7 @@ mod tests {
 
     #[test]
     fn system_prompt_trailing_newlines_with_environment() {
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .system_prompt("# System\n\nEnds with single newline\n")
             .working_directory("/home/user");
 
@@ -1159,7 +1160,7 @@ mod tests {
     #[test]
     fn system_prompt_chains_fluently() {
         // Verify fluent chaining with other methods
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .system_prompt("# System\n\nContent.")
             .working_directory("/home/user")
             .add_context("A", "a");
@@ -1186,7 +1187,7 @@ mod tests {
         // Mirrors the example binary to verify structure
         let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
-        let mut pb = PreambleBuilder::new()
+        let mut pb = SystemPromptBuilder::new()
             .system_prompt("# System Instructions\n\nYou are helpful.")
             .working_directory("/home/user/project")
             .allowed_paths(&resolver)
@@ -1256,7 +1257,7 @@ mod tests {
     fn preamble_preview_allowed_paths_rendered_correctly() {
         let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
-        let pb = PreambleBuilder::new()
+        let pb = SystemPromptBuilder::new()
             .working_directory("/home/user/project")
             .allowed_paths(&resolver);
 

@@ -1,23 +1,23 @@
-//! Preamble preview - demonstrates full preamble generation.
+//! System Prompt preview - demonstrates full system prompt generation.
 //!
-//! Shows how PreambleBuilder combines:
+//! Shows how SystemPromptBuilder combines:
 //! - Custom system prompts
 //! - Environment section (working directory, allowed paths)
 //! - Tool usage guidelines (from tracked tools)
 //! - Supplemental context (git workflow, GitHub CLI)
 //!
-//! Run: cargo run --example preamble_preview -p llm-coding-tools-core
+//! Run: cargo run --example system_prompt_preview -p llm-coding-tools-core
 
 use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::{context, AllowedPathResolver, PreambleBuilder};
+use llm_coding_tools_core::{context, AllowedPathResolver, SystemPromptBuilder};
 
 fn main() {
     // Use from_canonical to avoid filesystem requirements for the example.
     // In real usage, AllowedPathResolver::new() canonicalizes and validates paths.
     let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
-    // Build preamble with all features demonstrated
-    let mut pb = PreambleBuilder::new()
+    // Build system prompt with all features demonstrated
+    let mut pb = SystemPromptBuilder::new()
         .system_prompt(
             "# System Instructions\n\n\
              You are a helpful coding assistant. Follow best practices and \

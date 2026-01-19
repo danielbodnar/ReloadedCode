@@ -29,13 +29,13 @@ pub const BASH: &str = include_str!("bash.txt");
 /// Git workflow context - commit creation guidance.
 ///
 /// Supplemental context for agents using git via the Bash tool.
-/// Include via [`PreambleBuilder::add_context`](crate::PreambleBuilder::add_context).
+/// Include via [`SystemPromptBuilder::add_context`](crate::SystemPromptBuilder::add_context).
 pub const GIT_WORKFLOW: &str = include_str!("git_workflow.txt");
 
 /// GitHub CLI context - gh command usage guidance.
 ///
 /// Supplemental context for agents using the GitHub CLI via the Bash tool.
-/// Include via [`PreambleBuilder::add_context`](crate::PreambleBuilder::add_context).
+/// Include via [`SystemPromptBuilder::add_context`](crate::SystemPromptBuilder::add_context).
 pub const GITHUB_CLI: &str = include_str!("github_cli.txt");
 
 /// Todo read tool context - reading task lists.
@@ -77,10 +77,10 @@ pub const GREP_ABSOLUTE: &str = include_str!("grep_absolute.txt");
 /// Grep tool context for allowed/sandboxed path mode.
 pub const GREP_ALLOWED: &str = include_str!("grep_allowed.txt");
 
-/// Trait for tools that provide usage context for LLM preambles.
+/// Trait for tools that provide usage context for LLM system prompts.
 ///
-/// Implement this trait on tool types (for frameworks like rig) to enable automatic preamble
-/// generation via [`PreambleBuilder`](crate::PreambleBuilder).
+/// Implement this trait on tool types (for frameworks like rig) to enable automatic system prompt
+/// generation via [`SystemPromptBuilder`](crate::SystemPromptBuilder).
 ///
 /// # Example
 ///
@@ -98,13 +98,13 @@ pub const GREP_ALLOWED: &str = include_str!("grep_allowed.txt");
 /// }
 /// ```
 pub trait ToolContext {
-    /// Tool name used for section headers in generated preamble.
+    /// Tool name used for section headers in generated system prompt.
     ///
     /// Should be lowercase (e.g., "read", "bash", "glob").
-    /// PreambleBuilder capitalizes this for display.
+    /// SystemPromptBuilder capitalizes this for display.
     const NAME: &'static str;
 
-    /// Returns the tool's context string for preamble generation.
+    /// Returns the tool's context string for system prompt generation.
     ///
     /// This should return one of the context constants from this module.
     fn context(&self) -> &'static str;

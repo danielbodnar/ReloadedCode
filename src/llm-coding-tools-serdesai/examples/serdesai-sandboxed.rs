@@ -10,7 +10,7 @@
 //! Run: OPENAI_API_KEY=... cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 
 use llm_coding_tools_serdesai::AllowedPathResolver;
-use llm_coding_tools_serdesai::PreambleBuilder;
+use llm_coding_tools_serdesai::SystemPromptBuilder;
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 use serdes_ai::prelude::*;
@@ -40,10 +40,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // === Build agent with sandboxed tools ===
     //
-    // Use PreambleBuilder with fluent chaining:
+    // Use SystemPromptBuilder with fluent chaining:
     // - working_directory() and allowed_paths() consume self (chaining)
     // - track() takes &mut self (passthrough for agent builder)
-    let mut pb = PreambleBuilder::new()
+    let mut pb = SystemPromptBuilder::new()
         .working_directory(std::env::current_dir()?.to_string())
         .allowed_paths(&resolver);
 

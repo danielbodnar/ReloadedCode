@@ -10,7 +10,7 @@
 //! Run: OPENAI_API_KEY=... cargo run --example rig-sandboxed -p llm-coding-tools-rig
 
 use llm_coding_tools_rig::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-use llm_coding_tools_rig::{AllowedPathResolver, PreambleBuilder};
+use llm_coding_tools_rig::{AllowedPathResolver, SystemPromptBuilder};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::openai;
@@ -44,10 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // === Build agent with sandboxed tools ===
     //
-    // Use PreambleBuilder with fluent chaining:
+    // Use SystemPromptBuilder with fluent chaining:
     // - working_directory() and allowed_paths() consume self (chaining)
     // - track() takes &mut self (passthrough for agent builder)
-    let mut pb = PreambleBuilder::new()
+    let mut pb = SystemPromptBuilder::new()
         .working_directory(std::env::current_dir()?.to_string())
         .allowed_paths(&resolver);
 
