@@ -69,7 +69,14 @@ jobs:
             SEARCH_RESULT=$(cargo search "^${CRATE}$" --limit 1)
             if echo "$SEARCH_RESULT" | grep -q "^${CRATE} "; then
               echo "Running semver checks for ${CRATE}..."
-              cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }}
+              # Note: llm-coding-tools-core has mutually exclusive async/blocking features,
+              # so we must use --only-explicit-features to avoid enabling all features.
+              # The rig/serdesai crates are async-only and don't have the tokio feature.
+              if [ "${CRATE}" = "llm-coding-tools-core" ]; then
+                cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features tokio
+              else
+                cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }}
+              fi
             else
               echo "No previous version of ${CRATE} found on crates.io. Skipping semver checks."
             fi
@@ -117,6 +124,7 @@ jobs:
           rust-cargo-project-paths: |
             src/llm-coding-tools-core
             src/llm-coding-tools-rig
+            src/llm-coding-tools-serdesai
           compression-tool: 7z
           artifact-groups-file: .github/artifact-groups.yml
           changelog-enabled: "true"

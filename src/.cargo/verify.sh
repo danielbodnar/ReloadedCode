@@ -27,7 +27,7 @@ echo "Testing blocking feature..."
 cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
 
 echo "Docs..."
-cargo doc --workspace --no-deps --quiet
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
 
 echo "Formatting..."
 cargo fmt --all
