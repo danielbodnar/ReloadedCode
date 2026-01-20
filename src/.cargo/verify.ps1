@@ -26,6 +26,7 @@ Write-Host "Testing blocking feature..."
 cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
 
 Write-Host "Docs..."
+$env:RUSTDOCFLAGS = "-D warnings"
 cargo doc --workspace --no-deps --quiet
 
 Write-Host "Formatting..."
