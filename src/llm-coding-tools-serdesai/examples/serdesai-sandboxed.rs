@@ -7,13 +7,20 @@
 //! - Security-conscious deployments limiting filesystem exposure
 //! - Project-scoped agents that shouldn't touch system files
 //!
-//! Run: OPENAI_API_KEY=... cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
+//! Run: cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 
+use futures::StreamExt;
 use llm_coding_tools_serdesai::AllowedPathResolver;
 use llm_coding_tools_serdesai::SystemPromptBuilder;
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
+use serdes_ai::models::openrouter::OpenRouterModel;
 use serdes_ai::prelude::*;
+
+// API key below has a zero spend limit; it cannot incur charges.
+// If this no longer works, find a free model to use on OpenRouter for testing.
+const OPENROUTER_API_KEY: &str = "";
+const OPENROUTER_MODEL: &str = "z-ai/glm-4.5-air:free";
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -44,10 +51,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // - working_directory() and allowed_paths() consume self (chaining)
     // - track() takes &mut self (passthrough for agent builder)
     let mut pb = SystemPromptBuilder::new()
-        .working_directory(std::env::current_dir()?.to_string())
+        .working_directory(std::env::current_dir()?.display().to_string())
         .allowed_paths(&resolver);
 
-    let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
+    let model = OpenRouterModel::new(OPENROUTER_MODEL, OPENROUTER_API_KEY);
+    let agent = AgentBuilder::<(), String>::new(model)
+        .instructions("Use tools to answer; call at least one tool before responding.")
         .tool(pb.track(read))
         .tool(pb.track(write))
         .tool(pb.track(edit))
@@ -67,10 +76,22 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // === Run the agent ===
     println!("\n=== Running Agent ===");
-    let result = agent
-        .run("List all Rust source files in the current directory", ())
-        .await?;
-    println!("\n=== Response ===\n{}", result.output());
+    let prompt = "List the Rust files in the current directory using glob";
+    let mut stream = agent.run_stream(prompt, ()).await?;
+
+    while let Some(event) = stream.next().await {
+        match event? {
+            AgentStreamEvent::TextDelta { text, .. } => print!("{}", text),
+            AgentStreamEvent::ToolCallStart {
+                tool_name,
+                tool_call_id,
+            } => {
+                let call_id = tool_call_id.unwrap_or_else(|| "unknown".to_string());
+                println!("Tool call start: {tool_name} ({call_id})");
+            }
+            _ => {}
+        }
+    }
 
     Ok(())
 }

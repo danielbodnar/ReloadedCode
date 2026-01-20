@@ -1176,11 +1176,14 @@ name = "llm-coding-tools-serdesai"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "llm-coding-tools-core",
  "reqwest 0.13.1",
  "serde",
  "serde_json",
  "serdes-ai",
+ "serdes-ai-models",
+ "serdes-ai-streaming",
  "tempfile",
  "tokio",
  "wiremock",

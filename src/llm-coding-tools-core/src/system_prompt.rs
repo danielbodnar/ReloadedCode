@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn add_context_selective_inclusion_git_only() {
-        use crate::context::{GIT_WORKFLOW, GITHUB_CLI};
+        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
 
         // Only include git workflow (not GitHub CLI)
         let pb = SystemPromptBuilder::new()
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn add_context_both_git_and_github() {
-        use crate::context::{GIT_WORKFLOW, GITHUB_CLI};
+        use crate::context::{GITHUB_CLI, GIT_WORKFLOW};
 
         let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
