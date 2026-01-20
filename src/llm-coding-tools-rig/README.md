@@ -12,7 +12,6 @@ Lightweight, high-performance Rig framework Tool implementations for coding tool
   - `allowed::*` - Sandboxed to configured directories
 - **Shell execution** - Cross-platform command execution with timeout
 - **Web fetching** - URL content retrieval with format conversion
-- **Task delegation** - Sub-agent spawning for complex tasks
 - **Todo management** - Shared-state todo list tracking
 - **Context strings** - LLM guidance text for tool usage (re-exported from core)
 
@@ -94,7 +93,7 @@ let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone(
 let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
-Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoTools`.
+Other tools: `BashTool`, `WebFetchTool`, `TodoTools`.
 Use `SystemPromptBuilder` to register tools and pass `pb.build()` to `.preamble()`. Set `working_directory()` so the environment section is populated.
 Context strings are re-exported in `llm_coding_tools_rig::context` (e.g., `BASH`, `READ_ABSOLUTE`).
 

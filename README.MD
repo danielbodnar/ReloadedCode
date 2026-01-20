@@ -2,6 +2,7 @@
 
 [![Crates.io - llm-coding-tools-core](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core)
 [![Crates.io - llm-coding-tools-rig](https://img.shields.io/crates/v/llm-coding-tools-rig.svg)](https://crates.io/crates/llm-coding-tools-rig)
+[![Crates.io - llm-coding-tools-serdesai](https://img.shields.io/crates/v/llm-coding-tools-serdesai.svg)](https://crates.io/crates/llm-coding-tools-serdesai)
 [![Docs.rs](https://docs.rs/llm-coding-tools-rig/badge.svg)](https://docs.rs/llm-coding-tools-rig)
 [![CI](https://github.com/Sewer56/llm-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/llm-coding-tools/actions)
 
@@ -13,6 +14,7 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 
 - **[llm-coding-tools-core](./src/llm-coding-tools-core/)**: Framework-agnostic core operations and utilities
 - **[llm-coding-tools-rig](./src/llm-coding-tools-rig/)**: Rig framework-specific Tool implementations
+- **[llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/)**: serdesAI framework-specific Tool implementations
 
 ## Features
 
@@ -20,7 +22,6 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 - **Search**: Glob pattern matching and regex content search  
 - **Shell**: Cross-platform command execution with timeout
 - **Web**: URL fetching with HTML-to-markdown conversion
-- **Task Delegation**: Sub-agent spawning for complex workflows
 - **Path Security**: Choose between unrestricted or sandboxed file access
 - **Context Strings**: Embedded LLM guidance for tool usage
 
@@ -37,6 +38,8 @@ Add to your `Cargo.toml`:
 [dependencies]
 llm-coding-tools-rig = "0.1"
 ```
+
+See also [llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/README.md) for serdesAI framework support.
 
 ```rust,no_run
 use llm_coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
@@ -67,20 +70,24 @@ let agent = client
 ## Examples
 
 ```bash
-# Basic toolset setup
-cargo run --example basic -p llm-coding-tools-rig
+# Rig framework - Basic toolset setup
+cargo run --example rig-basic -p llm-coding-tools-rig
 
-# Complete agent configuration (recommended starting point)
-cargo run --example full_agent -p llm-coding-tools-rig
+# Rig framework - Sandboxed file access
+cargo run --example rig-sandboxed -p llm-coding-tools-rig
 
-# Sandboxed file access
-cargo run --example sandboxed -p llm-coding-tools-rig
+# serdesAI framework - Basic agent setup
+cargo run --example serdesai-basic -p llm-coding-tools-serdesai
+
+# serdesAI framework - Sandboxed file access
+cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 ```
 
 ## Documentation
 
 - [llm-coding-tools-core README](./src/llm-coding-tools-core/README.md)
 - [llm-coding-tools-rig README](./src/llm-coding-tools-rig/README.md)
+- [llm-coding-tools-serdesai README](./src/llm-coding-tools-serdesai/README.md)
 - [Developer Guidelines](./src/AGENTS.md)
 
 ## Contributing
