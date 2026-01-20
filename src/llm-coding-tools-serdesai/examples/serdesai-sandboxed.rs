@@ -16,6 +16,7 @@ use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 use serdes_ai::models::openrouter::OpenRouterModel;
 use serdes_ai::prelude::*;
+use std::fmt::Write;
 
 // API key below has a zero spend limit; it cannot incur charges.
 // If this no longer works, find a free model to use on OpenRouter for testing.
@@ -79,15 +80,28 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let prompt = "List the Rust files in the current directory using glob";
     let mut stream = agent.run_stream(prompt, ()).await?;
 
+    fn log_xml(request_id: u32, tag: &str, content: &str) {
+        let mut line = String::with_capacity(content.len() + tag.len() * 2 + 18);
+        let _ = write!(line, "<{request_id}:{tag}>{content}</{tag}>");
+        println!("{line}");
+    }
+
+    let mut request_id = 0u32;
+    log_xml(request_id, "user", prompt);
+    request_id = request_id.saturating_add(1);
+    let mut assistant_message = String::with_capacity(256);
+
     while let Some(event) = stream.next().await {
         match event? {
-            AgentStreamEvent::TextDelta { text, .. } => print!("{}", text),
-            AgentStreamEvent::ToolCallStart {
-                tool_name,
-                tool_call_id,
-            } => {
-                let call_id = tool_call_id.unwrap_or_else(|| "unknown".to_string());
-                println!("Tool call start: {tool_name} ({call_id})");
+            AgentStreamEvent::TextDelta { text, .. } => assistant_message.push_str(&text),
+            AgentStreamEvent::RequestStart { .. } => assistant_message.clear(),
+            AgentStreamEvent::ToolCallStart { tool_name, .. } => {
+                log_xml(request_id, "tool", &tool_name);
+                request_id = request_id.saturating_add(1);
+            }
+            AgentStreamEvent::ResponseComplete { .. } => {
+                log_xml(request_id, "assistant", &assistant_message);
+                request_id = request_id.saturating_add(1);
             }
             _ => {}
         }
