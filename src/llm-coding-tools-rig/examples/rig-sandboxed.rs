@@ -7,14 +7,21 @@
 //! - Security-conscious deployments limiting filesystem exposure
 //! - Project-scoped agents that shouldn't touch system files
 //!
-//! Run: OPENAI_API_KEY=... cargo run --example rig-sandboxed -p llm-coding-tools-rig
+//! Run: cargo run --example rig-sandboxed -p llm-coding-tools-rig
 
 use llm_coding_tools_rig::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 use llm_coding_tools_rig::{AllowedPathResolver, SystemPromptBuilder};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
-use rig::providers::openai;
+use rig::providers::openrouter;
 use std::path::PathBuf;
+
+// API key below has a zero spend limit; it cannot incur charges.
+// If this no longer works, find a free model to use on OpenRouter for testing.
+// Note: OpenRouter is buggy on rig currently; it may not always work well.
+// This is for demonstration only.
+const OPENROUTER_API_KEY: &str = "";
+const OPENROUTER_MODEL: &str = "z-ai/glm-4.5-air:free";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,12 +55,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // - working_directory() and allowed_paths() consume self (chaining)
     // - track() takes &mut self (passthrough for agent builder)
     let mut pb = SystemPromptBuilder::new()
-        .working_directory(std::env::current_dir()?.to_string())
+        .working_directory(std::env::current_dir()?.display().to_string())
         .allowed_paths(&resolver);
 
-    let client = openai::Client::from_env();
+    let client: openrouter::Client = openrouter::Client::new(OPENROUTER_API_KEY)?;
     let agent = client
-        .agent("gpt-4o")
+        .agent(OPENROUTER_MODEL)
         .tool(pb.track(read))
         .tool(pb.track(write))
         .tool(pb.track(edit))
