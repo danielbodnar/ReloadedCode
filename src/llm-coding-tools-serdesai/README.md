@@ -12,7 +12,6 @@ Lightweight, high-performance serdesAI framework Tool implementations for coding
   - `allowed::*` - Sandboxed to configured directories
 - **Shell execution** - Cross-platform command execution with timeout
 - **Web fetching** - URL content retrieval with format conversion
-- **Task delegation** - Sub-agent spawning for complex tasks
 - **Todo management** - Shared-state todo list tracking
 - **Context strings** - LLM guidance text for tool usage (re-exported from core)
 - **Schema builders** - Composable helpers for custom tool definitions
