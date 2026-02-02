@@ -60,6 +60,5 @@ Available context strings:
 ## Design Principles
 
 - No framework-specific dependencies, plug and play into any LLM framework/library
-  - See [llm-coding-tools-rig](https://crates.io/crates/llm-coding-tools-rig) for an integration example with [rig](https://crates.io/crates/rig)
 - Minimal dependency footprint
 - Performance-oriented (optimized) with zero-cost abstractions

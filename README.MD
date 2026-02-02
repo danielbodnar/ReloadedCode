@@ -1,19 +1,17 @@
 # llm-coding-tools
 
 [![Crates.io - llm-coding-tools-core](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core)
-[![Crates.io - llm-coding-tools-rig](https://img.shields.io/crates/v/llm-coding-tools-rig.svg)](https://crates.io/crates/llm-coding-tools-rig)
 [![Crates.io - llm-coding-tools-serdesai](https://img.shields.io/crates/v/llm-coding-tools-serdesai.svg)](https://crates.io/crates/llm-coding-tools-serdesai)
-[![Docs.rs](https://docs.rs/llm-coding-tools-rig/badge.svg)](https://docs.rs/llm-coding-tools-rig)
+[![Docs.rs](https://docs.rs/llm-coding-tools-serdesai/badge.svg)](https://docs.rs/llm-coding-tools-serdesai)
 [![CI](https://github.com/Sewer56/llm-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/llm-coding-tools/actions)
 
-Lightweight, high-performance coding tool implementations for LLM-powered development agents. Plug and play into your favourite frameworks like [Rig](https://github.com/0xPlaygrounds/rig).
+Lightweight, high-performance coding tool implementations for LLM-powered development agents. Plug and play into your favourite frameworks.
 
 ## About This Workspace
 
 This workspace contains multiple Rust crates for integrating coding tools with LLM agents:
 
 - **[llm-coding-tools-core](./src/llm-coding-tools-core/)**: Framework-agnostic core operations and utilities
-- **[llm-coding-tools-rig](./src/llm-coding-tools-rig/)**: Rig framework-specific Tool implementations
 - **[llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/)**: serdesAI framework-specific Tool implementations
 
 ## Features
@@ -36,48 +34,37 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-coding-tools-rig = "0.1"
+llm-coding-tools-serdesai = "0.1"
 ```
 
-See also [llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/README.md) for serdesAI framework support.
-
 ```rust,no_run
-use llm_coding_tools_rig::absolute::{ReadTool, WriteTool, GlobTool};
-use llm_coding_tools_rig::{BashTool, PreambleBuilder, TodoTools};
-use rig::providers::openai;
-use rig::completion::Prompt;
+use llm_coding_tools_serdesai::{AgentBuilder, BashTool, TodoTools};
+use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool, EditTool, GlobTool, GrepTool};
 
-// Track tools and generate LLM guidance
-let mut pb = PreambleBuilder::<false>::new();
+let mut builder = AgentBuilder::new();
 let todos = TodoTools::new();
 
-let client = openai::Client::from_env();
-let agent = client
-    .agent("gpt-4o")
-    .tool(pb.track(ReadTool::<true>::new()))
-    .tool(pb.track(WriteTool::new()))
-    .tool(pb.track(GlobTool::new()))
-    .tool(pb.track(BashTool::new()))
-    .tool(pb.track(todos.read))
-    .tool(pb.track(todos.write))
-    .preamble(&pb.build())
-    .build();
+builder
+    .track(ReadTool::<true>::new())
+    .track(WriteTool::new())
+    .track(EditTool::<true>::new())
+    .track(GlobTool::new())
+    .track(GrepTool::<true>::new())
+    .track(BashTool::new())
+    .track(&todos.read)
+    .track(&todos.write);
+
+let mut agent = builder.build();
 
 // Use the agent
-// let response = agent.prompt("List all files").await?;
+// let response = agent.invoke("List all files").await?;
 ```
 
 ## Examples
 
 ```bash
-# Rig framework - Basic toolset setup
-cargo run --example rig-basic -p llm-coding-tools-rig
-
-# Rig framework - Sandboxed file access
-cargo run --example rig-sandboxed -p llm-coding-tools-rig
-
 # serdesAI framework - Basic agent setup
-cargo run --example serdesai-basic -p llm-coding-tools-serdesai
+cargo run --example serdesai-agents -p llm-coding-tools-serdesai
 
 # serdesAI framework - Sandboxed file access
 cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
@@ -86,13 +73,18 @@ cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 ## Documentation
 
 - [llm-coding-tools-core README](./src/llm-coding-tools-core/README.md)
-- [llm-coding-tools-rig README](./src/llm-coding-tools-rig/README.md)
 - [llm-coding-tools-serdesai README](./src/llm-coding-tools-serdesai/README.md)
 - [Developer Guidelines](./src/AGENTS.md)
 
 ## Contributing
 
 Contributions are welcome! Please ensure all tests pass and the code follows our guidelines.
+
+## Deprecation Notice
+
+**Rig framework support (`llm-coding-tools-rig`) has been removed** (commit 17158db) due to library bugs that prevented examples from running reliably.
+
+You're welcome to submit a PR re-adding rig support if you're willing to maintain it. Since I don't use rig personally, I'm not able to actively maintain that integration. Alternatively, you can create your own crate building on `llm-coding-tools-core` directly.
 
 ## License
 

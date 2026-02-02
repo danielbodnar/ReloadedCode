@@ -93,16 +93,6 @@ impl SystemPromptBuilder {
     /// let _my_tool = pb.track(MyTool);
     /// // register _my_tool with your tool collection
     /// ```
-    ///
-    /// For example, if working with rig's agent builder:
-    /// ```text
-    /// let mut pb = SystemPromptBuilder::new();
-    /// let agent = client
-    ///     .agent("gpt-4o")
-    ///     .tool(pb.track(ReadTool::new()))
-    ///     .system prompt(&pb.build())
-    ///     .build();
-    /// ```
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
         self.entries.push(ContextEntry {
             name: T::NAME,
