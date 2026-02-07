@@ -11,7 +11,7 @@ The `async` and `blocking` features are mutually exclusive - enabling both cause
 # Project Structure
 
 - `llm-coding-tools-core/` - Framework-agnostic core library
-  - `src/operations/` - Core operation implementations (read, write, edit, glob, grep, bash, etc.)
+  - `src/tools/` - Core tool implementations (read, write, edit, glob, grep, bash, etc.)
   - `src/path/` - Path resolution (absolute and allowed)
   - `src/error.rs` - Unified error types
   - `src/output.rs` - Tool output formatting
