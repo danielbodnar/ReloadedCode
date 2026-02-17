@@ -69,6 +69,10 @@ pub enum PermissionAction {
 ///
 /// Fields are private to enforce normalization and packing invariants.
 /// Use [`Rule::new`] to create rules.
+///
+/// # Memory Optimizations
+///
+/// See: https://github.com/Sewer56/llm-coding-tools/pull/32
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     /// Packed permission hash and action.
