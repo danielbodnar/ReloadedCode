@@ -10,7 +10,7 @@ include = ["src/**/*", "examples/**/*", "README.md"]
 
 [dependencies]
 # Core tool operations (file read/write/edit, glob, grep, bash, etc.)
-llm-coding-tools-core = { version = "0.1.0", path = "../llm-coding-tools-core", features = [
+llm-coding-tools-core = { path = "../llm-coding-tools-core", features = [
     "tokio",
 ] }
 

@@ -93,6 +93,16 @@ impl SystemPromptBuilder {
     /// let _my_tool = pb.track(MyTool);
     /// // register _my_tool with your tool collection
     /// ```
+    ///
+    /// For example, if working with serdesAI:
+    /// ```text
+    /// let mut pb = SystemPromptBuilder::new();
+    /// let agent = client
+    ///     .builder()
+    ///     .tool(pb.track(ReadTool::new()))
+    ///     .system_prompt(&pb.build())
+    ///     .build();
+    /// ```
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
         self.entries.push(ContextEntry {
             name: T::NAME,
@@ -371,61 +381,10 @@ impl SystemPromptBuilder {
     }
 }
 
-/// Extension trait for placeholder substitution on system prompt strings.
-///
-/// Provides simple `{key}` placeholder replacement after building a system prompt.
-/// Unmatched placeholders are left as-is.
-///
-/// # Example
-///
-/// ```rust
-/// use llm_coding_tools_core::Substitute;
-///
-/// let text = "Available agents: {agents}".to_string();
-/// let result = text
-///     .substitute("agents", "code-review, research")
-///     .substitute("missing", "ignored");
-///
-/// assert_eq!(result, "Available agents: code-review, research");
-/// ```
-pub trait Substitute {
-    /// Replaces `{key}` placeholder with the given value.
-    ///
-    /// Returns a new String with the substitution applied.
-    /// If the placeholder is not found, returns the string unchanged.
-    fn substitute(self, key: &str, value: &str) -> String;
-
-    /// Replaces multiple `{key}` placeholders with their values.
-    ///
-    /// Accepts an iterator of (key, value) pairs.
-    fn substitute_all<'a>(
-        self,
-        substitutions: impl IntoIterator<Item = (&'a str, &'a str)>,
-    ) -> String;
-}
-
-impl Substitute for String {
-    #[inline]
-    fn substitute(self, key: &str, value: &str) -> String {
-        let placeholder = format!("{{{}}}", key);
-        self.replace(&placeholder, value)
-    }
-
-    fn substitute_all<'a>(
-        mut self,
-        substitutions: impl IntoIterator<Item = (&'a str, &'a str)>,
-    ) -> String {
-        for (key, value) in substitutions {
-            let placeholder = format!("{{{}}}", key);
-            self = self.replace(&placeholder, value);
-        }
-        self
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
 
     struct MockTool {
         id: u32,
@@ -609,51 +568,6 @@ mod tests {
         let preamble = pb.build();
 
         assert!(preamble.contains("Working directory: /static/path"));
-    }
-
-    #[test]
-    fn substitute_replaces_single_placeholder() {
-        use super::Substitute;
-
-        let text = "Hello {name}!".to_string();
-        let result = text.substitute("name", "World");
-        assert_eq!(result, "Hello World!");
-    }
-
-    #[test]
-    fn substitute_leaves_unmatched_placeholders() {
-        use super::Substitute;
-
-        let text = "Hello {name}, welcome to {place}!".to_string();
-        let result = text.substitute("name", "Alice");
-        assert_eq!(result, "Hello Alice, welcome to {place}!");
-    }
-
-    #[test]
-    fn substitute_handles_empty_value() {
-        use super::Substitute;
-
-        let text = "Prefix{middle}Suffix".to_string();
-        let result = text.substitute("middle", "");
-        assert_eq!(result, "PrefixSuffix");
-    }
-
-    #[test]
-    fn substitute_all_replaces_multiple() {
-        use super::Substitute;
-
-        let text = "Hello {name}, welcome to {place}!".to_string();
-        let result = text.substitute_all([("name", "Alice"), ("place", "Wonderland")]);
-        assert_eq!(result, "Hello Alice, welcome to Wonderland!");
-    }
-
-    #[test]
-    fn substitute_no_placeholder_returns_unchanged() {
-        use super::Substitute;
-
-        let text = "No placeholders here".to_string();
-        let result = text.substitute("missing", "value");
-        assert_eq!(result, "No placeholders here");
     }
 
     #[test]
@@ -1073,7 +987,11 @@ mod tests {
     #[test]
     fn system_prompt_no_trailing_newline_gets_separator() {
         // System prompt without trailing newline should get "\n\n" separator
-        let mut pb = SystemPromptBuilder::new().system_prompt("# System\n\nNo trailing newline");
+        let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {
+            "# System
+
+            No trailing newline"
+        });
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1092,8 +1010,11 @@ mod tests {
     #[test]
     fn system_prompt_single_trailing_newline_gets_one_more() {
         // System prompt ending with \n should get "\n" to make "\n\n"
-        let mut pb =
-            SystemPromptBuilder::new().system_prompt("# System\n\nEnds with single newline\n");
+        let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {"
+            # System
+
+            Ends with single newline
+        "});
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1112,8 +1033,12 @@ mod tests {
     #[test]
     fn system_prompt_double_trailing_newline_no_extra() {
         // System prompt ending with \n\n should get no extra separator
-        let mut pb =
-            SystemPromptBuilder::new().system_prompt("# System\n\nEnds with double newline\n\n");
+        let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {"
+            # System
+
+            Ends with double newline
+
+        "});
         let _ = pb.track(MockTool { id: 1 });
 
         let preamble = pb.build();
@@ -1132,7 +1057,11 @@ mod tests {
     #[test]
     fn system_prompt_trailing_newlines_with_environment() {
         let pb = SystemPromptBuilder::new()
-            .system_prompt("# System\n\nEnds with single newline\n")
+            .system_prompt(indoc! {"
+            # System
+
+            Ends with single newline
+        "})
             .working_directory("/home/user");
 
         let preamble = pb.build();
@@ -1151,7 +1080,10 @@ mod tests {
     fn system_prompt_chains_fluently() {
         // Verify fluent chaining with other methods
         let pb = SystemPromptBuilder::new()
-            .system_prompt("# System\n\nContent.")
+            .system_prompt(indoc! {"
+                # System
+
+                Content."})
             .working_directory("/home/user")
             .add_context("A", "a");
 
@@ -1178,7 +1110,10 @@ mod tests {
         let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
         let mut pb = SystemPromptBuilder::new()
-            .system_prompt("# System Instructions\n\nYou are helpful.")
+            .system_prompt(indoc! {"
+                # System Instructions
+
+                You are helpful."})
             .working_directory("/home/user/project")
             .allowed_paths(&resolver)
             .add_context("Git Workflow", "Git guidance content.")

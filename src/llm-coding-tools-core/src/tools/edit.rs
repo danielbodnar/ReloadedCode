@@ -1,11 +1,11 @@
-//! File editing operation with exact string replacement.
+//! File editing tool with exact string replacement.
 
 use crate::error::ToolError;
 use crate::fs;
 use crate::path::PathResolver;
 use thiserror::Error;
 
-/// Errors specific to edit operations.
+/// Errors specific to edit tools.
 #[derive(Debug, Error)]
 pub enum EditError {
     /// I/O or path validation error.
@@ -89,7 +89,7 @@ mod tests {
         file
     }
 
-    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
     async fn single_replacement_succeeds() {
         let file = create_temp_file("hello world");
         let resolver = AbsolutePathResolver;
@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(content, "hello rust");
     }
 
-    #[maybe_async::test(feature = "blocking", async(not(feature = "blocking"), tokio::test))]
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
     async fn not_found_returns_error() {
         let file = create_temp_file("hello world");
         let resolver = AbsolutePathResolver;

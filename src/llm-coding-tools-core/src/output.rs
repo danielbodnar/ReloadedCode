@@ -1,6 +1,7 @@
 //! Common output types for tool responses.
 
-use crate::operations::WebFetchOutput;
+#[cfg(any(feature = "async", feature = "blocking"))]
+use crate::tools::WebFetchOutput;
 use serde::Serialize;
 
 /// Wrapper for tool output with truncation metadata.
@@ -45,6 +46,7 @@ impl From<&str> for ToolOutput {
     }
 }
 
+#[cfg(any(feature = "async", feature = "blocking"))]
 impl From<WebFetchOutput> for ToolOutput {
     fn from(output: WebFetchOutput) -> Self {
         Self::new(format!(
@@ -91,6 +93,7 @@ mod tests {
         assert!(json.contains("truncated"));
     }
 
+    #[cfg(any(feature = "async", feature = "blocking"))]
     #[test]
     fn tool_output_from_webfetch_output() {
         let webfetch = WebFetchOutput {
