@@ -29,4 +29,10 @@ impl Hash63 {
     pub(crate) const fn as_u64(&self) -> u64 {
         self.0
     }
+
+    /// Creates a Hash63 from a Hash64 by extracting upper 63 bits.
+    #[inline]
+    pub(crate) fn from_hash64(hash: crate::internal::hash64::Hash64) -> Self {
+        Self(hash.as_u64() >> 1)
+    }
 }

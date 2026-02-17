@@ -5,3 +5,4 @@
 
 pub mod hash63;
 pub mod hash64;
+pub mod packed_permission;
