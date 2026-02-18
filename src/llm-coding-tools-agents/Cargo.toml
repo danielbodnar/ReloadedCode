@@ -31,7 +31,7 @@ ignore = "0.4.25"
 ahash = { version = "0.8", features = ["serde"] }
 
 # Core library for permissions and tool types
-llm-coding-tools-core = { path = "../llm-coding-tools-core" }
+llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0" }
 
 [dev-dependencies]
 tempfile = "3.24"
