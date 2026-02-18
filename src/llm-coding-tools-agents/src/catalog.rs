@@ -1,7 +1,7 @@
 //! Config-only catalog of agent configurations.
 
 use crate::config::AgentConfig;
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 /// Config-only storage for agent configurations loaded by [`crate::AgentLoader`].
 ///
@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// (e.g., in serdesAI) to iterate and construct runtime agents.
 #[derive(Debug, Clone, Default)]
 pub struct AgentCatalog {
-    agents: HashMap<String, AgentConfig>,
+    agents: AHashMap<String, AgentConfig>,
 }
 
 impl AgentCatalog {
@@ -23,7 +23,7 @@ impl AgentCatalog {
     #[inline]
     pub fn new() -> Self {
         Self {
-            agents: HashMap::new(),
+            agents: AHashMap::new(),
         }
     }
 
@@ -71,8 +71,8 @@ impl AgentCatalog {
 mod tests {
     use super::*;
     use crate::config::AgentMode;
+    use ahash::AHashMap;
     use indexmap::IndexMap;
-    use std::collections::HashMap;
 
     #[test]
     fn catalog_iter_and_by_name() {
@@ -86,7 +86,7 @@ mod tests {
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
-            options: HashMap::new(),
+            options: AHashMap::new(),
             prompt: String::new(),
         });
         catalog.insert(AgentConfig {
@@ -98,7 +98,7 @@ mod tests {
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
-            options: HashMap::new(),
+            options: AHashMap::new(),
             prompt: String::new(),
         });
 

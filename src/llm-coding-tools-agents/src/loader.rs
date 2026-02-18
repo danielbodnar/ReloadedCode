@@ -395,9 +395,9 @@ fn derive_agent_name_from_rel(rel_path: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::config::AgentMode;
+    use ahash::AHashMap;
     use indexmap::IndexMap;
     use indoc::indoc;
-    use std::collections::HashMap;
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::TempDir;
@@ -676,7 +676,7 @@ mod tests {
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
-            options: HashMap::new(),
+            options: AHashMap::new(),
             prompt: String::new(),
         }
     }
