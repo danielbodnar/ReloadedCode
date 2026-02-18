@@ -72,7 +72,7 @@ pub enum PermissionAction {
 ///
 /// # Memory Optimizations
 ///
-/// See: https://github.com/Sewer56/llm-coding-tools/pull/32
+/// See: <https://github.com/Sewer56/llm-coding-tools/pull/32>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     /// Packed permission hash and action.
