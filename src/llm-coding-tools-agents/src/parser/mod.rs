@@ -1,9 +1,17 @@
-//! Agent markdown parser for files with YAML frontmatter.
+//! Markdown + YAML frontmatter parser.
 //!
-//! Parses markdown that starts with `---` frontmatter and returns deserialized
-//! frontmatter data plus normalized body content (LF line endings, trimmed).
-//! YAML frontmatter is preprocessed by the `preprocessor` module before
-//! deserialization to handle unquoted colon-containing values safely.
+//! Given a file like:
+//!
+//! ```text
+//! ---
+//! description: Example agent (this is frontmatter)
+//! ---
+//!
+//! Body content here.
+//! ```
+//!
+//! Returns `(frontmatter, body)` where body has LF line endings and trimmed
+//! whitespace. See [`preprocessor`] module for YAML preprocessing details.
 
 mod preprocessor;
 
