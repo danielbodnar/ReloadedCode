@@ -178,9 +178,42 @@ fn extract_if_needs_block_scalar(line: &str) -> Option<(&str, &str)> {
         return None;
     }
 
-    if !value.contains(':') {
-        return None;
+    let bytes = value.as_bytes();
+    let mut hash_idx = None;
+    let mut has_colon = false;
+
+    // Scan once up to the first inline comment marker.
+    // We only care about ':' that appears before '#'.
+    for (idx, byte) in bytes.iter().copied().enumerate() {
+        match byte {
+            b':' => has_colon = true,
+            b'#' => {
+                hash_idx = Some(idx);
+                break;
+            }
+            _ => {}
+        }
     }
+
+    let value = if let Some(hash_idx) = hash_idx {
+        // If the comment suffix has ':', we treat the line as ambiguous
+        // and leave it untouched to avoid false positives.
+        if bytes[hash_idx + 1..].contains(&b':') {
+            return None;
+        }
+
+        // Strip inline comment text from the transformed value.
+        let val_part = value[..hash_idx].trim();
+        if val_part.is_empty() || !has_colon {
+            return None;
+        }
+        val_part
+    } else {
+        if !has_colon {
+            return None;
+        }
+        value
+    };
 
     // This line is ambiguous and should become a block scalar.
     Some((key, value))
@@ -271,5 +304,21 @@ mod tests {
         let output = preprocess_frontmatter_yaml(input);
         assert!(output.as_ref().contains("  line:with:colons"));
         assert!(!output.as_ref().contains("  line: |-"));
+    }
+
+    #[test]
+    fn preprocess_strips_inline_comments_when_rewriting() {
+        let input = "model: provider/model:tag # inline comment";
+        let output = preprocess_frontmatter_yaml(input);
+        assert!(output.as_ref().contains("model: |-"));
+        assert!(output.as_ref().contains("  provider/model:tag"));
+        assert!(!output.as_ref().contains("# inline comment"));
+    }
+
+    #[test]
+    fn preprocess_skips_ambiguous_inline_comment_with_colon() {
+        let input = "model: provider/model # note: keep";
+        let output = preprocess_frontmatter_yaml(input);
+        assert_eq!(output.as_ref(), input);
     }
 }
