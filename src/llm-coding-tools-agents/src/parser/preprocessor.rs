@@ -63,71 +63,6 @@ pub(super) fn preprocess_frontmatter_yaml(input: &str) -> Cow<'_, str> {
     }
 }
 
-/// Returns true when a key matches the simple identifier format we accept.
-#[inline]
-fn is_valid_key(key: &str) -> bool {
-    let bytes = key.as_bytes();
-    let Some((&first, rest)) = bytes.split_first() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == b'_') {
-        return false;
-    }
-    rest.iter()
-        .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'-')
-}
-
-/// Extracts key/value when a line should become a block scalar entry.
-#[inline]
-fn block_scalar_parts(line: &str) -> Option<(&str, &str)> {
-    // Ignore blank lines and YAML comments.
-    let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.starts_with('#') {
-        return None;
-    }
-
-    // Skip indented lines (usually continuation lines).
-    let first = *line.as_bytes().first()?;
-    if first == b' ' || first == b'\t' {
-        return None;
-    }
-
-    // Split into key/value and validate the key shape.
-    let colon_pos = line.find(':')?;
-    let key = line[..colon_pos].trim();
-    if !is_valid_key(key) {
-        return None;
-    }
-
-    // Leave already-safe value forms untouched.
-    let value = line[colon_pos + 1..].trim();
-    if value.is_empty() || value == ">" || value == "|" || value == "|-" || value == ">-" {
-        return None;
-    }
-
-    // Quoted values are already safe, so we should not transform them.
-    let first_value = value.as_bytes().first().copied();
-    if matches!(first_value, Some(b'"') | Some(b'\'')) {
-        return None;
-    }
-
-    if matches!(first_value, Some(b'{') | Some(b'[')) {
-        return None;
-    }
-
-    // Skip YAML anchors, aliases, and tags - transforming these could change semantics.
-    if matches!(first_value, Some(b'&') | Some(b'*') | Some(b'!')) {
-        return None;
-    }
-
-    if !value.contains(':') {
-        return None;
-    }
-
-    // This line is ambiguous and should become a block scalar.
-    Some((key, value))
-}
-
 /// Rewrites matching lines and returns `None` when no rewrite is needed.
 fn convert_block_scalars(input: &str) -> Option<String> {
     let first = match find_first_block_scalar(input) {
@@ -198,6 +133,71 @@ fn find_first_block_scalar(input: &str) -> Option<FirstBlockScalar<'_>> {
     }
 
     None
+}
+
+/// Extracts key/value when a line should become a block scalar entry.
+#[inline]
+fn block_scalar_parts(line: &str) -> Option<(&str, &str)> {
+    // Ignore blank lines and YAML comments.
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+
+    // Skip indented lines (usually continuation lines).
+    let first = *line.as_bytes().first()?;
+    if first == b' ' || first == b'\t' {
+        return None;
+    }
+
+    // Split into key/value and validate the key shape.
+    let colon_pos = line.find(':')?;
+    let key = line[..colon_pos].trim();
+    if !is_valid_key(key) {
+        return None;
+    }
+
+    // Leave already-safe value forms untouched.
+    let value = line[colon_pos + 1..].trim();
+    if value.is_empty() || value == ">" || value == "|" || value == "|-" || value == ">-" {
+        return None;
+    }
+
+    // Quoted values are already safe, so we should not transform them.
+    let first_value = value.as_bytes().first().copied();
+    if matches!(first_value, Some(b'"') | Some(b'\'')) {
+        return None;
+    }
+
+    if matches!(first_value, Some(b'{') | Some(b'[')) {
+        return None;
+    }
+
+    // Skip YAML anchors, aliases, and tags - transforming these could change semantics.
+    if matches!(first_value, Some(b'&') | Some(b'*') | Some(b'!')) {
+        return None;
+    }
+
+    if !value.contains(':') {
+        return None;
+    }
+
+    // This line is ambiguous and should become a block scalar.
+    Some((key, value))
+}
+
+/// Returns true when a key matches the simple identifier format we accept.
+#[inline]
+fn is_valid_key(key: &str) -> bool {
+    let bytes = key.as_bytes();
+    let Some((&first, rest)) = bytes.split_first() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == b'_') {
+        return false;
+    }
+    rest.iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'-')
 }
 
 #[cfg(test)]
