@@ -9,14 +9,17 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Building..."
 cargo build -p llm-coding-tools-core
+cargo build -p llm-coding-tools-agents --quiet
 cargo build -p llm-coding-tools-serdesai --quiet
 
 Write-Host "Testing..."
 cargo test -p llm-coding-tools-core
+cargo test -p llm-coding-tools-agents --quiet
 cargo test -p llm-coding-tools-serdesai --quiet
 
 Write-Host "Clippy..."
 cargo clippy -p llm-coding-tools-core -- -D warnings
+cargo clippy -p llm-coding-tools-agents --quiet -- -D warnings
 cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings
 
 Write-Host "Testing blocking feature..."
@@ -31,6 +34,7 @@ cargo fmt --all
 
 Write-Host "Publish dry-run..."
 cargo publish --dry-run -p llm-coding-tools-core --quiet
+cargo publish --dry-run -p llm-coding-tools-agents --quiet
 cargo publish --dry-run -p llm-coding-tools-serdesai --quiet
 
 Write-Host "All checks passed!"
