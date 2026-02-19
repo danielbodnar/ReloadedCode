@@ -10,6 +10,7 @@ compile_error!("Either an async runtime (e.g., `tokio`) or `blocking` feature mu
 pub mod context;
 pub mod error;
 pub mod fs;
+pub mod models;
 pub mod output;
 pub mod path;
 pub mod permissions;
