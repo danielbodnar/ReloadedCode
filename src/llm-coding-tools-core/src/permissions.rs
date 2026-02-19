@@ -85,16 +85,13 @@ impl Rule {
     /// Creates a new rule with the provided permission and pattern.
     #[inline]
     pub fn new(
-        permission: impl Into<String>,
-        pattern: impl Into<String>,
+        permission: impl AsRef<str>,
+        pattern: impl AsRef<str>,
         action: PermissionAction,
     ) -> Self {
-        let permission = permission.into();
-        let pattern = pattern.into();
-
         Self {
-            permission: PackedPermission::new(hash_u64(&permission), action),
-            pattern: TinyString::<[u8; 14]>::from(pattern.as_str()),
+            permission: PackedPermission::new(hash_u64(permission.as_ref()), action),
+            pattern: TinyString::<[u8; 14]>::from(pattern.as_ref()),
         }
     }
 
