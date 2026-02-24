@@ -1,13 +1,14 @@
 //! Lookup result types for provider and model queries.
 
 use super::model_types::{ModelConfig, ModelInfo};
+use crate::models::catalog::internal::{ModelIdx, ProviderIdx};
 use crate::models::ProviderType;
 
 /// Provider lookup result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Provider<'a> {
     /// Index into provider metadata tables.
-    pub provider_idx: u16,
+    pub provider_idx: ProviderIdx,
     /// Provider base URL.
     pub api_url: &'a str,
     /// Candidate environment variables used to resolve API keys.
@@ -20,7 +21,7 @@ pub struct Provider<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Model {
     /// Index into model metadata/config sidecar tables.
-    pub model_config_idx: u16,
+    pub model_config_idx: ModelIdx,
     /// Distilled per-model metadata.
     pub info: ModelInfo,
     /// Optional model sampling defaults.

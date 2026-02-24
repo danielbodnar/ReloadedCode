@@ -4,6 +4,7 @@
 //! - `48` bits: truncated provider hash
 //! - `16` bits: provider index
 
+use super::ProviderIdx;
 use bitfields::bitfield;
 
 /// Number of retained hash bits for provider lookup entries.
@@ -42,6 +43,18 @@ impl PackedProviderTableEntry {
         packed.set_provider_idx(provider_idx);
         packed
     }
+
+    /// Creates one packed provider-table entry using [`ProviderIdx`].
+    #[inline]
+    pub fn from_parts_idx(hash64: u64, provider_idx: ProviderIdx) -> Self {
+        Self::from_parts(hash64, provider_idx.as_u16())
+    }
+
+    /// Returns the provider index as a [`ProviderIdx`].
+    #[inline]
+    pub fn provider_idx_val(self) -> ProviderIdx {
+        ProviderIdx::new(self.provider_idx())
+    }
 }
 
 #[cfg(test)]
@@ -66,5 +79,12 @@ mod tests {
     fn provider_idx_roundtrips() {
         let packed = PackedProviderTableEntry::from_parts(0xDEAD_BEEF_F00D_CAFEu64, 7);
         assert_eq!(packed.provider_idx(), 7);
+    }
+
+    #[test]
+    fn provider_idx_val_roundtrips() {
+        let idx = ProviderIdx::new(7);
+        let packed = PackedProviderTableEntry::from_parts_idx(0xDEAD_BEEF_F00D_CAFEu64, idx);
+        assert_eq!(packed.provider_idx_val(), idx);
     }
 }

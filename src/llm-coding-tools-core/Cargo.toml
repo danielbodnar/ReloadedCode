@@ -56,7 +56,7 @@ tinyvec_string = { version = "0.3", features = ["alloc"] }
 tinyvec = { version = "1.10", features = ["alloc"] }
 
 # Efficient immutable string table for provider URLs and env vars
-lite-strtab = "0.1"
+lite-strtab = "0.2"
 
 # ToolError type uses thiserror for ergonomic error definitions
 thiserror = "2.0"

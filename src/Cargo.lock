@@ -1271,9 +1271,9 @@ checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
 
 [[package]]
 name = "lite-strtab"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5384abfabf1f131da9233cc7441de3c3e1381399e61f07894d361bbe51a1dedb"
+checksum = "b13b2f68e6a3dcd8f4e8931336870da55181001bc14a9017389046dcd6942225"
 dependencies = [
  "allocator-api2 0.4.0",
  "thiserror 2.0.18",

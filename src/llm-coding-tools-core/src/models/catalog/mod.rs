@@ -111,6 +111,9 @@
 //! | Hash bits retained        |          48 | Truncated from 64-bit ahash output               |
 //! | Max reseed attempts       |          16 | Number of alternative hash seeds                 |
 //!
+//! Note: There's technically 16 bits per provider, but only 14 bits for provider env var.
+//! Since each provider typically has 1 env var; that means 14 bits for provider, effectively.
+//!
 //! # Detailed Memory Layout
 //!
 //! This layout is optimized for scenarios where many providers host overlapping
@@ -163,8 +166,9 @@ mod public;
 use ahash::RandomState;
 use hashbrown::HashTable;
 use internal::{
-    hash_model_key, hash_provider_key, PackedEnvRange, PackedModelConfigEntry, PackedModelEntry,
-    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, ProviderHash,
+    hash_model_key, hash_provider_key, ModelIdx, PackedEnvRange, PackedModelConfigEntry,
+    PackedModelEntry, PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry,
+    ProviderHash, ProviderIdx,
 };
 use lite_strtab::{StringId, StringTable};
 
@@ -180,9 +184,9 @@ pub struct ModelCatalog {
     /// Model key lookup table.
     model_table: HashTable<PackedModelTableEntry>,
     /// Provider API URLs indexed by provider index.
-    provider_api_urls: StringTable<u32, u16>,
+    provider_api_urls: StringTable<u32, ProviderIdx>,
     /// Provider env keys grouped in a string table.
-    provider_env_keys: StringTable<u32, u16>,
+    provider_env_keys: StringTable<u32, ProviderIdx>,
     /// Env key ranges (start, count) indexed by provider index.
     provider_env_ranges: Box<[PackedEnvRange]>,
     /// Packed provider metadata indexed by provider index.
@@ -283,6 +287,7 @@ impl ModelCatalog {
     fn provider_from_index(&self, provider_idx: u16) -> Option<Provider<'_>> {
         let provider_idx_usize = usize::from(provider_idx);
         let packed = *self.provider_entries.get(provider_idx_usize)?;
+        let provider_idx = ProviderIdx::new(provider_idx);
         let api_url = self.provider_api_urls.get(StringId::new(provider_idx))?;
         let range = self.provider_env_ranges.get(provider_idx_usize)?;
         let start = range.start();
@@ -293,7 +298,7 @@ impl ModelCatalog {
         } else {
             let mut vars = Vec::with_capacity(usize::from(count));
             for i in 0..count {
-                let idx = start + u16::from(i);
+                let idx = ProviderIdx::new(start + u16::from(i));
                 if let Some(s) = self.provider_env_keys.get(StringId::new(idx)) {
                     vars.push(s);
                 }
@@ -320,7 +325,7 @@ impl ModelCatalog {
             .and_then(|entry| entry.into_model_config());
 
         Some(Model {
-            model_config_idx,
+            model_config_idx: ModelIdx::new(model_config_idx),
             info,
             config,
         })

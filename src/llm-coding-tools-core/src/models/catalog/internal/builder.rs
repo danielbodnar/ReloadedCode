@@ -1,8 +1,8 @@
 use super::{
     hash_model_key, hash_provider_key, hash_state_for_seed, model_table_entry_hash,
     provider_table_entry_hash, PackedEnvRange, PackedModelConfigEntry, PackedModelEntry,
-    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, MAX_INPUT_TOKENS,
-    MAX_MODEL_CONFIG_COUNT, MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
+    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, ProviderIdx,
+    MAX_INPUT_TOKENS, MAX_MODEL_CONFIG_COUNT, MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
 };
 use crate::models::catalog::public::builder_types::{
     LookupTableKind, ModelCatalogBuildError, ProviderInfo,
@@ -10,7 +10,7 @@ use crate::models::catalog::public::builder_types::{
 use crate::models::catalog::public::model_types::{ModelConfig, ModelInfo};
 use crate::models::catalog::ModelCatalog;
 use hashbrown::{HashMap, HashTable};
-use lite_strtab::{StringTable, StringTableBuilder};
+use lite_strtab::{Global, StringTable, StringTableBuilder};
 
 /// Incremental builder for [`ModelCatalog`].
 ///
@@ -305,9 +305,13 @@ impl ModelCatalogBuilder {
 
 /// Builds a StringTable from a slice of strings.
 #[inline]
-fn build_string_table(strings: &[String]) -> StringTable<u32, u16> {
+fn build_string_table(strings: &[String]) -> StringTable<u32, ProviderIdx> {
     let total_bytes: usize = strings.iter().map(|s| s.len()).sum();
-    let mut builder = StringTableBuilder::with_capacity(strings.len(), total_bytes);
+    let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
+        strings.len(),
+        total_bytes,
+        Global,
+    );
     for s in strings {
         builder.try_push(s).expect("string table insert");
     }
