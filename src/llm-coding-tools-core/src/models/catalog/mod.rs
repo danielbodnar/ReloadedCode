@@ -117,32 +117,55 @@
 //! # Detailed Memory Layout
 //!
 //! This layout is optimized for scenarios where many providers host overlapping
-//! models. Memory usage numbers below are from models.dev snapshot (Feb 20, 2026):
+//! models. Numbers below are from real API data (`api.json`):
 //!
-//! ## Lookup Tables (Hash -> Index)
+//! ## Statistics
 //!
-//! - `ProviderTable`: `8 bytes * 96 = 768 bytes`
-//!   - `48-bit` provider hash (truncated ahash)
-//!   - `16-bit` provider index
-//! - `ModelTable`: `8 bytes * 1,669 = 13,352 bytes`
-//!   - `48-bit` model hash (truncated ahash)
-//!   - `16-bit` model-configuration index
+//! | Metric                               | Value   |
+//! | ------------------------------------ | ------: |
+//! | Unique providers                     |      96 |
+//! | Total model entries                  |   3,031 |
+//! | Unique model configurations          |     585 |
+//! | Avg models sharing same config       |    5.18 |
 //!
-//! ## Metadata Storage
+//! ## Packed Metadata Storage
 //!
-//! - `ModelEntry`: `8 bytes * 552 = 4,416 bytes`
-//!   - `8-bit` modalities
-//!   - `27-bit` max output (`134m` token range)
-//!   - `29-bit` max input (`536m` token range)
-//! - Optional `ModelConfigEntry`: `4 bytes * 552 = 2,208 bytes`
-//!   - `16-bit` `top_p` fixed4 (`u16::MAX` sentinel means `None`)
-//!   - `16-bit` `temperature` fixed4 (`u16::MAX` sentinel means `None`)
-//! - `ProviderEntry`: `4 bytes * 96 = 384 bytes`
-//!   - `8-bit` [`crate::models::ProviderType`]
-//!   - `14-bit` env-var start index
-//!   - `2-bit` env-var count
+//! | Field                 | Type                                  | Size | Count |   Total |
+//! | --------------------- | ------------------------------------- | ---- | ----- | ------: |
+//! | `provider_table`      | `HashTable<PackedProviderTableEntry>` | 8 B  |    96 |    768 B |
+//! | `model_table`         | `HashTable<PackedModelTableEntry>`    | 8 B  | 3,031 | 24,248 B |
+//! | `provider_entries`    | `Box<[PackedProviderEntry]>`          | 1 B  |    96 |     96 B |
+//! | `model_entries`       | `Box<[PackedModelEntry]>`             | 8 B  |   585 |  4,680 B |
+//! | `provider_env_ranges` | `Box<[PackedEnvRange]>`               | 2 B  |    96 |    192 B |
 //!
-//! **Total: ~21 KB** for the entire catalog (provider + model metadata).
+//! **Packed metadata total: ~26.0 KB**
+//!
+//! ## Optional Metadata
+//!
+//! The `model_config_entries` field stores preset sampling parameters (`temperature`,
+//! `top_p`) as [`PackedModelConfigEntry`] (4 bytes each). models.dev does not provide
+//! this so this is currently markes as `None`.
+//!
+//! | Field                  | Type                                    | Size | Count | Total |
+//! | ---------------------- | --------------------------------------- | ---- | ----- | ----: |
+//! | `model_config_entries` | `Option<Box<[PackedModelConfigEntry]>>` | 4 B  |     0 |    —  |
+//!
+//! ## String Table Storage
+//!
+//! | Field               | Type                           | String Data | Offsets |   Total  |
+//! | ------------------- | ------------------------------ | ----------: | ------: | -------: |
+//! | `provider_api_urls` | `StringTable<u32, ProviderIdx>`|    2,460 B  |   296 B |  2,756 B |
+//! | `provider_env_keys` | `StringTable<u32, ProviderIdx>`|    1,904 B  |   436 B |  2,340 B |
+//!
+//! **String tables total: ~5.1 KB** (null-terminated strings + 4-byte offsets)
+//!
+//! ## Other Runtime State
+//!
+//! | Field        | Type          | Size |
+//! | ------------ | ------------- | ---- |
+//! | `hash_state` | `RandomState` | ~8 B |
+//!
+//! String tables use `lite_strtab` with 4-byte offsets.
 //!
 //! ## Deduplication
 //!
