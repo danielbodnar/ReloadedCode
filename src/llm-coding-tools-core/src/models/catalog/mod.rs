@@ -284,12 +284,24 @@ impl ModelCatalog {
     }
 
     /// Returns true when catalog has no providers and no models.
+    ///
+    /// # Returns
+    ///
+    /// `true` if both provider and model tables are empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.provider_table.is_empty() && self.model_table.is_empty()
     }
 
-    /// Looks up one provider by key.
+    /// Looks up a provider by its key.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_key` - The provider identifier (e.g., `"openai"`, `"moonshotai"`).
+    ///
+    /// # Returns
+    ///
+    /// The provider information if found, or `None` if not present.
     #[inline]
     pub fn lookup_provider(&self, provider_key: &str) -> Option<Provider<'_>> {
         let key = hash_provider_key(&self.hash_state, provider_key);
@@ -308,7 +320,16 @@ impl ModelCatalog {
         self.provider_from_index(entry.provider_idx_val())
     }
 
-    /// Looks up one model by key.
+    /// Looks up a model by its key.
+    ///
+    /// # Parameters
+    ///
+    /// * `model_key` - The model identifier (e.g., `"gpt-4"`, `"moonshotai/Kimi-K2.5"`).
+    ///   Note that model key format depends on the source registry.
+    ///
+    /// # Returns
+    ///
+    /// The model information if found, or `None` if not present.
     #[inline]
     pub fn lookup_model(&self, model_key: &str) -> Option<Model> {
         let hash = hash_model_key(&self.hash_state, model_key);
@@ -327,7 +348,20 @@ impl ModelCatalog {
         self.model_from_index(entry.model_config_idx_val())
     }
 
-    /// Looks up both provider and model independently and returns joined result.
+    /// Looks up both provider and model and returns a combined entry.
+    ///
+    /// This is a convenience method that performs both lookups and combines
+    /// the results into a single [`CatalogEntry`].
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_key` - The provider identifier.
+    /// * `model_key` - The model identifier.
+    ///
+    /// # Returns
+    ///
+    /// A combined provider and model entry if both are found, or `None` if
+    /// either is missing.
     #[inline]
     pub fn lookup(&self, provider_key: &str, model_key: &str) -> Option<CatalogEntry<'_>> {
         let provider = self.lookup_provider(provider_key)?;
@@ -336,6 +370,14 @@ impl ModelCatalog {
     }
 
     /// Looks up a provider by its index.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_idx` - The provider index obtained from a previous lookup.
+    ///
+    /// # Returns
+    ///
+    /// The provider information if the index is valid, or `None` if out of bounds.
     #[inline]
     pub fn provider_from_index(&self, provider_idx: ProviderIdx) -> Option<Provider<'_>> {
         let provider_idx_usize = provider_idx.as_usize();
@@ -366,7 +408,15 @@ impl ModelCatalog {
         })
     }
 
-    /// Looks up a model by its index.
+    /// Looks up a model by its configuration index.
+    ///
+    /// # Parameters
+    ///
+    /// * `model_config_idx` - The model configuration index obtained from a previous lookup.
+    ///
+    /// # Returns
+    ///
+    /// The model information if the index is valid, or `None` if out of bounds.
     #[inline]
     pub fn model_from_index(&self, model_config_idx: ModelIdx) -> Option<Model> {
         let idx = model_config_idx.as_usize();

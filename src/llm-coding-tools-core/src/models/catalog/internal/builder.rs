@@ -114,12 +114,23 @@ impl ModelCatalogBuilder {
     }
 
     /// Returns true when no providers and no models are inserted.
+    ///
+    /// # Returns
+    ///
+    /// `true` if both provider and model tables are empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.provider_table.is_empty() && self.model_table.is_empty()
     }
 
     /// Reserves capacity for additional provider keys.
+    ///
+    /// Preallocates internal storage to avoid reallocations when inserting
+    /// multiple providers.
+    ///
+    /// # Parameters
+    ///
+    /// * `additional` - The number of additional providers expected to be inserted.
     #[inline]
     pub fn reserve_providers(&mut self, additional: usize) {
         self.provider_table
@@ -130,6 +141,13 @@ impl ModelCatalogBuilder {
     }
 
     /// Reserves capacity for additional model keys.
+    ///
+    /// Preallocates internal storage to avoid reallocations when inserting
+    /// multiple models.
+    ///
+    /// # Parameters
+    ///
+    /// * `additional` - The number of additional models expected to be inserted.
     #[inline]
     pub fn reserve_models(&mut self, additional: usize) {
         self.model_table.reserve(additional, model_table_entry_hash);
@@ -138,10 +156,22 @@ impl ModelCatalogBuilder {
         self.model_entry_intern.reserve(additional);
     }
 
-    /// Inserts one provider entry.
+    /// Inserts a provider entry into the catalog.
     ///
-    /// Returns [`ModelCatalogBuildError::HashCollision`] when a provider hash
-    /// collision is detected for the current seed.
+    /// # Parameters
+    ///
+    /// * `provider_key` - The unique provider identifier (e.g., `"openai"`, `"moonshotai"`).
+    /// * `info` - Provider metadata including API URL, environment variables, and type.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the provider was inserted successfully.
+    /// * `Err(ModelCatalogBuildError::HashCollision)` if a hash collision is detected
+    ///   for the current seed. Call [`Self::reset`] to try with a new seed.
+    /// * `Err(ModelCatalogBuildError::TooManyProviders)` if the maximum provider count
+    ///   is exceeded.
+    /// * `Err(ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider)` if the
+    ///   provider has too many environment variables.
     #[inline]
     pub fn insert_provider(
         &mut self,
@@ -206,10 +236,29 @@ impl ModelCatalogBuilder {
         Ok(())
     }
 
-    /// Inserts one model entry.
+    /// Inserts a model entry into the catalog.
     ///
-    /// Returns [`ModelCatalogBuildError::HashCollision`] when a model hash
-    /// collision is detected for the current seed.
+    /// Models with identical metadata are automatically deduplicated and share
+    /// a single configuration entry.
+    ///
+    /// # Parameters
+    ///
+    /// * `model_key` - The unique model identifier (e.g., `"gpt-4"`, `"moonshotai/Kimi-K2.5"`).
+    ///   Note that model key format depends on the source registry.
+    /// * `info` - Model metadata including token limits and modalities.
+    /// * `config` - Optional default sampling configuration (temperature, top_p).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the model was inserted successfully.
+    /// * `Err(ModelCatalogBuildError::HashCollision)` if a hash collision is detected
+    ///   for the current seed. Call [`Self::reset`] to try with a new seed.
+    /// * `Err(ModelCatalogBuildError::TooManyModelConfigurations)` if the maximum
+    ///   unique configuration count is exceeded.
+    /// * `Err(ModelCatalogBuildError::MaxInputTokensOutOfRange)` if max_input exceeds
+    ///   the packed limit.
+    /// * `Err(ModelCatalogBuildError::MaxOutputTokensOutOfRange)` if max_output exceeds
+    ///   the packed limit.
     #[inline]
     pub fn insert_model(
         &mut self,
@@ -280,9 +329,16 @@ impl ModelCatalogBuilder {
         Ok(())
     }
 
-    /// Clears all inserted entries and advances to the next hash seed.
+    /// Resets the builder to handle hash collisions.
     ///
+    /// Clears all inserted entries and advances to the next hash seed.
     /// Capacity is retained so callers can replay inserts without reallocating.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if reset succeeded and the seed was advanced.
+    /// * `Err(ModelCatalogBuildError::HashCollisionExhausted)` if all seeds have
+    ///   been exhausted.
     #[inline]
     pub fn reset(&mut self) -> Result<(), ModelCatalogBuildError> {
         if self.seed == u8::MAX {
@@ -307,7 +363,13 @@ impl ModelCatalogBuilder {
         Ok(())
     }
 
-    /// Finalizes the builder into a lookup catalog.
+    /// Finalizes the builder into a [`ModelCatalog`].
+    ///
+    /// Consumes the builder and returns an immutable catalog ready for lookups.
+    ///
+    /// # Returns
+    ///
+    /// A finalized [`ModelCatalog`] containing all inserted providers and models.
     #[inline]
     pub fn build(self) -> ModelCatalog {
         let model_config_entries = if self.has_any_model_config {
