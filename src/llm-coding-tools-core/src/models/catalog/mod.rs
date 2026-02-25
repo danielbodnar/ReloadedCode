@@ -235,19 +235,49 @@ impl ModelCatalog {
         ModelCatalogBuilder::with_capacity(provider_capacity, model_capacity)
     }
 
-    /// Returns number of provider keys.
+    /// Returns the number of provider keys.
+    ///
+    /// # Returns
+    ///
+    /// The total number of provider entries in the catalog.
     #[inline]
     pub fn provider_len(&self) -> usize {
         self.provider_table.len()
     }
 
-    /// Returns number of model keys.
+    /// Returns the total number of model keys.
+    ///
+    /// This includes all model entries before deduplication. Multiple keys may
+    /// reference the same configuration (see [`Self::model_config_len`]).
+    ///
+    /// For example, if providers `evroc`, `togetherai`, and `moonshotai` all
+    /// host `moonshotai/Kimi-K2.5` with identical metadata, this returns 3.
+    ///
+    /// Note: Model key names depend on the source. For models.dev, they follow
+    /// the `{owner}/{model}` format, but other registries may use different naming.
+    ///
+    /// # Returns
+    ///
+    /// The total number of model entries in the catalog.
     #[inline]
     pub fn model_len(&self) -> usize {
         self.model_table.len()
     }
 
-    /// Returns number of unique model configuration rows.
+    /// Returns the number of unique model configurations.
+    ///
+    /// Models with identical metadata are deduplicated and share a configuration
+    /// entry. This is always less than or equal to [`Self::model_len`].
+    ///
+    /// For example, if providers `evroc`, `togetherai`, and `moonshotai` all
+    /// host `moonshotai/Kimi-K2.5` with identical metadata, this returns 1.
+    ///
+    /// Note: Model key names depend on the source. For models.dev, they follow
+    /// the `{owner}/{model}` format, but other registries may use different naming.
+    ///
+    /// # Returns
+    ///
+    /// The number of unique model configuration rows.
     #[inline]
     pub fn model_config_len(&self) -> usize {
         self.model_entries.len()

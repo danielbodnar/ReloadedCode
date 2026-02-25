@@ -65,19 +65,49 @@ impl ModelCatalogBuilder {
         self.seed
     }
 
-    /// Returns number of inserted providers.
+    /// Returns the number of inserted providers.
+    ///
+    /// # Returns
+    ///
+    /// The total number of provider entries inserted into the builder.
     #[inline]
     pub fn provider_len(&self) -> usize {
         self.provider_table.len()
     }
 
-    /// Returns number of inserted models.
+    /// Returns the total number of inserted model keys.
+    ///
+    /// This includes all model entries before deduplication. Multiple keys may
+    /// reference the same configuration (see [`Self::model_config_len`]).
+    ///
+    /// For example, inserting `moonshotai/Kimi-K2.5` under providers `evroc`,
+    /// `togetherai`, and `moonshotai` with identical metadata, this returns 3.
+    ///
+    /// Note: Model key names depend on the source. For models.dev, they follow
+    /// the `{owner}/{model}` format, but other registries may use different naming.
+    ///
+    /// # Returns
+    ///
+    /// The total number of model entries inserted into the builder.
     #[inline]
     pub fn model_len(&self) -> usize {
         self.model_table.len()
     }
 
-    /// Returns number of unique model configuration rows.
+    /// Returns the number of unique model configurations.
+    ///
+    /// Models with identical metadata are deduplicated and share a configuration
+    /// entry. This is always less than or equal to [`Self::model_len`].
+    ///
+    /// For example, inserting `moonshotai/Kimi-K2.5` under providers `evroc`,
+    /// `togetherai`, and `moonshotai` with identical metadata, this returns 1.
+    ///
+    /// Note: Model key names depend on the source. For models.dev, they follow
+    /// the `{owner}/{model}` format, but other registries may use different naming.
+    ///
+    /// # Returns
+    ///
+    /// The number of unique model configuration rows.
     #[inline]
     pub fn model_config_len(&self) -> usize {
         self.model_entries.len()
