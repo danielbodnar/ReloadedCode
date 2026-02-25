@@ -5,9 +5,8 @@ use super::{
     MAX_MODEL_CONFIG_COUNT, MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
 };
 use crate::models::catalog::public::builder_types::{
-    LookupTableKind, ModelCatalogBuildError, ProviderInfo,
+    LookupTableKind, ModelCatalogBuildError, ModelConfig, ModelInfo, ProviderInfo,
 };
-use crate::models::catalog::public::model_types::{ModelConfig, ModelInfo};
 use crate::models::catalog::public::ProviderIdx;
 use crate::models::catalog::ModelCatalog;
 use ahash::AHashMap;
@@ -430,9 +429,8 @@ mod tests {
     use super::ModelCatalogBuilder;
     use crate::models::catalog::internal::Modality;
     use crate::models::catalog::public::builder_types::{
-        LookupTableKind, ModelCatalogBuildError, ProviderInfo,
+        LookupTableKind, ModelCatalogBuildError, ModelInfo, ProviderInfo,
     };
-    use crate::models::catalog::public::model_types::ModelInfo;
     use crate::models::ProviderType;
 
     fn provider<'a>(

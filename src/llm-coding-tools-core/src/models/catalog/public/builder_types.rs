@@ -1,7 +1,28 @@
 //! Types used when building a [`ModelCatalog`].
 
+use crate::models::catalog::internal::{Modality, TemperatureFixed4, TopPFixed4};
 use crate::models::ProviderType;
 use thiserror::Error;
+
+/// Distilled per-model metadata used when inserting models during catalog construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModelInfo {
+    /// Content modalities this model can handle as input and/or output.
+    pub modalities: Modality,
+    /// Max input tokens.
+    pub max_input: u32,
+    /// Max output tokens.
+    pub max_output: u32,
+}
+
+/// Optional model sampling defaults used when inserting models during catalog construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModelConfig {
+    /// Temperature encoded as fixed4, or `None` when unspecified.
+    pub temperature: Option<TemperatureFixed4>,
+    /// `top_p` encoded as fixed4, or `None` when unspecified.
+    pub top_p: Option<TopPFixed4>,
+}
 
 /// Distilled provider metadata used when inserting providers during catalog construction.
 ///

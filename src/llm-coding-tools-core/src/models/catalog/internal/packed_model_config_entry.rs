@@ -5,7 +5,7 @@
 //! - `16` bits: top_p fixed4 (with `u16::MAX` as `None` sentinel)
 
 use super::{Fixed4, TemperatureFixed4, TopPFixed4};
-use crate::models::catalog::public::model_types::ModelConfig;
+use crate::models::catalog::public::builder_types::ModelConfig;
 use bitfields::bitfield;
 
 /// Packed model-configuration sidecar row.

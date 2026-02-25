@@ -176,8 +176,8 @@
 
 pub use internal::ModelCatalogBuilder;
 pub use public::{
-    CatalogEntry, LookupTableKind, Model, ModelCatalogBuildError, ModelConfig, ModelIdx, ModelInfo,
-    Provider, ProviderIdx, ProviderInfo,
+    CatalogEntry, LookupTableKind, Model, ModelCatalogBuildError, ModelIdx, Provider, ProviderIdx,
+    ProviderInfo,
 };
 
 // Internal implementation details - not part of public API
@@ -364,9 +364,22 @@ impl ModelCatalog {
     /// either is missing.
     #[inline]
     pub fn lookup(&self, provider_key: &str, model_key: &str) -> Option<CatalogEntry<'_>> {
-        let provider = self.lookup_provider(provider_key)?;
-        let model = self.lookup_model(model_key)?;
-        Some(CatalogEntry { provider, model })
+        let provider =
+            self.lookup_provider_hash(hash_provider_key(&self.hash_state, provider_key))?;
+        let model = self.lookup_model_hash(hash_model_key(&self.hash_state, model_key))?;
+
+        Some(CatalogEntry {
+            provider_idx: provider.provider_idx,
+            api_url: provider.api_url,
+            env_vars: provider.env_vars,
+            api_type: provider.api_type,
+            model_config_idx: model.model_config_idx,
+            modalities: model.modalities,
+            max_input: model.max_input,
+            max_output: model.max_output,
+            temperature: model.temperature,
+            top_p: model.top_p,
+        })
     }
 
     /// Looks up a provider by its index.
@@ -429,8 +442,11 @@ impl ModelCatalog {
 
         Some(Model {
             model_config_idx,
-            info,
-            config,
+            modalities: info.modalities,
+            max_input: info.max_input,
+            max_output: info.max_output,
+            temperature: config.as_ref().and_then(|c| c.temperature),
+            top_p: config.as_ref().and_then(|c| c.top_p),
         })
     }
 }
@@ -439,8 +455,7 @@ impl ModelCatalog {
 mod tests {
     use super::*;
     use crate::models::catalog::internal::{Modality, TemperatureFixed4, TopPFixed4};
-    use crate::models::catalog::public::builder_types::ProviderInfo;
-    use crate::models::catalog::public::model_types::{ModelConfig, ModelInfo};
+    use crate::models::catalog::public::builder_types::{ModelConfig, ModelInfo, ProviderInfo};
     use crate::models::ProviderType;
 
     fn provider<'a>(
@@ -505,21 +520,17 @@ mod tests {
         assert_eq!(alpha.api_type, ProviderType::OpenAiCompletions);
 
         let m1 = catalog.lookup_model("m1").expect("model m1 exists");
-        assert_eq!(m1.info.max_input, 8192);
-        assert_eq!(m1.info.max_output, 1024);
-        let m1_config = m1.config.expect("model m1 config exists");
+        assert_eq!(m1.max_input, 8192);
+        assert_eq!(m1.max_output, 1024);
         assert_eq!(
-            m1_config
-                .temperature
-                .expect("temperature must exist")
-                .encoded(),
+            m1.temperature.expect("temperature must exist").encoded(),
             12_000
         );
-        assert_eq!(m1_config.top_p.expect("top_p must exist").encoded(), 5_000);
+        assert_eq!(m1.top_p.expect("top_p must exist").encoded(), 5_000);
 
         let joined = catalog.lookup("alpha", "m1").expect("joined lookup exists");
-        assert_eq!(joined.provider.api_url, "https://alpha.example");
-        assert_eq!(joined.model.info.max_output, 1024);
+        assert_eq!(joined.api_url, "https://alpha.example");
+        assert_eq!(joined.max_output, 1024);
     }
 
     #[test]

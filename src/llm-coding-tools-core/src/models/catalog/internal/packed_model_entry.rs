@@ -6,7 +6,7 @@
 //! - `29` bits: max input tokens
 
 use super::Modality;
-use crate::models::catalog::public::model_types::ModelInfo;
+use crate::models::catalog::public::builder_types::ModelInfo;
 use bitfields::bitfield;
 
 /// Number of bits allocated to modality flags.
