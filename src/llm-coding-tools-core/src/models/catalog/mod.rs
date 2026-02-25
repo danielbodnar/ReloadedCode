@@ -474,7 +474,7 @@ mod tests {
                 &provider(
                     "https://alpha.example",
                     &["ALPHA_KEY"],
-                    ProviderType::OpenAi,
+                    ProviderType::OpenAiCompletions,
                 ),
             )
             .expect("insert provider alpha");
@@ -504,7 +504,7 @@ mod tests {
             .lookup_provider("alpha")
             .expect("provider alpha exists");
         assert_eq!(alpha.api_url, "https://alpha.example");
-        assert_eq!(alpha.api_type, ProviderType::OpenAi);
+        assert_eq!(alpha.api_type, ProviderType::OpenAiCompletions);
 
         let m1 = catalog.lookup_model("m1").expect("model m1 exists");
         assert_eq!(m1.info.max_input, 8192);
@@ -528,7 +528,10 @@ mod tests {
     fn unknown_provider_or_model_returns_none() {
         let mut builder = ModelCatalog::builder();
         builder
-            .insert_provider("alpha", &provider("", &["ALPHA_KEY"], ProviderType::OpenAi))
+            .insert_provider(
+                "alpha",
+                &provider("", &["ALPHA_KEY"], ProviderType::OpenAiCompletions),
+            )
             .expect("insert provider");
         builder
             .insert_model("m1", info(4096, 512), None)
@@ -599,11 +602,11 @@ mod tests {
     fn collisions_report_table_kind_and_seed() {
         let mut builder = ModelCatalog::builder();
         builder
-            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAi))
+            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAiCompletions))
             .expect("first insert succeeds");
 
         let err = builder
-            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAi))
+            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAiCompletions))
             .expect_err("duplicate hash should fail");
         assert_eq!(
             err,

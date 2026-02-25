@@ -6,7 +6,7 @@ pub enum ProviderType {
     #[default]
     Unknown,
     /// OpenAI chat-completions provider.
-    OpenAi,
+    OpenAiCompletions,
     /// OpenAI Responses API provider.
     OpenAiResponses,
     /// Anthropic provider.
@@ -35,8 +35,6 @@ pub enum ProviderType {
     ClaudeCodeOAuth,
     /// Antigravity provider.
     Antigravity,
-    /// OpenAI-compatible provider.
-    OpenAiCompatible,
 }
 
 impl ProviderType {
@@ -51,7 +49,7 @@ impl ProviderType {
     pub(crate) const fn from_u8(value: u8) -> Self {
         match value {
             0 => Self::Unknown,
-            1 => Self::OpenAi,
+            1 => Self::OpenAiCompletions,
             2 => Self::OpenAiResponses,
             3 => Self::Anthropic,
             4 => Self::Google,
@@ -66,7 +64,6 @@ impl ProviderType {
             13 => Self::ChatGptOAuth,
             14 => Self::ClaudeCodeOAuth,
             15 => Self::Antigravity,
-            16 => Self::OpenAiCompatible,
             _ => Self::Unknown,
         }
     }
