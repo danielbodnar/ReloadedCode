@@ -1,7 +1,7 @@
 //! Lookup result types for provider and model queries.
 
 use super::model_types::{ModelConfig, ModelInfo};
-use crate::models::catalog::internal::{ModelIdx, ProviderIdx};
+use super::{ModelIdx, ProviderIdx};
 use crate::models::ProviderType;
 
 /// Provider lookup result.

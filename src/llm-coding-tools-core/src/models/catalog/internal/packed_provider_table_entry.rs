@@ -4,7 +4,7 @@
 //! - `48` bits: truncated provider hash
 //! - `16` bits: provider index
 
-use super::ProviderIdx;
+use crate::models::catalog::public::ProviderIdx;
 use bitfields::bitfield;
 
 /// Number of retained hash bits for provider lookup entries.

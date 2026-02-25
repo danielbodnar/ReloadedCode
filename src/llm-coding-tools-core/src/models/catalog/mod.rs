@@ -176,8 +176,8 @@
 
 pub use internal::ModelCatalogBuilder;
 pub use public::{
-    CatalogEntry, LookupTableKind, Model, ModelCatalogBuildError, ModelConfig, ModelInfo, Provider,
-    ProviderInfo,
+    CatalogEntry, LookupTableKind, Model, ModelCatalogBuildError, ModelConfig, ModelIdx, ModelInfo,
+    Provider, ProviderIdx, ProviderInfo,
 };
 
 // Internal implementation details - not part of public API
@@ -189,9 +189,8 @@ mod public;
 use ahash::RandomState;
 use hashbrown::HashTable;
 use internal::{
-    hash_model_key, hash_provider_key, ModelIdx, PackedEnvRange, PackedModelConfigEntry,
-    PackedModelEntry, PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry,
-    ProviderHash, ProviderIdx,
+    hash_model_key, hash_provider_key, PackedEnvRange, PackedModelConfigEntry, PackedModelEntry,
+    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, ProviderHash,
 };
 use lite_strtab::{StringId, StringTable};
 
@@ -276,7 +275,7 @@ impl ModelCatalog {
             .find(hash48, |entry: &PackedProviderTableEntry| {
                 entry.hash48() == hash48
             })?;
-        self.provider_from_index(entry.provider_idx())
+        self.provider_from_index(entry.provider_idx_val())
     }
 
     /// Looks up one model by key.
@@ -295,7 +294,7 @@ impl ModelCatalog {
             .find(hash48, |entry: &PackedModelTableEntry| {
                 entry.hash48() == hash48
             })?;
-        self.model_from_index(entry.model_config_idx())
+        self.model_from_index(entry.model_config_idx_val())
     }
 
     /// Looks up both provider and model independently and returns joined result.
@@ -306,11 +305,11 @@ impl ModelCatalog {
         Some(CatalogEntry { provider, model })
     }
 
+    /// Looks up a provider by its index.
     #[inline]
-    fn provider_from_index(&self, provider_idx: u16) -> Option<Provider<'_>> {
-        let provider_idx_usize = usize::from(provider_idx);
+    pub fn provider_from_index(&self, provider_idx: ProviderIdx) -> Option<Provider<'_>> {
+        let provider_idx_usize = provider_idx.as_usize();
         let packed = *self.provider_entries.get(provider_idx_usize)?;
-        let provider_idx = ProviderIdx::new(provider_idx);
         let api_url = self.provider_api_urls.get(StringId::new(provider_idx))?;
         let range = self.provider_env_ranges.get(provider_idx_usize)?;
         let start = range.start();
@@ -337,9 +336,10 @@ impl ModelCatalog {
         })
     }
 
+    /// Looks up a model by its index.
     #[inline]
-    fn model_from_index(&self, model_config_idx: u16) -> Option<Model> {
-        let idx = usize::from(model_config_idx);
+    pub fn model_from_index(&self, model_config_idx: ModelIdx) -> Option<Model> {
+        let idx = model_config_idx.as_usize();
         let info = self.model_entries.get(idx)?.into_model_info();
         let config = self
             .model_config_entries
@@ -348,7 +348,7 @@ impl ModelCatalog {
             .and_then(|entry| entry.into_model_config());
 
         Some(Model {
-            model_config_idx: ModelIdx::new(model_config_idx),
+            model_config_idx,
             info,
             config,
         })

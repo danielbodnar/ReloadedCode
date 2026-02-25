@@ -1,13 +1,14 @@
 use super::{
     hash_model_key, hash_provider_key, hash_state_for_seed, model_table_entry_hash,
     provider_table_entry_hash, PackedEnvRange, PackedModelConfigEntry, PackedModelEntry,
-    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, ProviderIdx,
-    MAX_INPUT_TOKENS, MAX_MODEL_CONFIG_COUNT, MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
+    PackedModelTableEntry, PackedProviderEntry, PackedProviderTableEntry, MAX_INPUT_TOKENS,
+    MAX_MODEL_CONFIG_COUNT, MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
 };
 use crate::models::catalog::public::builder_types::{
     LookupTableKind, ModelCatalogBuildError, ProviderInfo,
 };
 use crate::models::catalog::public::model_types::{ModelConfig, ModelInfo};
+use crate::models::catalog::public::ProviderIdx;
 use crate::models::catalog::ModelCatalog;
 use hashbrown::{HashMap, HashTable};
 use lite_strtab::{Global, StringTable, StringTableBuilder};

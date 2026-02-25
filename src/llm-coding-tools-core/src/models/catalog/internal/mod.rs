@@ -25,14 +25,10 @@ pub mod hash {
     pub use super::provider_hash::ProviderHash;
 }
 
-pub use model_idx::ModelIdx;
-pub use provider_idx::ProviderIdx;
-
 mod builder;
 mod hash_utils;
 mod modality;
 mod model_hash;
-mod model_idx;
 mod packed_env_range;
 mod packed_model_config_entry;
 mod packed_model_entry;
@@ -40,7 +36,6 @@ mod packed_model_table_entry;
 mod packed_provider_entry;
 mod packed_provider_table_entry;
 mod provider_hash;
-mod provider_idx;
 mod sampling_fixed4;
 mod temperature_fixed4;
 mod top_p_fixed4;

@@ -4,6 +4,7 @@
 //! - `48` bits: truncated model hash
 //! - `16` bits: model-configuration index
 
+use crate::models::catalog::public::ModelIdx;
 use bitfields::bitfield;
 
 /// Number of retained hash bits for model lookup entries.
@@ -41,6 +42,18 @@ impl PackedModelTableEntry {
         packed.set_hash48(Self::truncate_hash48(hash64));
         packed.set_model_config_idx(model_config_idx);
         packed
+    }
+
+    /// Creates one packed model-table entry using [`ModelIdx`].
+    #[inline]
+    pub fn from_parts_idx(hash64: u64, model_config_idx: ModelIdx) -> Self {
+        Self::from_parts(hash64, model_config_idx.as_u16())
+    }
+
+    /// Returns the model configuration index as a [`ModelIdx`].
+    #[inline]
+    pub fn model_config_idx_val(self) -> ModelIdx {
+        ModelIdx::new(self.model_config_idx())
     }
 }
 
