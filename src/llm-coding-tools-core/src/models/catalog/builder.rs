@@ -183,7 +183,7 @@ impl ModelCatalogBuilder {
     pub fn insert_provider(
         &mut self,
         provider_key: &str,
-        info: &ProviderInfo<'_>,
+        info: ProviderInfo,
     ) -> Result<(), ModelCatalogBuildError> {
         use crate::models::catalog::internal::MAX_ENV_RANGE_COUNT;
 
@@ -222,13 +222,8 @@ impl ModelCatalogBuilder {
         let provider_idx = self.provider_entries.len() as u16;
         let env_start = self.provider_env_keys.len() as u16;
         let env_count = env_count as u8;
-        // Store API URL
-        self.provider_api_urls.push(info.api_url.to_owned());
-
-        // Store env keys and range
-        for &var in info.env_vars {
-            self.provider_env_keys.push(var.to_owned());
-        }
+        self.provider_api_urls.push(info.api_url);
+        self.provider_env_keys.extend(info.env_vars);
         self.provider_env_ranges
             .push(PackedEnvRange::from_parts(env_start, env_count));
 
@@ -430,14 +425,10 @@ mod tests {
     };
     use crate::models::ProviderType;
 
-    fn provider<'a>(
-        api_url: &'a str,
-        env_vars: &'a [&'a str],
-        api_type: ProviderType,
-    ) -> ProviderInfo<'a> {
+    fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
         ProviderInfo {
-            api_url,
-            env_vars,
+            api_url: api_url.to_owned(),
+            env_vars: env_vars.iter().map(|s| s.to_string()).collect(),
             api_type,
         }
     }
@@ -456,11 +447,11 @@ mod tests {
     fn collisions_report_table_kind_and_seed() {
         let mut builder = ModelCatalogBuilder::new();
         builder
-            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAiCompletions))
+            .insert_provider("alpha", provider("", &[], ProviderType::OpenAiCompletions))
             .expect("first insert succeeds");
 
         let err = builder
-            .insert_provider("alpha", &provider("", &[], ProviderType::OpenAiCompletions))
+            .insert_provider("alpha", provider("", &[], ProviderType::OpenAiCompletions))
             .expect_err("duplicate hash should fail");
         assert_eq!(
             err,

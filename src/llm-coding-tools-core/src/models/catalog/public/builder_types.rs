@@ -20,17 +20,14 @@ pub struct ModelInfo {
 }
 
 /// Distilled provider metadata used when inserting providers during catalog construction.
-///
-/// This type uses borrowed string slices to avoid unnecessary allocations,
-/// as the builder will copy values into its internal storage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProviderInfo<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderInfo {
     /// Base URL for this provider. Empty when unspecified.
-    pub api_url: &'a str,
+    pub api_url: String,
     /// Candidate environment variables used to resolve API keys.
     ///
     /// Order matters: callers may check these in order and use the first match.
-    pub env_vars: &'a [&'a str],
+    pub env_vars: Vec<String>,
     /// Type of API used by the provider.
     pub api_type: ProviderType,
 }

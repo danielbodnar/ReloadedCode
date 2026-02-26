@@ -282,14 +282,10 @@ mod tests {
     use super::*;
     use crate::models::catalog::{Modality, ModelInfo, ProviderInfo};
 
-    fn provider<'a>(
-        api_url: &'a str,
-        env_vars: &'a [&'a str],
-        api_type: ProviderType,
-    ) -> ProviderInfo<'a> {
+    fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
         ProviderInfo {
-            api_url,
-            env_vars,
+            api_url: api_url.to_owned(),
+            env_vars: env_vars.iter().map(|s| s.to_string()).collect(),
             api_type,
         }
     }
@@ -325,7 +321,7 @@ mod tests {
         builder
             .insert_provider(
                 "alpha",
-                &provider(
+                provider(
                     "https://alpha.example",
                     &["ALPHA_KEY"],
                     ProviderType::OpenAiCompletions,
@@ -335,7 +331,7 @@ mod tests {
         builder
             .insert_provider(
                 "beta",
-                &provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
+                provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
             )
             .expect("insert provider beta");
 
@@ -370,7 +366,7 @@ mod tests {
         builder
             .insert_provider(
                 "alpha",
-                &provider("", &["ALPHA_KEY"], ProviderType::OpenAiCompletions),
+                provider("", &["ALPHA_KEY"], ProviderType::OpenAiCompletions),
             )
             .expect("insert provider");
         builder
@@ -406,7 +402,7 @@ mod tests {
         builder
             .insert_provider(
                 "azure",
-                &provider(
+                provider(
                     "https://azure.example",
                     &["AZURE_KEY", "AZURE_TOKEN", "FALLBACK_KEY"],
                     ProviderType::Azure,
