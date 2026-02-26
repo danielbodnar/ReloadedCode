@@ -76,6 +76,21 @@ impl Fixed4 {
             Some(f32::from(self.0) / f32::from(Self::SCALE))
         }
     }
+
+    /// Creates from a floating-point value.
+    ///
+    /// Returns `None` if the value is negative or exceeds `MAX_ENCODED / SCALE`.
+    #[inline]
+    pub fn from_f32(value: f32) -> Option<Self> {
+        if value < 0.0 {
+            return None;
+        }
+        let encoded = (value * f32::from(Self::SCALE)).round() as u16;
+        if encoded > Self::MAX_ENCODED {
+            return None;
+        }
+        Some(Self(encoded))
+    }
 }
 
 #[cfg(test)]
@@ -115,5 +130,36 @@ mod tests {
     #[test]
     fn max_encoded_excludes_sentinel() {
         assert_eq!(Fixed4::MAX_ENCODED, Fixed4::NONE_SENTINEL - 1);
+    }
+
+    #[test]
+    fn from_f32_converts_correctly() {
+        let fixed = Fixed4::from_f32(1.2).unwrap();
+        assert_eq!(fixed.encoded(), 12_000);
+        assert_eq!(fixed.value(), Some(1.2_f32));
+    }
+
+    #[test]
+    fn from_f32_rounds_to_nearest() {
+        let fixed = Fixed4::from_f32(1.23456).unwrap();
+        assert_eq!(fixed.encoded(), 12_346);
+    }
+
+    #[test]
+    fn from_f32_rejects_negative() {
+        assert_eq!(Fixed4::from_f32(-0.1), None);
+    }
+
+    #[test]
+    fn from_f32_rejects_too_large() {
+        let too_large = f32::from(Fixed4::MAX_ENCODED) / f32::from(Fixed4::SCALE) + 1.0;
+        assert_eq!(Fixed4::from_f32(too_large), None);
+    }
+
+    #[test]
+    fn from_f32_zero() {
+        let fixed = Fixed4::from_f32(0.0).unwrap();
+        assert_eq!(fixed.encoded(), 0);
+        assert_eq!(fixed.value(), Some(0.0_f32));
     }
 }
