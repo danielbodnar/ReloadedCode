@@ -177,7 +177,7 @@ mod tests {
         match err {
             ToolError::ValidationFailed { errors, .. } => {
                 assert!(!errors.is_empty());
-                assert!(errors[0].message.contains("3 times"));
+                assert!(errors[0].message.contains("multiple times"));
             }
             _ => panic!("Expected ValidationFailed"),
         }
