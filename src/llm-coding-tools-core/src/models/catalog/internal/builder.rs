@@ -263,17 +263,17 @@ fn finish_with_source(
         None
     };
 
-    ModelCatalog {
-        hash_state: state.hash_state,
-        provider_table: state.provider_table,
-        model_table: state.model_table,
-        provider_api_urls: build_provider_api_url_table(providers, provider_stats),
-        provider_env_keys: build_provider_env_key_table(providers, provider_stats),
-        provider_env_ranges: state.provider_env_ranges.into_boxed_slice(),
-        provider_entries: state.provider_entries.into_boxed_slice(),
-        model_entries: state.model_entries.into_boxed_slice(),
+    ModelCatalog::new(
+        state.hash_state,
+        state.provider_table,
+        state.model_table,
+        build_provider_api_url_table(providers, provider_stats),
+        build_provider_env_key_table(providers, provider_stats),
+        state.provider_env_ranges.into_boxed_slice(),
+        state.provider_entries.into_boxed_slice(),
+        state.model_entries.into_boxed_slice(),
         model_config_entries,
-    }
+    )
 }
 
 #[inline]
