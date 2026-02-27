@@ -2,6 +2,8 @@
 //!
 //! This module contains public-facing data types used when building
 //! and querying a [`ModelCatalog`].
+//!
+//! [`ModelCatalog`]: crate::models::catalog::ModelCatalog
 
 pub use builder_types::{LookupTableKind, ModelInfo, ProviderInfo};
 pub use entry::{CatalogEntry, Model, Provider};

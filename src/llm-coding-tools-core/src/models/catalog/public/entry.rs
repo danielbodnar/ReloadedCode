@@ -1,9 +1,15 @@
 //! Lookup result types for provider and model queries.
 //!
 //! These are the flattened types returned by [`ModelCatalog`] lookup methods.
-//! For builder input types, see [`ProviderSourceRow`](super::ProviderSourceRow),
-//! [`ModelSourceRow`](super::ModelSourceRow), [`ProviderInfo`](super::ProviderInfo),
-//! and [`ModelInfo`](super::ModelInfo).
+//! For builder input types, see [`ProviderSourceRow`],
+//! [`ModelSourceRow`], [`ProviderInfo`],
+//! and [`ModelInfo`].
+//!
+//! [`ModelCatalog`]: crate::models::catalog::ModelCatalog
+//! [`ProviderSourceRow`]: crate::models::catalog::ProviderSourceRow
+//! [`ModelSourceRow`]: crate::models::catalog::ModelSourceRow
+//! [`ProviderInfo`]: crate::models::catalog::ProviderInfo
+//! [`ModelInfo`]: crate::models::catalog::ModelInfo
 
 use super::{Modality, ModelIdx, ProviderIdx};
 use crate::models::catalog::internal::Fixed4;

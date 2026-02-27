@@ -1,6 +1,8 @@
 //! Opaque 64-bit hash key used for provider lookup.
 
-/// A 64-bit provider key hash used by [`super::ModelCatalog`].
+/// A 64-bit provider key hash used by [`ModelCatalog`].
+///
+/// [`ModelCatalog`]: crate::models::catalog::ModelCatalog
 ///
 /// The concrete hash algorithm is an implementation detail and may change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

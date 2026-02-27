@@ -1,4 +1,6 @@
 //! Types used when building a [`ModelCatalog`].
+//!
+//! [`ModelCatalog`]: crate::models::catalog::ModelCatalog
 
 use super::Modality;
 use crate::models::ProviderType;
