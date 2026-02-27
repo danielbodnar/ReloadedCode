@@ -200,4 +200,7 @@ pub enum ModelCatalogBuildError {
         /// Maximum representable env var keys count.
         max: usize,
     },
+    /// String table capacity exceeded during construction.
+    #[error("string table capacity exceeded: {0}")]
+    StringTableCapacityExceeded(String),
 }

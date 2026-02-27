@@ -80,7 +80,7 @@ pub(crate) fn build_from_source(
         }
     }
 
-    Ok(finish_with_source(state, providers, provider_stats))
+    finish_with_source(state, providers, provider_stats)
 }
 
 #[inline]
@@ -252,7 +252,7 @@ fn finish_with_source(
     mut state: BuildState,
     providers: &[ProviderSourceRow],
     provider_stats: ProviderSourceStats,
-) -> ModelCatalog {
+) -> Result<ModelCatalog, ModelCatalogBuildError> {
     state
         .provider_table
         .shrink_to_fit(provider_table_entry_hash);
@@ -264,17 +264,17 @@ fn finish_with_source(
         None
     };
 
-    ModelCatalog::new(
+    Ok(ModelCatalog::new(
         state.hash_state,
         state.provider_table,
         state.model_table,
-        build_provider_api_url_table(providers, provider_stats),
-        build_provider_env_key_table(providers, provider_stats),
+        build_provider_api_url_table(providers, provider_stats)?,
+        build_provider_env_key_table(providers, provider_stats)?,
         state.provider_env_ranges.into_boxed_slice(),
         state.provider_entries.into_boxed_slice(),
         state.model_entries.into_boxed_slice(),
         model_config_entries,
-    )
+    ))
 }
 
 #[inline]
@@ -336,7 +336,7 @@ fn analyze_provider_rows(
 fn build_provider_api_url_table(
     providers: &[ProviderSourceRow],
     stats: ProviderSourceStats,
-) -> StringTable<u32, ProviderIdx> {
+) -> Result<StringTable<u32, ProviderIdx>, ModelCatalogBuildError> {
     let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
         stats.provider_count,
         stats.total_api_url_bytes,
@@ -346,17 +346,17 @@ fn build_provider_api_url_table(
     for provider_row in providers {
         builder
             .try_push(&provider_row.provider.api_url)
-            .expect("string table insert");
+            .map_err(|e| ModelCatalogBuildError::StringTableCapacityExceeded(e.to_string()))?;
     }
 
-    builder.build()
+    Ok(builder.build())
 }
 
 #[inline]
 fn build_provider_env_key_table(
     providers: &[ProviderSourceRow],
     stats: ProviderSourceStats,
-) -> StringTable<u32, ProviderIdx> {
+) -> Result<StringTable<u32, ProviderIdx>, ModelCatalogBuildError> {
     let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
         stats.total_env_keys,
         stats.total_env_key_bytes,
@@ -365,11 +365,13 @@ fn build_provider_env_key_table(
 
     for provider_row in providers {
         for env_key in &provider_row.provider.env_vars {
-            builder.try_push(env_key).expect("string table insert");
+            builder
+                .try_push(env_key)
+                .map_err(|e| ModelCatalogBuildError::StringTableCapacityExceeded(e.to_string()))?;
         }
     }
 
-    builder.build()
+    Ok(builder.build())
 }
 
 #[cfg(test)]
