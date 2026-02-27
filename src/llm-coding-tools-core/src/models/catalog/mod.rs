@@ -15,7 +15,7 @@
 //!
 //! ## Building a Catalog
 //!
-//! - [`ModelCatalogBuilder`] - Batch builder for constructing a catalog
+//! - [`ModelCatalog::build`] - Batch builder entry point
 //! - [`ProviderSourceRow`] - Provider key + metadata input row
 //! - [`ModelSourceRow`] - Model key + metadata input row
 //! - [`ModelInfo`] - Model metadata input (modalities, token limits, sampling)
@@ -197,11 +197,9 @@
 //! same model, we only store the metadata once. This is why we have 1,669
 //! model keys but only 552 unique model configurations.
 
-pub use builder::ModelCatalogBuilder;
 pub use catalog::ModelCatalog;
 pub use public::*;
 
-mod builder;
 #[allow(clippy::module_inception)]
 mod catalog;
 mod internal;

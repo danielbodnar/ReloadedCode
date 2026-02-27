@@ -1,7 +1,9 @@
-use crate::models::catalog::builder::ModelCatalogBuilder;
 use crate::models::catalog::internal::{
-    hash_model_key, hash_provider_key, Fixed4, ModelConfigEntry, PackedEnvRange, PackedModelEntry,
-    PackedModelTableEntry, PackedProviderTableEntry, ProviderHash,
+    build_from_source, hash_model_key, hash_provider_key, Fixed4, ModelConfigEntry, PackedEnvRange,
+    PackedModelEntry, PackedModelTableEntry, PackedProviderTableEntry, ProviderHash,
+};
+use crate::models::catalog::public::builder_types::{
+    ModelCatalogBuildError, ModelSourceRow, ProviderSourceRow,
 };
 use crate::models::catalog::public::{CatalogEntry, Model, ModelIdx, Provider, ProviderIdx};
 use crate::models::ProviderType;
@@ -35,19 +37,29 @@ pub struct ModelCatalog {
 }
 
 impl ModelCatalog {
-    /// Creates a builder with no preallocated capacity.
+    /// Builds a catalog from provider and model source rows.
+    ///
+    /// # Parameters
+    ///
+    /// * `providers` - [`ProviderSourceRow`] values keyed by provider identifier.
+    /// * `models` - [`ModelSourceRow`] values keyed by model identifier.
+    ///
+    /// # Returns
+    ///
+    /// A fully built [`ModelCatalog`] when construction succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelCatalogBuildError`] when:
+    /// - input exceeds supported numeric limits,
+    /// - token limits cannot be represented in packed model entries,
+    /// - or all seed-retry attempts still result in collisions.
     #[inline]
-    pub fn builder() -> ModelCatalogBuilder {
-        ModelCatalogBuilder::new()
-    }
-
-    /// Creates a builder with preallocated provider and model key capacity.
-    #[inline]
-    pub fn builder_with_capacity(
-        provider_capacity: usize,
-        model_capacity: usize,
-    ) -> ModelCatalogBuilder {
-        ModelCatalogBuilder::with_capacity(provider_capacity, model_capacity)
+    pub fn build(
+        providers: &[ProviderSourceRow],
+        models: &[ModelSourceRow],
+    ) -> Result<Self, ModelCatalogBuildError> {
+        build_from_source(providers, models)
     }
 
     /// Returns the number of provider keys.
@@ -330,9 +342,7 @@ mod tests {
             .map(|(key, info)| ModelSourceRow::new(key, info))
             .collect();
 
-        ModelCatalog::builder_with_capacity(provider_rows.len(), model_rows.len())
-            .build_from_source(&provider_rows, &model_rows)
-            .expect("build catalog from source rows")
+        ModelCatalog::build(&provider_rows, &model_rows).expect("build catalog from source rows")
     }
 
     #[test]

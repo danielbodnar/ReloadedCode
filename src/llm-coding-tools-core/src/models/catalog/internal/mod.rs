@@ -3,6 +3,7 @@
 //! This module contains implementation details that are not part of the public API.
 //! Items here may change without notice.
 
+pub(crate) use builder::build_from_source;
 pub use fixed4::Fixed4;
 
 // Re-export hash utilities
@@ -22,6 +23,7 @@ pub mod hash {
     pub use super::provider_hash::ProviderHash;
 }
 
+mod builder;
 mod fixed4;
 mod hash_utils;
 mod model_config_entry;

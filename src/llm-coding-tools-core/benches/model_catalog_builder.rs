@@ -3,7 +3,7 @@
 use core::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use llm_coding_tools_core::models::{
-    Modality, ModelCatalogBuilder, ModelInfo, ModelSourceRow, ProviderInfo, ProviderSourceRow,
+    Modality, ModelCatalog, ModelInfo, ModelSourceRow, ProviderInfo, ProviderSourceRow,
     ProviderType,
 };
 
@@ -60,9 +60,7 @@ fn make_dataset(provider_count: usize, model_count: usize) -> Dataset {
 }
 
 fn construct_batch(dataset: &Dataset) {
-    let catalog = ModelCatalogBuilder::with_capacity(dataset.providers.len(), dataset.models.len())
-        .build_from_source(&dataset.providers, &dataset.models)
-        .expect("batch build");
+    let catalog = ModelCatalog::build(&dataset.providers, &dataset.models).expect("batch build");
 
     black_box((
         catalog.provider_len(),
