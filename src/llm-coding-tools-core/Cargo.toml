@@ -13,20 +13,50 @@ default = ["tokio"]
 # Base async support (enabled by runtimes like tokio). PRs for other runtimes (smol, async-std) are welcome!
 async = []
 # Async with tokio runtime (default). Enables async feature and tokio-specific implementations.
-tokio = ["async", "dep:tokio", "dep:reqwest", "process-wrap/tokio1", "process-wrap/job-object", "process-wrap/process-group", "process-wrap/kill-on-drop"]
+tokio = [
+    "async",
+    "dep:tokio",
+    "dep:reqwest",
+    "process-wrap/tokio1",
+    "process-wrap/job-object",
+    "process-wrap/process-group",
+    "process-wrap/kill-on-drop",
+]
 # Blocking/sync mode - mutually exclusive with async
-blocking = ["maybe-async/is_sync", "dep:reqwest", "reqwest?/blocking", "process-wrap/std", "process-wrap/job-object", "process-wrap/process-group"]
+blocking = [
+    "maybe-async/is_sync",
+    "dep:reqwest",
+    "reqwest?/blocking",
+    "process-wrap/std",
+    "process-wrap/job-object",
+    "process-wrap/process-group",
+]
 
 [dependencies]
 # Tool outputs (BashOutput, GrepOutput, etc.) serialize to JSON for LLM consumption
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Zero overhead compile time bitflag generation
+bitflags = "2.11.0"
+
+# Compile-time generated packed bitfield structs for model metadata
+bitfields = "1.0.2"
+
 # High-performance hashing for permission keys
 ahash = "0.8"
 
+# Explicit low-level hash table for model catalog lookup
+hashbrown = "0.16"
+
 # Inline string storage for patterns
 tinyvec_string = { version = "0.3", features = ["alloc"] }
+
+# Small-inline vector storage for provider environment variables
+tinyvec = { version = "1.10", features = ["alloc"] }
+
+# Efficient immutable string table for provider URLs and env vars
+lite-strtab = "0.2"
 
 # ToolError type uses thiserror for ergonomic error definitions
 thiserror = "2.0"
@@ -66,3 +96,8 @@ tempfile = "3.24"
 tokio = { version = "1.49", features = ["rt", "macros"] }
 wiremock = "0.6"
 indoc = "2"
+criterion = "0.8"
+
+[[bench]]
+name = "model_catalog_builder"
+harness = false
