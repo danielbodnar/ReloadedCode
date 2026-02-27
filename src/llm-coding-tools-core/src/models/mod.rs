@@ -4,7 +4,7 @@ mod catalog;
 mod provider_type;
 
 pub use catalog::{
-    CatalogEntry, LookupTableKind, Model, ModelCatalog, ModelCatalogBuildError,
-    ModelCatalogBuilder, Provider, ProviderInfo,
+    CatalogEntry, LookupTableKind, Modality, Model, ModelCatalog, ModelCatalogBuildError,
+    ModelCatalogBuilder, ModelInfo, Provider, ProviderInfo,
 };
 pub use provider_type::ProviderType;

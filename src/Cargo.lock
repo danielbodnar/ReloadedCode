@@ -1310,6 +1310,7 @@ dependencies = [
  "ahash",
  "bitfields",
  "bitflags",
+ "criterion",
  "globset",
  "grep-regex",
  "grep-searcher",

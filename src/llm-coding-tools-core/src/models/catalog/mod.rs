@@ -15,7 +15,7 @@
 //!
 //! ## Building a Catalog
 //!
-//! - [`ModelCatalogBuilder`] - Incremental builder for constructing a catalog
+//! - [`ModelCatalogBuilder`] - Batch builder for constructing a catalog
 //! - [`ModelInfo`] - Model metadata input (modalities, token limits, sampling)
 //! - [`ProviderInfo`] - Provider metadata input (API URL, env vars, type)
 //! - [`Modality`] - Content modality flags (text, image, audio, video)

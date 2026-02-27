@@ -315,34 +315,47 @@ mod tests {
         }
     }
 
+    fn build_catalog(
+        providers: Vec<(&str, ProviderInfo)>,
+        models: Vec<(&str, ModelInfo)>,
+    ) -> ModelCatalog {
+        let provider_rows: Vec<(String, ProviderInfo)> = providers
+            .into_iter()
+            .map(|(key, info)| (key.to_owned(), info))
+            .collect();
+        let model_rows: Vec<(String, ModelInfo)> = models
+            .into_iter()
+            .map(|(key, info)| (key.to_owned(), info))
+            .collect();
+
+        ModelCatalog::builder_with_capacity(provider_rows.len(), model_rows.len())
+            .build_from_source(&provider_rows, &model_rows)
+            .expect("build catalog from source rows")
+    }
+
     #[test]
     fn lookup_provider_and_model_work_independently() {
-        let mut builder = ModelCatalog::builder_with_capacity(2, 2);
-        builder
-            .insert_provider(
-                "alpha",
-                provider(
-                    "https://alpha.example",
-                    &["ALPHA_KEY"],
-                    ProviderType::OpenAiCompletions,
+        let catalog = build_catalog(
+            vec![
+                (
+                    "alpha",
+                    provider(
+                        "https://alpha.example",
+                        &["ALPHA_KEY"],
+                        ProviderType::OpenAiCompletions,
+                    ),
                 ),
-            )
-            .expect("insert provider alpha");
-        builder
-            .insert_provider(
-                "beta",
-                provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
-            )
-            .expect("insert provider beta");
+                (
+                    "beta",
+                    provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
+                ),
+            ],
+            vec![
+                ("m1", info_with_sampling(8192, 1024, 1.2, 0.5)),
+                ("m2", info(16_384, 2_048)),
+            ],
+        );
 
-        builder
-            .insert_model("m1", info_with_sampling(8192, 1024, 1.2, 0.5))
-            .expect("insert model m1");
-        builder
-            .insert_model("m2", info(16_384, 2_048))
-            .expect("insert model m2");
-
-        let catalog = builder.build();
         let alpha = catalog
             .lookup_provider("alpha")
             .expect("provider alpha exists");
@@ -362,17 +375,13 @@ mod tests {
 
     #[test]
     fn unknown_provider_or_model_returns_none() {
-        let mut builder = ModelCatalog::builder();
-        builder
-            .insert_provider(
+        let catalog = build_catalog(
+            vec![(
                 "alpha",
                 provider("", &["ALPHA_KEY"], ProviderType::OpenAiCompletions),
-            )
-            .expect("insert provider");
-        builder
-            .insert_model("m1", info(4096, 512))
-            .expect("insert model");
-        let catalog = builder.build();
+            )],
+            vec![("m1", info(4096, 512))],
+        );
 
         assert!(catalog.lookup_provider("missing").is_none());
         assert!(catalog.lookup_model("missing").is_none());
@@ -382,35 +391,32 @@ mod tests {
 
     #[test]
     fn model_entries_are_deduplicated_by_info_and_config() {
-        let mut builder = ModelCatalog::builder();
+        let catalog = build_catalog(
+            Vec::new(),
+            vec![
+                ("m1", info_with_sampling(4096, 512, 1.0, 0.9)),
+                ("m2", info_with_sampling(4096, 512, 1.0, 0.9)),
+            ],
+        );
 
-        builder
-            .insert_model("m1", info_with_sampling(4096, 512, 1.0, 0.9))
-            .expect("insert m1");
-        builder
-            .insert_model("m2", info_with_sampling(4096, 512, 1.0, 0.9))
-            .expect("insert m2");
-
-        let catalog = builder.build();
         assert_eq!(catalog.model_len(), 2);
         assert_eq!(catalog.model_config_len(), 1);
     }
 
     #[test]
     fn provider_env_vars_are_flattened_and_indexed() {
-        let mut builder = ModelCatalog::builder();
-        builder
-            .insert_provider(
+        let catalog = build_catalog(
+            vec![(
                 "azure",
                 provider(
                     "https://azure.example",
                     &["AZURE_KEY", "AZURE_TOKEN", "FALLBACK_KEY"],
                     ProviderType::Azure,
                 ),
-            )
-            .expect("insert provider azure");
+            )],
+            Vec::new(),
+        );
 
-        let catalog = builder.build();
         let provider = catalog
             .lookup_provider("azure")
             .expect("provider azure exists");

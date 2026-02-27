@@ -11,8 +11,9 @@ use crate::models::catalog::public::ProviderIdx;
 use crate::models::catalog::ModelCatalog;
 use crate::models::ProviderType;
 use ahash::AHashMap;
-use hashbrown::HashTable;
+use hashbrown::{hash_table::Entry as TableEntry, HashTable};
 use lite_strtab::{Global, StringTable, StringTableBuilder};
+use std::collections::hash_map::Entry as MapEntry;
 
 /// Maximum hash seed value.
 ///
@@ -20,18 +21,24 @@ use lite_strtab::{Global, StringTable, StringTableBuilder};
 /// Using u8::MAX allows for 256 different hash seeds (0-255).
 pub const MAX_SEED: u8 = u8::MAX;
 
-/// Incremental builder for [`ModelCatalog`].
+#[derive(Debug, Clone, Copy)]
+struct ProviderSourceStats {
+    provider_count: usize,
+    total_api_url_bytes: usize,
+    total_env_keys: usize,
+    total_env_key_bytes: usize,
+}
+
+/// Batch builder for [`ModelCatalog`].
 ///
-/// Providers and models are inserted independently so caller-side key formats
-/// remain implementation-specific.
+/// The builder is optimized for one-shot construction from parsed source rows.
+/// It automatically reseeds and retries on hash collisions.
 #[derive(Debug, Clone)]
 pub struct ModelCatalogBuilder {
     seed: u8,
     hash_state: ahash::RandomState,
     provider_table: HashTable<PackedProviderTableEntry>,
     model_table: HashTable<PackedModelTableEntry>,
-    provider_api_urls: Vec<String>,
-    provider_env_keys: Vec<String>,
     provider_env_ranges: Vec<PackedEnvRange>,
     provider_entries: Vec<ProviderType>,
     model_entries: Vec<PackedModelEntry>,
@@ -55,8 +62,6 @@ impl ModelCatalogBuilder {
             hash_state: hash_state_for_seed(0),
             provider_table: HashTable::with_capacity(provider_capacity),
             model_table: HashTable::with_capacity(model_capacity),
-            provider_api_urls: Vec::with_capacity(provider_capacity),
-            provider_env_keys: Vec::new(),
             provider_env_ranges: Vec::with_capacity(provider_capacity),
             provider_entries: Vec::with_capacity(provider_capacity),
             model_entries: Vec::with_capacity(model_capacity),
@@ -66,201 +71,110 @@ impl ModelCatalogBuilder {
         }
     }
 
-    /// Returns the currently selected hash seed.
+    /// Builds a catalog from parsed source rows.
+    ///
+    /// This is the only public population API. It retries internally with new
+    /// hash seeds if collisions are encountered.
     #[inline]
-    pub const fn seed(&self) -> u8 {
-        self.seed
+    pub fn build_from_source(
+        mut self,
+        providers: &[(String, ProviderInfo)],
+        models: &[(String, ModelInfo)],
+    ) -> Result<ModelCatalog, ModelCatalogBuildError> {
+        let provider_stats = analyze_provider_rows(providers)?;
+
+        self.seed = 0;
+        self.hash_state = hash_state_for_seed(0);
+        self.clear_entries();
+        self.reserve_for_source(provider_stats.provider_count, models.len());
+
+        loop {
+            match self.populate_tables_once(providers, models) {
+                Ok(()) => break,
+                Err(ModelCatalogBuildError::HashCollision { .. }) => {
+                    self.advance_seed_and_clear()?;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(self.finish_with_source(providers, provider_stats))
     }
 
-    /// Returns the number of inserted providers.
-    ///
-    /// # Returns
-    ///
-    /// The total number of provider entries inserted into the builder.
     #[inline]
-    pub fn provider_len(&self) -> usize {
-        self.provider_table.len()
-    }
-
-    /// Returns the total number of inserted model keys.
-    ///
-    /// This includes all model entries before deduplication. Multiple keys may
-    /// reference the same configuration (see [`Self::model_config_len`]).
-    ///
-    /// For example, inserting `moonshotai/Kimi-K2.5` under providers `evroc`,
-    /// `togetherai`, and `moonshotai` with identical metadata, this returns 3.
-    ///
-    /// Note: Model key names depend on the source. For models.dev, they follow
-    /// the `{owner}/{model}` format, but other registries may use different naming.
-    ///
-    /// # Returns
-    ///
-    /// The total number of model entries inserted into the builder.
-    #[inline]
-    pub fn model_len(&self) -> usize {
-        self.model_table.len()
-    }
-
-    /// Returns the number of unique model configurations.
-    ///
-    /// Models with identical metadata are deduplicated and share a configuration
-    /// entry. This is always less than or equal to [`Self::model_len`].
-    ///
-    /// For example, inserting `moonshotai/Kimi-K2.5` under providers `evroc`,
-    /// `togetherai`, and `moonshotai` with identical metadata, this returns 1.
-    ///
-    /// Note: Model key names depend on the source. For models.dev, they follow
-    /// the `{owner}/{model}` format, but other registries may use different naming.
-    ///
-    /// # Returns
-    ///
-    /// The number of unique model configuration rows.
-    #[inline]
-    pub fn model_config_len(&self) -> usize {
-        self.model_entries.len()
-    }
-
-    /// Returns true when no providers and no models are inserted.
-    ///
-    /// # Returns
-    ///
-    /// `true` if both provider and model tables are empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.provider_table.is_empty() && self.model_table.is_empty()
-    }
-
-    /// Reserves capacity for additional provider keys.
-    ///
-    /// Preallocates internal storage to avoid reallocations when inserting
-    /// multiple providers.
-    ///
-    /// # Parameters
-    ///
-    /// * `additional` - The number of additional providers expected to be inserted.
-    #[inline]
-    pub fn reserve_providers(&mut self, additional: usize) {
+    fn reserve_for_source(&mut self, provider_count: usize, model_count: usize) {
         self.provider_table
-            .reserve(additional, provider_table_entry_hash);
-        self.provider_api_urls.reserve(additional);
-        self.provider_env_ranges.reserve(additional);
-        self.provider_entries.reserve(additional);
+            .reserve(provider_count, provider_table_entry_hash);
+        self.model_table
+            .reserve(model_count, model_table_entry_hash);
+        self.provider_env_ranges.reserve(provider_count);
+        self.provider_entries.reserve(provider_count);
+        self.model_entries.reserve(model_count);
+        self.model_config_entries.reserve(model_count);
+        self.model_entry_intern.reserve(model_count);
     }
 
-    /// Reserves capacity for additional model keys.
-    ///
-    /// Preallocates internal storage to avoid reallocations when inserting
-    /// multiple models.
-    ///
-    /// # Parameters
-    ///
-    /// * `additional` - The number of additional models expected to be inserted.
     #[inline]
-    pub fn reserve_models(&mut self, additional: usize) {
-        self.model_table.reserve(additional, model_table_entry_hash);
-        self.model_entries.reserve(additional);
-        self.model_config_entries.reserve(additional);
-        self.model_entry_intern.reserve(additional);
-    }
-
-    /// Inserts a provider entry into the catalog.
-    ///
-    /// # Parameters
-    ///
-    /// * `provider_key` - The unique provider identifier (e.g., `"openai"`, `"moonshotai"`).
-    /// * `info` - Provider metadata including API URL, environment variables, and type.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` if the provider was inserted successfully.
-    /// * `Err(ModelCatalogBuildError::HashCollision)` if a hash collision is detected
-    ///   for the current seed. Call [`Self::reset`] to try with a new seed.
-    /// * `Err(ModelCatalogBuildError::TooManyProviders)` if the maximum provider count
-    ///   is exceeded.
-    /// * `Err(ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider)` if the
-    ///   provider has too many environment variables.
-    #[inline]
-    pub fn insert_provider(
+    fn populate_tables_once(
         &mut self,
-        provider_key: &str,
-        info: ProviderInfo,
+        providers: &[(String, ProviderInfo)],
+        models: &[(String, ModelInfo)],
     ) -> Result<(), ModelCatalogBuildError> {
-        use crate::models::catalog::internal::MAX_ENV_RANGE_COUNT;
+        let mut env_start: u16 = 0;
 
-        if self.provider_entries.len() >= MAX_PROVIDER_COUNT {
-            return Err(ModelCatalogBuildError::TooManyProviders {
-                count: self.provider_entries.len() + 1,
-                max: MAX_PROVIDER_COUNT,
-            });
+        for (provider_key, provider_info) in providers {
+            let env_count = provider_info.env_vars.len() as u8;
+            self.insert_provider_row(provider_key, env_start, env_count, provider_info.api_type)?;
+            env_start = env_start.wrapping_add(u16::from(env_count));
         }
 
-        let env_count = info.env_vars.len();
-        if env_count > usize::from(MAX_ENV_RANGE_COUNT) {
-            return Err(
-                ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider {
-                    count: env_count,
-                    max: usize::from(MAX_ENV_RANGE_COUNT),
-                },
-            );
+        for (model_key, model_info) in models {
+            self.insert_model_row(model_key, *model_info)?;
         }
-
-        let key = hash_provider_key(&self.hash_state, provider_key);
-        let hash48 = PackedProviderTableEntry::truncate_hash48(key.as_u64());
-        if self
-            .provider_table
-            .find(hash48, |existing: &PackedProviderTableEntry| {
-                existing.hash48() == hash48
-            })
-            .is_some()
-        {
-            return Err(ModelCatalogBuildError::HashCollision {
-                table: LookupTableKind::Provider,
-                seed: self.seed,
-            });
-        }
-
-        let provider_idx = self.provider_entries.len() as u16;
-        let env_start = self.provider_env_keys.len() as u16;
-        let env_count = env_count as u8;
-        self.provider_api_urls.push(info.api_url);
-        self.provider_env_keys.extend(info.env_vars);
-        self.provider_env_ranges
-            .push(PackedEnvRange::from_parts(env_start, env_count));
-
-        self.provider_entries.push(info.api_type);
-        self.provider_table.insert_unique(
-            hash48,
-            PackedProviderTableEntry::from_parts(key.as_u64(), provider_idx),
-            provider_table_entry_hash,
-        );
 
         Ok(())
     }
 
-    /// Inserts a model entry into the catalog.
-    ///
-    /// Models with identical metadata are automatically deduplicated and share
-    /// a single configuration entry.
-    ///
-    /// # Parameters
-    ///
-    /// * `model_key` - The unique model identifier (e.g., `"gpt-4"`, `"moonshotai/Kimi-K2.5"`).
-    ///   Note that model key format depends on the source registry.
-    /// * `info` - Model metadata including token limits, modalities, and optional sampling defaults.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` if the model was inserted successfully.
-    /// * `Err(ModelCatalogBuildError::HashCollision)` if a hash collision is detected
-    ///   for the current seed. Call [`Self::reset`] to try with a new seed.
-    /// * `Err(ModelCatalogBuildError::TooManyModelConfigurations)` if the maximum
-    ///   unique configuration count is exceeded.
-    /// * `Err(ModelCatalogBuildError::MaxInputTokensOutOfRange)` if max_input exceeds
-    ///   the packed limit.
-    /// * `Err(ModelCatalogBuildError::MaxOutputTokensOutOfRange)` if max_output exceeds
-    ///   the packed limit.
     #[inline]
-    pub fn insert_model(
+    fn insert_provider_row(
+        &mut self,
+        provider_key: &str,
+        env_start: u16,
+        env_count: u8,
+        api_type: ProviderType,
+    ) -> Result<(), ModelCatalogBuildError> {
+        let key = hash_provider_key(&self.hash_state, provider_key);
+        let hash48 = PackedProviderTableEntry::truncate_hash48(key.as_u64());
+        let provider_idx = self.provider_entries.len() as u16;
+
+        match self.provider_table.entry(
+            hash48,
+            |existing: &PackedProviderTableEntry| existing.hash48() == hash48,
+            provider_table_entry_hash,
+        ) {
+            TableEntry::Occupied(_) => {
+                return Err(ModelCatalogBuildError::HashCollision {
+                    table: LookupTableKind::Provider,
+                    seed: self.seed,
+                });
+            }
+            TableEntry::Vacant(vacant) => {
+                vacant.insert(PackedProviderTableEntry::from_parts(
+                    key.as_u64(),
+                    provider_idx,
+                ));
+            }
+        }
+
+        self.provider_env_ranges
+            .push(PackedEnvRange::from_parts(env_start, env_count));
+        self.provider_entries.push(api_type);
+
+        Ok(())
+    }
+
+    #[inline]
+    fn insert_model_row(
         &mut self,
         model_key: &str,
         info: ModelInfo,
@@ -281,13 +195,11 @@ impl ModelCatalogBuilder {
 
         let model_entry = PackedModelEntry::from_model_info(info);
         let config_entry = ModelConfigEntry::from_sampling(info.temperature, info.top_p);
-        if !config_entry.is_none() {
-            self.has_any_model_config = true;
-        }
+        self.has_any_model_config |= !config_entry.is_none();
 
-        let model_config_idx = match self.model_entry_intern.get(&(model_entry, config_entry)) {
-            Some(existing) => *existing,
-            None => {
+        let model_config_idx = match self.model_entry_intern.entry((model_entry, config_entry)) {
+            MapEntry::Occupied(existing) => *existing.get(),
+            MapEntry::Vacant(vacant) => {
                 if self.model_entries.len() >= MAX_MODEL_CONFIG_COUNT {
                     return Err(ModelCatalogBuildError::TooManyModelConfigurations {
                         count: self.model_entries.len() + 1,
@@ -298,95 +210,79 @@ impl ModelCatalogBuilder {
                 let next_idx = self.model_entries.len() as u16;
                 self.model_entries.push(model_entry);
                 self.model_config_entries.push(config_entry);
-                self.model_entry_intern
-                    .insert((model_entry, config_entry), next_idx);
+                vacant.insert(next_idx);
                 next_idx
             }
         };
 
         let key = hash_model_key(&self.hash_state, model_key);
         let hash48 = PackedModelTableEntry::truncate_hash48(key.as_u64());
-        if self
-            .model_table
-            .find(hash48, |existing: &PackedModelTableEntry| {
-                existing.hash48() == hash48
-            })
-            .is_some()
-        {
-            return Err(ModelCatalogBuildError::HashCollision {
-                table: LookupTableKind::Model,
-                seed: self.seed,
-            });
-        }
-
-        self.model_table.insert_unique(
+        match self.model_table.entry(
             hash48,
-            PackedModelTableEntry::from_parts(key.as_u64(), model_config_idx),
+            |existing: &PackedModelTableEntry| existing.hash48() == hash48,
             model_table_entry_hash,
-        );
+        ) {
+            TableEntry::Occupied(_) => {
+                return Err(ModelCatalogBuildError::HashCollision {
+                    table: LookupTableKind::Model,
+                    seed: self.seed,
+                });
+            }
+            TableEntry::Vacant(vacant) => {
+                vacant.insert(PackedModelTableEntry::from_parts(
+                    key.as_u64(),
+                    model_config_idx,
+                ));
+            }
+        }
 
         Ok(())
     }
 
-    /// Resets the builder to handle hash collisions.
-    ///
-    /// Clears all inserted entries and advances to the next hash seed.
-    /// Capacity is retained so callers can replay inserts without reallocating.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` if reset succeeded and the seed was advanced.
-    /// * `Err(ModelCatalogBuildError::HashCollisionExhausted)` if all seeds have
-    ///   been exhausted.
     #[inline]
-    pub fn reset(&mut self) -> Result<(), ModelCatalogBuildError> {
+    fn advance_seed_and_clear(&mut self) -> Result<(), ModelCatalogBuildError> {
         if self.seed == MAX_SEED {
             return Err(ModelCatalogBuildError::HashCollisionExhausted {
                 attempts: MAX_SEED.into(),
             });
         }
 
-        self.seed = self.seed.wrapping_add(1);
+        self.seed += 1;
         self.hash_state = hash_state_for_seed(self.seed);
+        self.clear_entries();
+        Ok(())
+    }
+
+    #[inline]
+    fn clear_entries(&mut self) {
         self.provider_table.clear();
         self.model_table.clear();
-        self.provider_api_urls.clear();
-        self.provider_env_keys.clear();
         self.provider_env_ranges.clear();
         self.provider_entries.clear();
         self.model_entries.clear();
         self.model_config_entries.clear();
         self.model_entry_intern.clear();
         self.has_any_model_config = false;
-
-        Ok(())
     }
 
-    /// Finalizes the builder into a [`ModelCatalog`].
-    ///
-    /// Consumes the builder and returns an immutable catalog ready for lookups.
-    ///
-    /// # Returns
-    ///
-    /// A finalized [`ModelCatalog`] containing all inserted providers and models.
     #[inline]
-    pub fn build(self) -> ModelCatalog {
+    fn finish_with_source(
+        self,
+        providers: &[(String, ProviderInfo)],
+        provider_stats: ProviderSourceStats,
+    ) -> ModelCatalog {
         let model_config_entries = if self.has_any_model_config {
             Some(self.model_config_entries.into_boxed_slice())
         } else {
             None
         };
 
-        // Build StringTables from accumulated strings
-        let api_url_table = build_string_table(&self.provider_api_urls);
-        let env_keys_table = build_string_table(&self.provider_env_keys);
-
         ModelCatalog {
             hash_state: self.hash_state,
             provider_table: self.provider_table,
             model_table: self.model_table,
-            provider_api_urls: api_url_table,
-            provider_env_keys: env_keys_table,
+            provider_api_urls: build_provider_api_url_table(providers, provider_stats),
+            provider_env_keys: build_provider_env_key_table(providers, provider_stats),
             provider_env_ranges: self.provider_env_ranges.into_boxed_slice(),
             provider_entries: self.provider_entries.into_boxed_slice(),
             model_entries: self.model_entries.into_boxed_slice(),
@@ -395,18 +291,87 @@ impl ModelCatalogBuilder {
     }
 }
 
-/// Builds a StringTable from a slice of strings.
 #[inline]
-fn build_string_table(strings: &[String]) -> StringTable<u32, ProviderIdx> {
-    let total_bytes: usize = strings.iter().map(|s| s.len()).sum();
+fn analyze_provider_rows(
+    providers: &[(String, ProviderInfo)],
+) -> Result<ProviderSourceStats, ModelCatalogBuildError> {
+    use crate::models::catalog::internal::MAX_ENV_RANGE_COUNT;
+
+    let provider_count = providers.len();
+    if provider_count > MAX_PROVIDER_COUNT {
+        return Err(ModelCatalogBuildError::TooManyProviders {
+            count: provider_count,
+            max: MAX_PROVIDER_COUNT,
+        });
+    }
+
+    let mut total_api_url_bytes = 0usize;
+    let mut total_env_keys = 0usize;
+    let mut total_env_key_bytes = 0usize;
+
+    for (_, provider_info) in providers {
+        let env_count = provider_info.env_vars.len();
+        if env_count > usize::from(MAX_ENV_RANGE_COUNT) {
+            return Err(
+                ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider {
+                    count: env_count,
+                    max: usize::from(MAX_ENV_RANGE_COUNT),
+                },
+            );
+        }
+
+        total_api_url_bytes += provider_info.api_url.len();
+        total_env_keys += env_count;
+        for env_key in &provider_info.env_vars {
+            total_env_key_bytes += env_key.len();
+        }
+    }
+
+    Ok(ProviderSourceStats {
+        provider_count,
+        total_api_url_bytes,
+        total_env_keys,
+        total_env_key_bytes,
+    })
+}
+
+#[inline]
+fn build_provider_api_url_table(
+    providers: &[(String, ProviderInfo)],
+    stats: ProviderSourceStats,
+) -> StringTable<u32, ProviderIdx> {
     let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
-        strings.len(),
-        total_bytes,
+        stats.provider_count,
+        stats.total_api_url_bytes,
         Global,
     );
-    for s in strings {
-        builder.try_push(s).expect("string table insert");
+
+    for (_, provider_info) in providers {
+        builder
+            .try_push(&provider_info.api_url)
+            .expect("string table insert");
     }
+
+    builder.build()
+}
+
+#[inline]
+fn build_provider_env_key_table(
+    providers: &[(String, ProviderInfo)],
+    stats: ProviderSourceStats,
+) -> StringTable<u32, ProviderIdx> {
+    let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
+        stats.total_env_keys,
+        stats.total_env_key_bytes,
+        Global,
+    );
+
+    for (_, provider_info) in providers {
+        for env_key in &provider_info.env_vars {
+            builder.try_push(env_key).expect("string table insert");
+        }
+    }
+
     builder.build()
 }
 
@@ -420,9 +385,7 @@ impl Default for ModelCatalogBuilder {
 #[cfg(test)]
 mod tests {
     use super::ModelCatalogBuilder;
-    use crate::models::catalog::{
-        LookupTableKind, Modality, ModelCatalogBuildError, ModelInfo, ProviderInfo,
-    };
+    use crate::models::catalog::{Modality, ModelCatalogBuildError, ModelInfo, ProviderInfo};
     use crate::models::ProviderType;
 
     fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
@@ -443,90 +406,159 @@ mod tests {
         }
     }
 
-    #[test]
-    fn collisions_report_table_kind_and_seed() {
-        let mut builder = ModelCatalogBuilder::new();
-        builder
-            .insert_provider("alpha", provider("", &[], ProviderType::OpenAiCompletions))
-            .expect("first insert succeeds");
+    fn source_rows() -> (Vec<(String, ProviderInfo)>, Vec<(String, ModelInfo)>) {
+        (
+            vec![(
+                "alpha".to_string(),
+                provider(
+                    "https://alpha.example",
+                    &["ALPHA_KEY"],
+                    ProviderType::OpenAiCompletions,
+                ),
+            )],
+            vec![("m1".to_string(), info(4096, 512))],
+        )
+    }
 
-        let err = builder
-            .insert_provider("alpha", provider("", &[], ProviderType::OpenAiCompletions))
-            .expect_err("duplicate hash should fail");
-        assert_eq!(
-            err,
-            ModelCatalogBuildError::HashCollision {
-                table: LookupTableKind::Provider,
-                seed: 0,
+    #[test]
+    fn build_from_source_builds_catalog() {
+        let (providers, models) = source_rows();
+        let catalog = ModelCatalogBuilder::with_capacity(1, 1)
+            .build_from_source(&providers, &models)
+            .expect("source build should succeed");
+
+        assert_eq!(catalog.provider_len(), 1);
+        assert_eq!(catalog.model_len(), 1);
+        assert!(catalog.lookup("alpha", "m1").is_some());
+    }
+
+    #[test]
+    fn duplicate_provider_keys_exhaust_reseed_attempts() {
+        let providers = vec![
+            (
+                "alpha".to_string(),
+                provider("https://alpha.example", &["ALPHA_KEY"], ProviderType::Azure),
+            ),
+            (
+                "alpha".to_string(),
+                provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
+            ),
+        ];
+        let models = vec![("m1".to_string(), info(4096, 512))];
+
+        match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ModelCatalogBuildError::HashCollisionExhausted {
+                        attempts: super::MAX_SEED.into()
+                    }
+                );
             }
-        );
-    }
-
-    #[test]
-    fn reset_advances_seed_and_clears_tables() {
-        let mut builder = ModelCatalogBuilder::new();
-        builder
-            .insert_model("m1", info(4096, 512))
-            .expect("insert model");
-        assert_eq!(builder.seed(), 0);
-
-        builder.reset().expect("reset should advance seed");
-        assert_eq!(builder.seed(), 1);
-        assert!(builder.is_empty());
-    }
-
-    #[test]
-    fn reset_exhaustion_returns_error_at_seed_limit() {
-        let mut builder = ModelCatalogBuilder::new();
-
-        for _ in 0..super::MAX_SEED {
-            builder.reset().expect("reset within seed range must work");
+            Ok(_) => panic!("duplicate provider key should collide for all seeds"),
         }
+    }
 
-        let err = builder
-            .reset()
-            .expect_err("reset should fail after all seeds are consumed");
-        assert_eq!(
-            err,
-            ModelCatalogBuildError::HashCollisionExhausted {
-                attempts: super::MAX_SEED.into()
+    #[test]
+    fn model_entries_are_deduplicated_by_info_and_config() {
+        let providers = vec![(
+            "alpha".to_string(),
+            provider("https://alpha.example", &["ALPHA_KEY"], ProviderType::Azure),
+        )];
+        let models = vec![
+            (
+                "m1".to_string(),
+                ModelInfo {
+                    modalities: Modality::TEXT,
+                    max_input: 4096,
+                    max_output: 512,
+                    temperature: Some(1.0),
+                    top_p: Some(0.9),
+                },
+            ),
+            (
+                "m2".to_string(),
+                ModelInfo {
+                    modalities: Modality::TEXT,
+                    max_input: 4096,
+                    max_output: 512,
+                    temperature: Some(1.0),
+                    top_p: Some(0.9),
+                },
+            ),
+        ];
+
+        let catalog = ModelCatalogBuilder::new()
+            .build_from_source(&providers, &models)
+            .expect("source build should succeed");
+
+        assert_eq!(catalog.model_len(), 2);
+        assert_eq!(catalog.model_config_len(), 1);
+    }
+
+    #[test]
+    fn too_many_provider_env_vars_returns_error() {
+        let providers = vec![(
+            "alpha".to_string(),
+            provider(
+                "https://alpha.example",
+                &["A", "B", "C", "D"],
+                ProviderType::Azure,
+            ),
+        )];
+        let models = vec![("m1".to_string(), info(4096, 512))];
+
+        match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider {
+                        count: 4,
+                        max: 3,
+                    }
+                );
             }
-        );
+            Ok(_) => panic!("provider with too many env vars should fail"),
+        }
     }
 
     #[test]
     fn max_output_tokens_out_of_range_returns_error() {
-        let mut builder = ModelCatalogBuilder::new();
+        let (providers, _) = source_rows();
         let max_output = super::MAX_OUTPUT_TOKENS;
+        let models = vec![("m1".to_string(), info(4096, max_output.saturating_add(1)))];
 
-        let err = builder
-            .insert_model("m1", info(4096, max_output.saturating_add(1)))
-            .expect_err("max output over packed limit should fail");
-
-        assert_eq!(
-            err,
-            ModelCatalogBuildError::MaxOutputTokensOutOfRange {
-                max_output: max_output.saturating_add(1),
-                max: max_output,
+        match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ModelCatalogBuildError::MaxOutputTokensOutOfRange {
+                        max_output: max_output.saturating_add(1),
+                        max: max_output,
+                    }
+                );
             }
-        );
+            Ok(_) => panic!("max output over packed limit should fail"),
+        }
     }
 
     #[test]
     fn max_input_tokens_out_of_range_returns_error() {
-        let mut builder = ModelCatalogBuilder::new();
+        let (providers, _) = source_rows();
         let max_input = super::MAX_INPUT_TOKENS;
+        let models = vec![("m1".to_string(), info(max_input.saturating_add(1), 512))];
 
-        let err = builder
-            .insert_model("m1", info(max_input.saturating_add(1), 512))
-            .expect_err("max input over packed limit should fail");
-
-        assert_eq!(
-            err,
-            ModelCatalogBuildError::MaxInputTokensOutOfRange {
-                max_input: max_input.saturating_add(1),
-                max: max_input,
+        match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    ModelCatalogBuildError::MaxInputTokensOutOfRange {
+                        max_input: max_input.saturating_add(1),
+                        max: max_input,
+                    }
+                );
             }
-        );
+            Ok(_) => panic!("max input over packed limit should fail"),
+        }
     }
 }

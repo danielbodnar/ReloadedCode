@@ -96,3 +96,8 @@ tempfile = "3.24"
 tokio = { version = "1.49", features = ["rt", "macros"] }
 wiremock = "0.6"
 indoc = "2"
+criterion = "0.8"
+
+[[bench]]
+name = "model_catalog_builder"
+harness = false
