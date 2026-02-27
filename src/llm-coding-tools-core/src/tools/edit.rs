@@ -21,10 +21,13 @@ pub enum EditError {
     #[error("old_string not found in file content")]
     NotFound,
     /// Multiple matches found when replace_all is false.
+    ///
+    /// This variant intentionally does not include an exact count so single-replace
+    /// mode can stop searching as soon as it finds a second match.
     #[error(
-        "oldString found {0} times and requires more code context to uniquely identify the intended match"
+        "old_string found multiple times and requires more code context to uniquely identify the intended match"
     )]
-    AmbiguousMatch(usize),
+    AmbiguousMatch,
 }
 
 impl From<std::io::Error> for EditError {
@@ -54,25 +57,43 @@ pub async fn edit_file<R: PathResolver>(
     let path = resolver.resolve(file_path)?;
     let content = fs::read_to_string(&path).await?;
 
-    let count = content.matches(old_string).count();
+    let (new_content, replacement_count) = if replace_all {
+        // replace_all reports the exact number of replacements, so this path
+        // counts every match.
+        let count = content.matches(old_string).count();
+        if count == 0 {
+            return Err(EditError::NotFound);
+        }
 
-    if count == 0 {
-        return Err(EditError::NotFound);
-    }
-
-    if !replace_all && count > 1 {
-        return Err(EditError::AmbiguousMatch(count));
-    }
-
-    let new_content = if replace_all {
-        content.replace(old_string, new_string)
+        (content.replace(old_string, new_string), count)
     } else {
-        content.replacen(old_string, new_string, 1)
+        // Fast path for single replacement: advance a single non-overlapping
+        // matcher until the second match (if any), then stop.
+        let mut matches = content.match_indices(old_string);
+        let Some((first_idx, _)) = matches.next() else {
+            return Err(EditError::NotFound);
+        };
+        if matches.next().is_some() {
+            return Err(EditError::AmbiguousMatch);
+        }
+
+        let tail_start = first_idx + old_string.len();
+
+        // Build the edited string directly from slices to avoid rescanning.
+        let mut replaced =
+            String::with_capacity(content.len() - old_string.len() + new_string.len());
+        replaced.push_str(&content[..first_idx]);
+        replaced.push_str(new_string);
+        replaced.push_str(&content[tail_start..]);
+        (replaced, 1)
     };
 
     fs::write(&path, &new_content).await?;
 
-    Ok(format!("Successfully replaced {} occurrence(s)", count))
+    Ok(format!(
+        "Successfully replaced {} occurrence(s)",
+        replacement_count
+    ))
 }
 
 #[cfg(test)]

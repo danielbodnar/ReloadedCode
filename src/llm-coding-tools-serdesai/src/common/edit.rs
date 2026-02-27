@@ -18,12 +18,11 @@ pub(crate) fn error_to_serdes(err: EditError) -> ToolError {
             Some("old_string".to_string()),
             "old_string not found in file content".to_string(),
         ),
-        EditError::AmbiguousMatch(count) => ToolError::validation_error(
+        EditError::AmbiguousMatch => ToolError::validation_error(
             tool_names::EDIT,
             Some("old_string".to_string()),
-            format!(
-                "old_string found {count} times and requires more code context to uniquely identify the intended match"
-            ),
+            "old_string found multiple times and requires more code context to uniquely identify the intended match"
+                .to_string(),
         ),
         EditError::EmptyOldString => ToolError::validation_error(
             tool_names::EDIT,
