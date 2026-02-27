@@ -173,7 +173,7 @@ fn insert_model_row(
     }
 
     let model_entry = PackedModelEntry::from_model_info(info);
-    let config_entry = ModelConfigEntry::from_sampling(info.temperature, info.top_p);
+    let config_entry = ModelConfigEntry::from_sampling(info.temperature, info.top_p)?;
     state.has_any_model_config |= !config_entry.is_none();
 
     // Deduplicate model config entries.

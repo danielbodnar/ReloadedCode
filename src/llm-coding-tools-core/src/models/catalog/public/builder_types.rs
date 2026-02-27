@@ -134,7 +134,7 @@ impl core::fmt::Display for LookupTableKind {
 }
 
 /// Errors returned when building a [`crate::models::ModelCatalog`].
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum ModelCatalogBuildError {
     /// Provider count exceeds the `u16` provider-index address space.
     #[error("provider count {count} exceeds supported maximum {max}")]
@@ -203,4 +203,12 @@ pub enum ModelCatalogBuildError {
     /// String table capacity exceeded during construction.
     #[error("string table capacity exceeded: {0}")]
     StringTableCapacityExceeded(String),
+    /// Invalid sampling value (negative or too large).
+    #[error("invalid sampling value {field}={value}: must be >= 0.0 and <= 6.5535")]
+    InvalidSamplingValue {
+        /// Field name ("temperature" or "top_p").
+        field: &'static str,
+        /// Invalid value provided.
+        value: f32,
+    },
 }
