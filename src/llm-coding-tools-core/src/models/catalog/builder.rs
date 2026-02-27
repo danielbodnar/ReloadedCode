@@ -5,7 +5,7 @@ use crate::models::catalog::internal::{
     MAX_OUTPUT_TOKENS, MAX_PROVIDER_COUNT,
 };
 use crate::models::catalog::public::builder_types::{
-    LookupTableKind, ModelCatalogBuildError, ModelInfo, ProviderInfo,
+    LookupTableKind, ModelCatalogBuildError, ModelInfo, ModelSourceRow, ProviderSourceRow,
 };
 use crate::models::catalog::public::ProviderIdx;
 use crate::models::catalog::ModelCatalog;
@@ -49,12 +49,25 @@ pub struct ModelCatalogBuilder {
 
 impl ModelCatalogBuilder {
     /// Creates a builder with no preallocated capacity.
+    ///
+    /// # Returns
+    ///
+    /// A new empty [`ModelCatalogBuilder`].
     #[inline]
     pub fn new() -> Self {
         Self::with_capacity(0, 0)
     }
 
     /// Creates a builder with preallocated provider and model key capacity.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_capacity` - Expected number of provider rows.
+    /// * `model_capacity` - Expected number of model rows.
+    ///
+    /// # Returns
+    ///
+    /// A new [`ModelCatalogBuilder`] with preallocated internal storage.
     #[inline]
     pub fn with_capacity(provider_capacity: usize, model_capacity: usize) -> Self {
         Self {
@@ -71,15 +84,31 @@ impl ModelCatalogBuilder {
         }
     }
 
-    /// Builds a catalog from parsed source rows.
+    /// Builds a catalog from provider and model source rows.
     ///
-    /// This is the only public population API. It retries internally with new
-    /// hash seeds if collisions are encountered.
+    /// This method retries internally with new hash seeds when collisions are
+    /// encountered.
+    ///
+    /// # Parameters
+    ///
+    /// * `providers` - [`ProviderSourceRow`] values keyed by provider identifier.
+    /// * `models` - [`ModelSourceRow`] values keyed by model identifier.
+    ///
+    /// # Returns
+    ///
+    /// A fully built [`ModelCatalog`] when construction succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelCatalogBuildError`] when:
+    /// - input exceeds supported numeric limits,
+    /// - token limits cannot be represented in packed model entries,
+    /// - or all seed-retry attempts still result in collisions.
     #[inline]
     pub fn build_from_source(
         mut self,
-        providers: &[(String, ProviderInfo)],
-        models: &[(String, ModelInfo)],
+        providers: &[ProviderSourceRow],
+        models: &[ModelSourceRow],
     ) -> Result<ModelCatalog, ModelCatalogBuildError> {
         let provider_stats = analyze_provider_rows(providers)?;
 
@@ -117,19 +146,25 @@ impl ModelCatalogBuilder {
     #[inline]
     fn populate_tables_once(
         &mut self,
-        providers: &[(String, ProviderInfo)],
-        models: &[(String, ModelInfo)],
+        providers: &[ProviderSourceRow],
+        models: &[ModelSourceRow],
     ) -> Result<(), ModelCatalogBuildError> {
         let mut env_start: u16 = 0;
 
-        for (provider_key, provider_info) in providers {
+        for provider_row in providers {
+            let provider_info = &provider_row.provider;
             let env_count = provider_info.env_vars.len() as u8;
-            self.insert_provider_row(provider_key, env_start, env_count, provider_info.api_type)?;
+            self.insert_provider_row(
+                &provider_row.provider_key,
+                env_start,
+                env_count,
+                provider_info.api_type,
+            )?;
             env_start = env_start.wrapping_add(u16::from(env_count));
         }
 
-        for (model_key, model_info) in models {
-            self.insert_model_row(model_key, *model_info)?;
+        for model_row in models {
+            self.insert_model_row(&model_row.model_key, model_row.model)?;
         }
 
         Ok(())
@@ -268,7 +303,7 @@ impl ModelCatalogBuilder {
     #[inline]
     fn finish_with_source(
         self,
-        providers: &[(String, ProviderInfo)],
+        providers: &[ProviderSourceRow],
         provider_stats: ProviderSourceStats,
     ) -> ModelCatalog {
         let model_config_entries = if self.has_any_model_config {
@@ -293,7 +328,7 @@ impl ModelCatalogBuilder {
 
 #[inline]
 fn analyze_provider_rows(
-    providers: &[(String, ProviderInfo)],
+    providers: &[ProviderSourceRow],
 ) -> Result<ProviderSourceStats, ModelCatalogBuildError> {
     use crate::models::catalog::internal::MAX_ENV_RANGE_COUNT;
 
@@ -309,7 +344,8 @@ fn analyze_provider_rows(
     let mut total_env_keys = 0usize;
     let mut total_env_key_bytes = 0usize;
 
-    for (_, provider_info) in providers {
+    for provider_row in providers {
+        let provider_info = &provider_row.provider;
         let env_count = provider_info.env_vars.len();
         if env_count > usize::from(MAX_ENV_RANGE_COUNT) {
             return Err(
@@ -337,7 +373,7 @@ fn analyze_provider_rows(
 
 #[inline]
 fn build_provider_api_url_table(
-    providers: &[(String, ProviderInfo)],
+    providers: &[ProviderSourceRow],
     stats: ProviderSourceStats,
 ) -> StringTable<u32, ProviderIdx> {
     let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
@@ -346,9 +382,9 @@ fn build_provider_api_url_table(
         Global,
     );
 
-    for (_, provider_info) in providers {
+    for provider_row in providers {
         builder
-            .try_push(&provider_info.api_url)
+            .try_push(&provider_row.provider.api_url)
             .expect("string table insert");
     }
 
@@ -357,7 +393,7 @@ fn build_provider_api_url_table(
 
 #[inline]
 fn build_provider_env_key_table(
-    providers: &[(String, ProviderInfo)],
+    providers: &[ProviderSourceRow],
     stats: ProviderSourceStats,
 ) -> StringTable<u32, ProviderIdx> {
     let mut builder = StringTableBuilder::<u32, ProviderIdx>::with_capacity_in(
@@ -366,8 +402,8 @@ fn build_provider_env_key_table(
         Global,
     );
 
-    for (_, provider_info) in providers {
-        for env_key in &provider_info.env_vars {
+    for provider_row in providers {
+        for env_key in &provider_row.provider.env_vars {
             builder.try_push(env_key).expect("string table insert");
         }
     }
@@ -385,7 +421,10 @@ impl Default for ModelCatalogBuilder {
 #[cfg(test)]
 mod tests {
     use super::ModelCatalogBuilder;
-    use crate::models::catalog::{Modality, ModelCatalogBuildError, ModelInfo, ProviderInfo};
+    use crate::models::catalog::{
+        Modality, ModelCatalogBuildError, ModelInfo, ModelSourceRow, ProviderInfo,
+        ProviderSourceRow,
+    };
     use crate::models::ProviderType;
 
     fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
@@ -406,17 +445,25 @@ mod tests {
         }
     }
 
-    fn source_rows() -> (Vec<(String, ProviderInfo)>, Vec<(String, ModelInfo)>) {
+    fn provider_row(provider_key: &str, provider: ProviderInfo) -> ProviderSourceRow {
+        ProviderSourceRow::new(provider_key, provider)
+    }
+
+    fn model_row(model_key: &str, model: ModelInfo) -> ModelSourceRow {
+        ModelSourceRow::new(model_key, model)
+    }
+
+    fn source_rows() -> (Vec<ProviderSourceRow>, Vec<ModelSourceRow>) {
         (
-            vec![(
-                "alpha".to_string(),
+            vec![provider_row(
+                "alpha",
                 provider(
                     "https://alpha.example",
                     &["ALPHA_KEY"],
                     ProviderType::OpenAiCompletions,
                 ),
             )],
-            vec![("m1".to_string(), info(4096, 512))],
+            vec![model_row("m1", info(4096, 512))],
         )
     }
 
@@ -435,16 +482,16 @@ mod tests {
     #[test]
     fn duplicate_provider_keys_exhaust_reseed_attempts() {
         let providers = vec![
-            (
-                "alpha".to_string(),
+            provider_row(
+                "alpha",
                 provider("https://alpha.example", &["ALPHA_KEY"], ProviderType::Azure),
             ),
-            (
-                "alpha".to_string(),
+            provider_row(
+                "alpha",
                 provider("https://beta.example", &["BETA_KEY"], ProviderType::Azure),
             ),
         ];
-        let models = vec![("m1".to_string(), info(4096, 512))];
+        let models = vec![model_row("m1", info(4096, 512))];
 
         match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
             Err(err) => {
@@ -461,13 +508,13 @@ mod tests {
 
     #[test]
     fn model_entries_are_deduplicated_by_info_and_config() {
-        let providers = vec![(
-            "alpha".to_string(),
+        let providers = vec![provider_row(
+            "alpha",
             provider("https://alpha.example", &["ALPHA_KEY"], ProviderType::Azure),
         )];
         let models = vec![
-            (
-                "m1".to_string(),
+            model_row(
+                "m1",
                 ModelInfo {
                     modalities: Modality::TEXT,
                     max_input: 4096,
@@ -476,8 +523,8 @@ mod tests {
                     top_p: Some(0.9),
                 },
             ),
-            (
-                "m2".to_string(),
+            model_row(
+                "m2",
                 ModelInfo {
                     modalities: Modality::TEXT,
                     max_input: 4096,
@@ -498,15 +545,15 @@ mod tests {
 
     #[test]
     fn too_many_provider_env_vars_returns_error() {
-        let providers = vec![(
-            "alpha".to_string(),
+        let providers = vec![provider_row(
+            "alpha",
             provider(
                 "https://alpha.example",
                 &["A", "B", "C", "D"],
                 ProviderType::Azure,
             ),
         )];
-        let models = vec![("m1".to_string(), info(4096, 512))];
+        let models = vec![model_row("m1", info(4096, 512))];
 
         match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
             Err(err) => {
@@ -526,7 +573,7 @@ mod tests {
     fn max_output_tokens_out_of_range_returns_error() {
         let (providers, _) = source_rows();
         let max_output = super::MAX_OUTPUT_TOKENS;
-        let models = vec![("m1".to_string(), info(4096, max_output.saturating_add(1)))];
+        let models = vec![model_row("m1", info(4096, max_output.saturating_add(1)))];
 
         match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
             Err(err) => {
@@ -546,7 +593,7 @@ mod tests {
     fn max_input_tokens_out_of_range_returns_error() {
         let (providers, _) = source_rows();
         let max_input = super::MAX_INPUT_TOKENS;
-        let models = vec![("m1".to_string(), info(max_input.saturating_add(1), 512))];
+        let models = vec![model_row("m1", info(max_input.saturating_add(1), 512))];
 
         match ModelCatalogBuilder::new().build_from_source(&providers, &models) {
             Err(err) => {

@@ -3,18 +3,19 @@
 use core::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use llm_coding_tools_core::models::{
-    Modality, ModelCatalogBuilder, ModelInfo, ProviderInfo, ProviderType,
+    Modality, ModelCatalogBuilder, ModelInfo, ModelSourceRow, ProviderInfo, ProviderSourceRow,
+    ProviderType,
 };
 
 struct Dataset {
-    providers: Vec<(String, ProviderInfo)>,
-    models: Vec<(String, ModelInfo)>,
+    providers: Vec<ProviderSourceRow>,
+    models: Vec<ModelSourceRow>,
 }
 
 fn make_dataset(provider_count: usize, model_count: usize) -> Dataset {
     let mut providers = Vec::with_capacity(provider_count);
     for i in 0..provider_count {
-        providers.push((
+        providers.push(ProviderSourceRow::new(
             format!("provider-{i}"),
             ProviderInfo {
                 api_url: format!("https://provider-{i}.example/v1"),
@@ -43,7 +44,7 @@ fn make_dataset(provider_count: usize, model_count: usize) -> Dataset {
             None
         };
 
-        models.push((
+        models.push(ModelSourceRow::new(
             format!("org-{}/model-{i}", i % 17),
             ModelInfo {
                 modalities: Modality::TEXT,

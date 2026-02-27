@@ -3,7 +3,10 @@
 //! This module contains public-facing data types used when building
 //! and querying a [`ModelCatalog`].
 
-pub use builder_types::{LookupTableKind, ModelCatalogBuildError, ModelInfo, ProviderInfo};
+pub use builder_types::{
+    LookupTableKind, ModelCatalogBuildError, ModelInfo, ModelSourceRow, ProviderInfo,
+    ProviderSourceRow,
+};
 pub use entry::{CatalogEntry, Model, Provider};
 pub use modality::Modality;
 pub use model_idx::ModelIdx;

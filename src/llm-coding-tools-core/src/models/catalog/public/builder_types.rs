@@ -32,6 +32,87 @@ pub struct ProviderInfo {
     pub api_type: ProviderType,
 }
 
+/// Source row that maps a provider key to provider metadata.
+///
+/// This wrapper keeps builder input self-documenting and avoids tuple-position
+/// ambiguity at call sites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderSourceRow {
+    /// Provider identifier used by lookups (for example, `"openai"`).
+    pub provider_key: String,
+    /// Provider metadata associated with [`Self::provider_key`].
+    pub provider: ProviderInfo,
+}
+
+impl ProviderSourceRow {
+    /// Creates a provider source row.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_key` - Provider identifier used during provider lookup.
+    /// * `provider` - Provider metadata for this key.
+    ///
+    /// # Returns
+    ///
+    /// A new [`ProviderSourceRow`].
+    #[inline]
+    pub fn new(provider_key: impl Into<String>, provider: ProviderInfo) -> Self {
+        Self {
+            provider_key: provider_key.into(),
+            provider,
+        }
+    }
+}
+
+impl From<(String, ProviderInfo)> for ProviderSourceRow {
+    #[inline]
+    fn from((provider_key, provider): (String, ProviderInfo)) -> Self {
+        Self {
+            provider_key,
+            provider,
+        }
+    }
+}
+
+/// Source row that maps a model key to model metadata.
+///
+/// This wrapper keeps builder input self-documenting and avoids tuple-position
+/// ambiguity at call sites.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelSourceRow {
+    /// Model identifier used by lookups (for example, `"gpt-4"`).
+    pub model_key: String,
+    /// Model metadata associated with [`Self::model_key`].
+    pub model: ModelInfo,
+}
+
+impl ModelSourceRow {
+    /// Creates a model source row.
+    ///
+    /// # Parameters
+    ///
+    /// * `model_key` - Model identifier used during model lookup.
+    /// * `model` - Model metadata for this key.
+    ///
+    /// # Returns
+    ///
+    /// A new [`ModelSourceRow`].
+    #[inline]
+    pub fn new(model_key: impl Into<String>, model: ModelInfo) -> Self {
+        Self {
+            model_key: model_key.into(),
+            model,
+        }
+    }
+}
+
+impl From<(String, ModelInfo)> for ModelSourceRow {
+    #[inline]
+    fn from((model_key, model): (String, ModelInfo)) -> Self {
+        Self { model_key, model }
+    }
+}
+
 /// Hash-table kind used in collision/build errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookupTableKind {

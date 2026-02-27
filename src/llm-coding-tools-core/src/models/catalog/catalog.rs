@@ -280,7 +280,9 @@ impl ModelCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::catalog::{Modality, ModelInfo, ProviderInfo};
+    use crate::models::catalog::{
+        Modality, ModelInfo, ModelSourceRow, ProviderInfo, ProviderSourceRow,
+    };
 
     fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
         ProviderInfo {
@@ -319,13 +321,13 @@ mod tests {
         providers: Vec<(&str, ProviderInfo)>,
         models: Vec<(&str, ModelInfo)>,
     ) -> ModelCatalog {
-        let provider_rows: Vec<(String, ProviderInfo)> = providers
+        let provider_rows: Vec<ProviderSourceRow> = providers
             .into_iter()
-            .map(|(key, info)| (key.to_owned(), info))
+            .map(|(key, info)| ProviderSourceRow::new(key, info))
             .collect();
-        let model_rows: Vec<(String, ModelInfo)> = models
+        let model_rows: Vec<ModelSourceRow> = models
             .into_iter()
-            .map(|(key, info)| (key.to_owned(), info))
+            .map(|(key, info)| ModelSourceRow::new(key, info))
             .collect();
 
         ModelCatalog::builder_with_capacity(provider_rows.len(), model_rows.len())

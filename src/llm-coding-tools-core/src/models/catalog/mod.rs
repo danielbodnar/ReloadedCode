@@ -16,6 +16,8 @@
 //! ## Building a Catalog
 //!
 //! - [`ModelCatalogBuilder`] - Batch builder for constructing a catalog
+//! - [`ProviderSourceRow`] - Provider key + metadata input row
+//! - [`ModelSourceRow`] - Model key + metadata input row
 //! - [`ModelInfo`] - Model metadata input (modalities, token limits, sampling)
 //! - [`ProviderInfo`] - Provider metadata input (API URL, env vars, type)
 //! - [`Modality`] - Content modality flags (text, image, audio, video)
