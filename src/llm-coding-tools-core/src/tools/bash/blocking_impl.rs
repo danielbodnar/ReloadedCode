@@ -110,8 +110,12 @@ pub fn execute_command(
     };
 
     // Join pipe-draining threads (they will complete once child exits or is killed)
-    let stdout_data = stdout_thread.join().unwrap_or_default();
-    let stderr_data = stderr_thread.join().unwrap_or_default();
+    let stdout_data = stdout_thread
+        .join()
+        .map_err(|_| ToolError::Execution("stdout reader thread panicked".to_string()))?;
+    let stderr_data = stderr_thread
+        .join()
+        .map_err(|_| ToolError::Execution("stderr reader thread panicked".to_string()))?;
 
     // Return result
     match exit_status {
