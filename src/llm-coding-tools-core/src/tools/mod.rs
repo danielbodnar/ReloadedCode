@@ -23,9 +23,9 @@ pub use task::{TaskInput, TaskOutput};
 pub use todo::{read_todos, write_todos, Todo, TodoPriority, TodoState, TodoStatus};
 pub use write::write_file;
 
-// Webfetch available in both async and blocking modes
-#[cfg(any(feature = "async", feature = "blocking"))]
+// Webfetch available in both tokio and blocking modes
+#[cfg(any(feature = "tokio", feature = "blocking"))]
 pub mod webfetch;
 
-#[cfg(any(feature = "async", feature = "blocking"))]
+#[cfg(any(feature = "tokio", feature = "blocking"))]
 pub use webfetch::{fetch_url, format_json, html_to_markdown, WebFetchOutput};

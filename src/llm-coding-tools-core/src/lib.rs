@@ -34,6 +34,6 @@ pub use tools::{
     TaskInput, TaskOutput, Todo, TodoPriority, TodoState, TodoStatus,
 };
 
-// Re-export webfetch tools (requires async or blocking feature)
-#[cfg(any(feature = "async", feature = "blocking"))]
+// Re-export webfetch tools (requires tokio or blocking feature)
+#[cfg(any(feature = "tokio", feature = "blocking"))]
 pub use tools::{fetch_url, format_json, html_to_markdown, WebFetchOutput};
