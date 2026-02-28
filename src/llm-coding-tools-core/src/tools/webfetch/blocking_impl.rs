@@ -2,7 +2,7 @@
 
 use super::{categorize_reqwest_error, check_size, process_content, WebFetchOutput};
 use crate::error::{ToolError, ToolResult};
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
 /// Fetches content from a URL and returns processed content.
@@ -15,7 +15,7 @@ pub fn fetch_url(
     url: &str,
     timeout: Duration,
 ) -> ToolResult<WebFetchOutput> {
-    let mut response = client
+    let response = client
         .get(url)
         .timeout(timeout)
         .send()
@@ -52,18 +52,25 @@ pub fn fetch_url(
     // Stream response body with incremental size checks to avoid memory exhaustion
     let mut bytes = content_length.map_or_else(Vec::new, Vec::with_capacity);
     let mut total_len: usize = 0;
-    let mut buffer = [0u8; 8192];
+    const BUFFER_SIZE: usize = 65536;
+    let mut reader = BufReader::with_capacity(BUFFER_SIZE, response);
 
     loop {
-        let n = response
-            .read(&mut buffer)
+        let chunk = reader
+            .fill_buf()
             .map_err(|e| ToolError::Http(e.to_string()))?;
-        if n == 0 {
+        if chunk.is_empty() {
             break;
         }
-        total_len += n;
+
+        let n = chunk.len();
+        total_len = total_len
+            .checked_add(n)
+            .ok_or_else(|| ToolError::Http(format!("Response size overflow for {}", url)))?;
         check_size(total_len, url)?;
-        bytes.extend_from_slice(&buffer[..n]);
+
+        bytes.extend_from_slice(chunk);
+        reader.consume(n);
     }
 
     let byte_length = total_len;

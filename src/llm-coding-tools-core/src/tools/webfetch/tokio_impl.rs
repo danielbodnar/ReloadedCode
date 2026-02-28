@@ -58,7 +58,9 @@ pub async fn fetch_url(
         .await
         .map_err(|e| ToolError::Http(e.to_string()))?
     {
-        total_len += chunk.len();
+        total_len = total_len
+            .checked_add(chunk.len())
+            .ok_or_else(|| ToolError::Http(format!("Response size overflow for {}", url)))?;
         check_size(total_len, url)?;
         bytes.extend_from_slice(&chunk);
     }
