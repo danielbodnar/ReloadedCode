@@ -1,8 +1,10 @@
 //! Tokio-based async shell command execution.
 
-use super::{BashOutput, PIPE_BUFFER_CAPACITY};
+use super::{
+    timeout_error_with_kill_failure, timeout_message_with_buffered_output, BashOutput,
+    PIPE_BUFFER_CAPACITY,
+};
 use crate::error::{ToolError, ToolResult};
-use core::fmt::Write;
 use parking_lot::Mutex;
 use process_wrap::tokio::*;
 use std::path::Path;
@@ -77,35 +79,6 @@ async fn await_pipe_drain_task_with_grace(task: PipeDrainTask, grace: Duration) 
     }
 
     take_pipe_buffer(buffer)
-}
-
-#[inline]
-fn timeout_with_buffered_output(
-    timeout: Duration,
-    stdout_data: &[u8],
-    stderr_data: &[u8],
-) -> ToolError {
-    let stdout = String::from_utf8_lossy(stdout_data);
-    let stderr = String::from_utf8_lossy(stderr_data);
-
-    // Base message + outputs + stderr label.
-    let mut message = String::with_capacity(stdout.len() + stderr.len() + 64);
-    let _ = write!(message, "command timed out after {}ms", timeout.as_millis());
-
-    if !stdout.is_empty() {
-        message.push('\n');
-        message.push_str(&stdout);
-    }
-
-    if !stderr.is_empty() {
-        if stdout.is_empty() || !stdout.ends_with('\n') {
-            message.push('\n');
-        }
-        message.push_str("[stderr]\n");
-        message.push_str(&stderr);
-    }
-
-    ToolError::Timeout(message)
 }
 
 /// Executes a shell command with optional working directory and timeout.
@@ -201,17 +174,16 @@ pub async fn execute_command(
         None => {
             // Timeout: explicitly kill the process tree (Job Object on Windows,
             // process group on Unix), then briefly await pipe drains for buffered output.
-            let _ = Pin::from(child.kill()).await;
+            let kill_result = Pin::from(child.kill()).await;
 
             let (stdout_data, stderr_data) = tokio::join!(
                 await_pipe_drain_task_with_grace(stdout_task, PIPE_DRAIN_GRACE_PERIOD),
                 await_pipe_drain_task_with_grace(stderr_task, PIPE_DRAIN_GRACE_PERIOD)
             );
 
-            Err(timeout_with_buffered_output(
-                timeout,
-                &stdout_data,
-                &stderr_data,
+            Err(timeout_error_with_kill_failure(
+                timeout_message_with_buffered_output(timeout, &stdout_data, &stderr_data),
+                kill_result.err().map(|e| e.to_string()),
             ))
         }
     }
@@ -259,7 +231,10 @@ mod tests {
         };
 
         let result = execute_command(cmd, None, Duration::from_millis(100)).await;
-        assert!(matches!(result, Err(ToolError::Timeout(_))));
+        assert!(matches!(
+            result,
+            Err(ToolError::Timeout(_) | ToolError::TimeoutWithKillFailure { .. })
+        ));
     }
 
     #[tokio::test]
@@ -272,7 +247,8 @@ mod tests {
 
         let result = execute_command(cmd, None, Duration::from_millis(500)).await;
         match result {
-            Err(ToolError::Timeout(message)) => {
+            Err(ToolError::Timeout(message))
+            | Err(ToolError::TimeoutWithKillFailure { message, .. }) => {
                 assert!(message.contains("stdout-before-timeout"));
                 assert!(message.contains("stderr-before-timeout"));
             }

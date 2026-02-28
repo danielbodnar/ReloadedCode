@@ -33,6 +33,15 @@ pub enum ToolError {
     #[error("timeout: {0}")]
     Timeout(String),
 
+    /// Timeout with kill failure - process may still be running.
+    #[error("timeout: {message}\n(kill failed: {kill_error})")]
+    TimeoutWithKillFailure {
+        /// Timeout message including context.
+        message: String,
+        /// Kill error message.
+        kill_error: String,
+    },
+
     /// Validation failed.
     #[error("validation error: {0}")]
     Validation(String),
@@ -73,5 +82,16 @@ mod tests {
         let glob_err = globset::Glob::new("[invalid").unwrap_err();
         let err: ToolError = glob_err.into();
         assert!(matches!(err, ToolError::InvalidPattern(_)));
+    }
+
+    #[test]
+    fn timeout_with_kill_failure_displays_both_contexts() {
+        let err = ToolError::TimeoutWithKillFailure {
+            message: "command timed out after 100ms".into(),
+            kill_error: "permission denied".into(),
+        };
+        let display = err.to_string();
+        assert!(display.contains("command timed out after 100ms"));
+        assert!(display.contains("kill failed: permission denied"));
     }
 }

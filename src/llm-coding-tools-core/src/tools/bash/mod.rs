@@ -1,12 +1,53 @@
 //! Shell command execution operation.
 
+use crate::error::ToolError;
 use crate::ToolOutput;
 use core::fmt::Write;
 use serde::Serialize;
+use std::time::Duration;
 
 /// Default buffer capacity for stdout/stderr pipe reads.
 /// 32KB covers typical command output without reallocations.
 const PIPE_BUFFER_CAPACITY: usize = 32 * 1024;
+
+#[inline]
+fn timeout_message_with_buffered_output(
+    timeout: Duration,
+    stdout_data: &[u8],
+    stderr_data: &[u8],
+) -> String {
+    let stdout = String::from_utf8_lossy(stdout_data);
+    let stderr = String::from_utf8_lossy(stderr_data);
+
+    let mut message = String::with_capacity(stdout.len() + stderr.len() + 64);
+    let _ = write!(message, "command timed out after {}ms", timeout.as_millis());
+
+    if !stdout.is_empty() {
+        message.push('\n');
+        message.push_str(&stdout);
+    }
+
+    if !stderr.is_empty() {
+        if stdout.is_empty() || !stdout.ends_with('\n') {
+            message.push('\n');
+        }
+        message.push_str("[stderr]\n");
+        message.push_str(&stderr);
+    }
+
+    message
+}
+
+#[inline]
+fn timeout_error_with_kill_failure(message: String, kill_error: Option<String>) -> ToolError {
+    match kill_error {
+        Some(kill_error) => ToolError::TimeoutWithKillFailure {
+            message,
+            kill_error,
+        },
+        None => ToolError::Timeout(message),
+    }
+}
 
 /// Result of shell command execution.
 #[derive(Debug, Clone, Serialize)]

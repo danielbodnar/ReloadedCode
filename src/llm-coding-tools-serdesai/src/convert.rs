@@ -79,6 +79,7 @@ pub(crate) fn core_error_to_serdes(tool_name: &str, err: CoreError) -> SerdesErr
         | CoreError::Http(_)
         | CoreError::Execution(_)
         | CoreError::Timeout(_)
+        | CoreError::TimeoutWithKillFailure { .. }
         | CoreError::Json(_) => SerdesError::execution_failed(err.to_string()),
     }
 }
@@ -149,6 +150,18 @@ mod tests {
         let core_err = CoreError::Timeout("timed out".into());
         let serdes_err = core_error_to_serdes("test_tool", core_err);
         assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
+    }
+
+    #[test]
+    fn timeout_with_kill_failure_maps_to_execution_failed() {
+        let core_err = CoreError::TimeoutWithKillFailure {
+            message: "timed out".into(),
+            kill_error: "operation not permitted".into(),
+        };
+        let serdes_err = core_error_to_serdes("test_tool", core_err);
+        assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
+        assert!(serdes_err.message().contains("timed out"));
+        assert!(serdes_err.message().contains("operation not permitted"));
     }
 
     #[test]
