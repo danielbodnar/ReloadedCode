@@ -3,7 +3,7 @@
 # All steps must pass without warnings
 # Keep in sync with verify.ps1
 #
-# Note: llm-coding-tools-serdesai is async-only (implements async Tool traits).
+# Note: llm-coding-tools-serdesai and llm-coding-tools-models-dev are async-only.
 # The blocking feature only applies to llm-coding-tools-core.
 
 set -e
@@ -24,16 +24,19 @@ echo "Building..."
 run_cmd cargo build -p llm-coding-tools-core --quiet
 run_cmd cargo build -p llm-coding-tools-agents --quiet
 run_cmd cargo build -p llm-coding-tools-serdesai --quiet
+run_cmd cargo build -p llm-coding-tools-models-dev --quiet
 
 echo "Testing..."
 run_cmd cargo test -p llm-coding-tools-core --quiet
 run_cmd cargo test -p llm-coding-tools-agents --quiet
 run_cmd cargo test -p llm-coding-tools-serdesai --quiet
+run_cmd cargo test -p llm-coding-tools-models-dev --quiet
 
 echo "Clippy..."
 run_cmd cargo clippy -p llm-coding-tools-core --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-agents --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings
+run_cmd cargo clippy -p llm-coding-tools-models-dev --quiet -- -D warnings
 
 echo "Testing blocking feature..."
 run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
@@ -48,5 +51,6 @@ echo "Publish dry-run..."
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-core --quiet
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-agents --quiet
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-serdesai --quiet
+run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-models-dev --quiet
 
 echo "All checks passed!"

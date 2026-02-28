@@ -1,0 +1,48 @@
+[package]
+name = "llm-coding-tools-models-dev"
+version = "0.1.0"
+edition = "2021"
+description = "models.dev catalog ingestion with online-first sync pipeline"
+repository = "https://github.com/Sewer56/llm-coding-tools"
+license = "Apache-2.0"
+include = ["src/**/*", "README.md"]
+readme = "README.md"
+
+[features]
+default = ["tokio"]
+# Async with tokio runtime
+tokio = ["dep:tokio", "dep:reqwest"]
+
+[dependencies]
+# Core library for ModelCatalog and related types
+llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0", features = [
+    "tokio",
+] }
+
+# Cross-platform cache directory detection
+dirs = "6.0.0"
+
+# HTTP client for conditional GET requests
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",
+    "rustls-native-certs",
+], optional = true }
+
+# Fast binary serialization
+bitcode = "0.6.9"
+
+# Compression for cache payload
+zstd = "0.13.3"
+
+# JSON parsing for models.dev API responses
+serde = { version = "1.0.228", features = ["derive"] }
+
+# Ergonomic error definitions
+thiserror = "2.0.18"
+
+# Async runtime (when tokio feature enabled)
+tokio = { version = "1.49", features = ["fs", "io-util"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.49", features = ["rt", "macros"] }
+tempfile = "3.26"
