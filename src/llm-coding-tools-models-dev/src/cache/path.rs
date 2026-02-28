@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use crate::error::CatalogError;
+use crate::{error::CatalogResult, CatalogError};
 use std::path::PathBuf;
 
 /// Environment variable name for overriding the default cache path.
@@ -43,6 +43,17 @@ pub const CACHE_PATH_ENV_VAR: &str = "LLM_CODING_TOOLS_MODELS_DEV_CACHE_PATH";
 /// # Ok(())
 /// # }
 /// ```
-pub fn shared_cache_path() -> Result<PathBuf, CatalogError> {
-    todo!("shared_cache_path() not yet implemented")
+const CACHE_SUBDIR: &str = "llm-coding-tools";
+const CACHE_FILENAME: &str = "models.dev.catalog.v1.cache";
+
+pub fn shared_cache_path() -> CatalogResult<PathBuf> {
+    // 1. Check env var first
+    if let Ok(path) = std::env::var(CACHE_PATH_ENV_VAR) {
+        return Ok(PathBuf::from(path));
+    }
+
+    // 2. Fall back to dirs::cache_dir()
+    let cache_dir = dirs::cache_dir().ok_or(CatalogError::CachePathNotFound)?;
+
+    Ok(cache_dir.join(CACHE_SUBDIR).join(CACHE_FILENAME))
 }

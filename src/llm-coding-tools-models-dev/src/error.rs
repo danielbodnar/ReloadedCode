@@ -34,3 +34,6 @@ pub enum CatalogError {
     #[error("catalog build error: {0}")]
     ModelCatalogBuild(#[from] ModelCatalogBuildError),
 }
+
+/// Convenience type alias for catalog operations.
+pub type CatalogResult<T> = Result<T, CatalogError>;

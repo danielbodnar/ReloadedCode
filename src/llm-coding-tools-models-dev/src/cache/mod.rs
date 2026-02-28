@@ -5,4 +5,5 @@
 
 mod path;
 
+pub use crate::error::CatalogResult;
 pub use path::shared_cache_path;

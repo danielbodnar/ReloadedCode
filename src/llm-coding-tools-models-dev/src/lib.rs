@@ -6,4 +6,4 @@ pub mod error;
 
 pub use cache::shared_cache_path;
 pub use catalog::{CatalogLoadResult, CatalogLoadSource, ModelsDevCatalog};
-pub use error::CatalogError;
+pub use error::{CatalogError, CatalogResult};
