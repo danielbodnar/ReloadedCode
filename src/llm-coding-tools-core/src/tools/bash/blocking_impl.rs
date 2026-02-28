@@ -1,6 +1,9 @@
 //! Blocking shell command execution.
 
-use super::{BashOutput, PIPE_BUFFER_CAPACITY};
+use super::{
+    timeout_error_with_kill_failure, timeout_message_with_buffered_output, BashOutput,
+    PIPE_BUFFER_CAPACITY,
+};
 use crate::error::{ToolError, ToolResult};
 use process_wrap::std::*;
 use std::io::Read;
@@ -8,6 +11,12 @@ use std::path::Path;
 use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
+
+enum WaitOutcome {
+    Exited(std::process::ExitStatus),
+    TimedOut { kill_error: Option<std::io::Error> },
+    WaitError(std::io::Error),
+}
 
 /// Executes a shell command with optional working directory and timeout.
 ///
@@ -90,22 +99,20 @@ pub fn execute_command(
 
     let start = Instant::now();
 
-    // Poll for completion with timeout
-    let exit_status = loop {
+    // Poll for completion with timeout.
+    let wait_outcome = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Ok(status),
+            Ok(Some(status)) => break WaitOutcome::Exited(status),
             Ok(None) => {
                 if start.elapsed() >= timeout {
                     // Kill entire process tree via Job Object (Windows) or process group (Unix)
-                    let _ = child.kill();
-                    break Err(ToolError::Timeout(format!(
-                        "command timed out after {}ms",
-                        timeout.as_millis()
-                    )));
+                    break WaitOutcome::TimedOut {
+                        kill_error: child.kill().err(),
+                    };
                 }
                 thread::sleep(Duration::from_millis(10));
             }
-            Err(e) => break Err(ToolError::Execution(e.to_string())),
+            Err(e) => break WaitOutcome::WaitError(e),
         }
     };
 
@@ -118,13 +125,17 @@ pub fn execute_command(
         .map_err(|_| ToolError::Execution("stderr reader thread panicked".to_string()))?;
 
     // Return result
-    match exit_status {
-        Ok(status) => Ok(BashOutput {
+    match wait_outcome {
+        WaitOutcome::Exited(status) => Ok(BashOutput {
             exit_code: status.code(),
             stdout: String::from_utf8_lossy(&stdout_data).into_owned(),
             stderr: String::from_utf8_lossy(&stderr_data).into_owned(),
         }),
-        Err(e) => Err(e),
+        WaitOutcome::TimedOut { kill_error } => Err(timeout_error_with_kill_failure(
+            timeout_message_with_buffered_output(timeout, &stdout_data, &stderr_data),
+            kill_error.map(|e| e.to_string()),
+        )),
+        WaitOutcome::WaitError(e) => Err(ToolError::Execution(e.to_string())),
     }
 }
 
@@ -166,7 +177,10 @@ mod tests {
         };
 
         let result = execute_command(cmd, None, Duration::from_millis(100));
-        assert!(matches!(result, Err(ToolError::Timeout(_))));
+        assert!(matches!(
+            result,
+            Err(ToolError::Timeout(_) | ToolError::TimeoutWithKillFailure { .. })
+        ));
     }
 
     #[test]
