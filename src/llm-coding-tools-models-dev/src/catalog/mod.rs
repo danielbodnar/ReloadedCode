@@ -50,6 +50,7 @@ impl ModelsDevCatalog {
     /// ```
     /// use llm_coding_tools_models_dev::ModelsDevCatalog;
     ///
+    /// # #[cfg(feature = "tokio")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = ModelsDevCatalog::load().await?;
     ///
@@ -59,7 +60,18 @@ impl ModelsDevCatalog {
     /// }
     /// # Ok(())
     /// # }
+    ///
+    /// # #[cfg(feature = "blocking")]
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let result = ModelsDevCatalog::load()?;
+    /// // Use the catalog
+    /// # if let Some(entry) = result.catalog.lookup("openai", "gpt-4") {
+    /// #     println!("API URL: {}", entry.0.api_url);
+    /// # }
+    /// # Ok(())
+    /// # }
     /// ```
+    #[maybe_async::maybe_async]
     pub async fn load() -> Result<CatalogLoadResult, CatalogError> {
         todo!("ModelsDevCatalog::load() not yet implemented")
     }
@@ -95,6 +107,7 @@ impl ModelsDevCatalog {
     /// use llm_coding_tools_models_dev::ModelsDevCatalog;
     /// use std::path::PathBuf;
     ///
+    /// # #[cfg(feature = "tokio")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let cache_path = PathBuf::from("/tmp/my-cache.cache");
     /// let result = ModelsDevCatalog::load_at(&cache_path).await?;
@@ -105,7 +118,18 @@ impl ModelsDevCatalog {
     /// }
     /// # Ok(())
     /// # }
+    ///
+    /// # #[cfg(feature = "blocking")]
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let cache_path = PathBuf::from("/tmp/my-cache.cache");
+    /// # let result = ModelsDevCatalog::load_at(&cache_path)?;
+    /// # if let Some(entry) = result.catalog.lookup("openai", "gpt-4") {
+    /// #     println!("API URL: {}", entry.0.api_url);
+    /// # }
+    /// # Ok(())
+    /// # }
     /// ```
+    #[maybe_async::maybe_async]
     pub async fn load_at(path: impl AsRef<Path>) -> Result<CatalogLoadResult, CatalogError> {
         let _path = path.as_ref();
         todo!("ModelsDevCatalog::load_at() not yet implemented")

@@ -3,8 +3,8 @@
 # All steps must pass without warnings
 # Keep in sync with verify.ps1
 #
-# Note: llm-coding-tools-serdesai and llm-coding-tools-models-dev are async-only.
-# The blocking feature only applies to llm-coding-tools-core.
+# Note: llm-coding-tools-serdesai is async-only.
+# Blocking mode is validated for core and models-dev.
 
 set -e
 
@@ -40,6 +40,7 @@ run_cmd cargo clippy -p llm-coding-tools-models-dev --quiet -- -D warnings
 
 echo "Testing blocking feature..."
 run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
+run_cmd cargo test -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet
 
 echo "Docs..."
 run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet

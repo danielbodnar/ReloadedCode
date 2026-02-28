@@ -361,6 +361,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concat-idents"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f76990911f2267d837d9d0ad060aa63aaad170af40904b29461734c339030d4d"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "const-random"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -650,6 +660,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1cc3c5651fb62ab8aa3103998dade57efdd028544bd300516baa31840c252a83"
 dependencies = [
  "encoding_rs",
+]
+
+[[package]]
+name = "endian-writer"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5fba6714ed232b3a46d07255c9cb2d20e9a8aee06a20d5d2e3eb4e2b48d28ae"
+dependencies = [
+ "concat-idents",
+ "paste",
+]
+
+[[package]]
+name = "endian-writer-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "160e7b32d1a63d6f02993f5ce2da2b7125480ae40c45d9a0b74d158f203f7e53"
+dependencies = [
+ "endian-writer",
+ "memoffset",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1468,7 +1501,10 @@ version = "0.1.0"
 dependencies = [
  "bitcode",
  "dirs",
+ "endian-writer",
+ "endian-writer-derive",
  "llm-coding-tools-core",
+ "maybe-async",
  "reqwest 0.13.1",
  "serde",
  "tempfile",
@@ -1560,6 +1596,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "744133e4a0e0a658e1374cf3bf8e415c4052a15a111acd372764c55b4177d490"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -1672,6 +1717,12 @@ dependencies = [
  "smallvec",
  "windows-link",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "percent-encoding"

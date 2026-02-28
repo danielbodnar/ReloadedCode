@@ -30,6 +30,10 @@ pub enum CatalogError {
     #[error("decode error: {0}")]
     BitcodeDecode(String),
 
+    /// The on-disk cache file is malformed or incompatible.
+    #[error("cache format error: {0}")]
+    CacheFormat(&'static str),
+
     /// The catalog failed to build from source rows.
     #[error("catalog build error: {0}")]
     ModelCatalogBuild(#[from] ModelCatalogBuildError),

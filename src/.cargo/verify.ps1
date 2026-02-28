@@ -2,8 +2,8 @@
 # All steps must pass without warnings
 # Keep in sync with verify.sh
 #
-# Note: llm-coding-tools-serdesai and llm-coding-tools-models-dev are async-only.
-# The blocking feature only applies to llm-coding-tools-core.
+# Note: llm-coding-tools-serdesai is async-only.
+# Blocking mode is validated for core and models-dev.
 
 $ErrorActionPreference = "Stop"
 
@@ -51,6 +51,7 @@ Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-models-dev", "-
 
 Write-Host "Testing blocking feature..."
 Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--no-default-features", "--features", "blocking", "--quiet")
+Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--no-default-features", "--features", "blocking", "--quiet")
 
 Write-Host "Docs..."
 $originalRustdocFlags = $env:RUSTDOCFLAGS

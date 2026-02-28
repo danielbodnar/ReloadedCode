@@ -1,12 +1,13 @@
 //! Cross-platform cache path resolution.
 
-#![allow(dead_code)]
-
 use crate::{error::CatalogResult, CatalogError};
 use std::path::PathBuf;
 
 /// Environment variable name for overriding the default cache path.
 pub const CACHE_PATH_ENV_VAR: &str = "LLM_CODING_TOOLS_MODELS_DEV_CACHE_PATH";
+
+const CACHE_SUBDIR: &str = "llm-coding-tools";
+const CACHE_FILENAME: &str = "models.dev.catalog.v1.cache";
 
 /// Returns the shared cache path for the models.dev catalog.
 ///
@@ -43,9 +44,6 @@ pub const CACHE_PATH_ENV_VAR: &str = "LLM_CODING_TOOLS_MODELS_DEV_CACHE_PATH";
 /// # Ok(())
 /// # }
 /// ```
-const CACHE_SUBDIR: &str = "llm-coding-tools";
-const CACHE_FILENAME: &str = "models.dev.catalog.v1.cache";
-
 pub fn shared_cache_path() -> CatalogResult<PathBuf> {
     // 1. Check env var first
     if let Ok(path) = std::env::var(CACHE_PATH_ENV_VAR) {

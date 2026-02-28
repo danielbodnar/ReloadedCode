@@ -10,14 +10,21 @@ readme = "README.md"
 
 [features]
 default = ["tokio"]
+# Base async signatures (enabled by runtime features)
+async = []
 # Async with tokio runtime
-tokio = ["dep:tokio", "dep:reqwest"]
+tokio = ["async", "dep:tokio", "dep:reqwest", "llm-coding-tools-core/tokio"]
+# Blocking/sync mode - mutually exclusive with tokio/async
+blocking = [
+    "dep:reqwest",
+    "reqwest/blocking",
+    "llm-coding-tools-core/blocking",
+    "maybe-async/is_sync",
+]
 
 [dependencies]
 # Core library for ModelCatalog and related types
-llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0", features = [
-    "tokio",
-] }
+llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0", default-features = false }
 
 # Cross-platform cache directory detection
 dirs = "6.0.0"
@@ -33,6 +40,13 @@ bitcode = "0.6.9"
 
 # Compression for cache payload
 zstd = "0.13.3"
+
+# Shared async/sync implementation for load/cache APIs
+maybe-async = "0.2"
+
+# Endian-aware fixed-header serialization helpers
+endian-writer = "2.2.0"
+endian-writer-derive = "0.1.0"
 
 # JSON parsing for models.dev API responses
 serde = { version = "1.0.228", features = ["derive"] }
