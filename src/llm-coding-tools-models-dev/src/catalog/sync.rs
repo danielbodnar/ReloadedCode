@@ -1,5 +1,5 @@
 use crate::api::catalog_sources::cache_payload_from_api_json_bytes;
-use crate::cache::format::{read_cache_file, write_cache_file, CacheWriteInput};
+use crate::cache::format::{read_cache_file, write_cache_file, CacheFileData, CacheWriteInput};
 use crate::cache::payload::{catalog_from_cache_payload, encode_cache_payload};
 use crate::catalog::load_cache::load_catalog_from_cache_file_data;
 use crate::catalog::load_result::{CatalogLoadResult, CatalogLoadSource};
@@ -27,6 +27,22 @@ fn models_dev_api_url() -> Cow<'static, str> {
     }
 
     Cow::Borrowed(MODELS_DEV_API_URL)
+}
+
+fn load_after_request_failure(
+    request_error: reqwest::Error,
+    cache_file: Option<&CacheFileData>,
+    cache_error: Option<CatalogError>,
+) -> CatalogResult<CatalogLoadResult> {
+    if let Some(cache_file) = cache_file {
+        return load_catalog_from_cache_file_data(cache_file, CatalogLoadSource::FallbackCache);
+    }
+
+    if let Some(cache_error) = cache_error {
+        return Err(cache_error);
+    }
+
+    Err(CatalogError::Reqwest(request_error))
 }
 
 #[maybe_async::maybe_async]
@@ -58,7 +74,12 @@ pub(crate) async fn load_catalog_from_url(
         request = request.header(IF_NONE_MATCH, etag);
     }
 
-    let response = request.send().await?;
+    let response = match request.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return load_after_request_failure(error, cache_file.as_ref(), cache_error);
+        }
+    };
     match response.status() {
         StatusCode::OK => {
             let response_etag: Option<Vec<u8>> = response
@@ -206,5 +227,80 @@ mod tests {
             .lookup_provider("openai")
             .expect("openai provider should exist");
         assert_eq!(provider.api_type, ProviderType::OpenAiCompletions);
+    }
+
+    fn refused_local_url() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        drop(listener);
+        format!("http://127.0.0.1:{port}/api.json")
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_fallback_cache_on_request_failure_with_valid_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        let payload = CatalogCachePayload {
+            providers: vec![CachedProviderRow {
+                provider_key: "openai".to_string(),
+                api_url: "https://api.openai.com/v1".to_string(),
+                env_vars: vec!["OPENAI_API_KEY".to_string()],
+                api_type: ProviderType::OpenAiCompletions,
+            }],
+            models: vec![CachedModelRow {
+                provider_idx: ProviderIdx::new(0),
+                model_key: "gpt-4".to_string(),
+                modalities_bits: Modality::TEXT.bits(),
+                max_input: 8192,
+                max_output: 4096,
+                temperature: None,
+                top_p: None,
+            }],
+        };
+        let encoded = encode_cache_payload(&payload);
+        let compressed =
+            zstd::bulk::compress(&encoded, zstd::DEFAULT_COMPRESSION_LEVEL).expect("compress");
+        crate::cache::format::write_cache_file(
+            &cache_path,
+            &CacheWriteInput {
+                etag: Some(b"\"cached-etag-456\""),
+                payload_compressed: &compressed,
+                payload_len_decompressed: encoded.len(),
+            },
+        )
+        .await
+        .expect("seed cache");
+
+        let result = load_catalog_from_url(&cache_path, &refused_local_url())
+            .await
+            .expect("fallback should succeed");
+
+        assert_eq!(result.source, CatalogLoadSource::FallbackCache);
+        assert!(result.catalog.lookup_provider("openai").is_some());
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_request_error_when_request_fails_without_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("missing.cache");
+
+        match load_catalog_from_url(&cache_path, &refused_local_url()).await {
+            Err(error) => assert!(matches!(error, CatalogError::Reqwest(_))),
+            Ok(_) => panic!("request failure without cache should error"),
+        }
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_cache_error_when_request_fails_with_corrupt_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("corrupt.cache");
+
+        std::fs::write(&cache_path, [0_u8; 11]).expect("write corrupt cache");
+
+        match load_catalog_from_url(&cache_path, &refused_local_url()).await {
+            Err(error) => assert!(matches!(error, CatalogError::CacheFormat(_))),
+            Ok(_) => panic!("request failure with corrupt cache should error"),
+        }
     }
 }
