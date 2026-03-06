@@ -541,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn model_entries_are_deduplicated_by_info_and_config() {
+    fn same_model_key_across_providers_still_deduplicates_model_entries() {
         let providers = vec![
             provider_source(
                 "alpha",
@@ -566,7 +566,7 @@ mod tests {
             ),
             provider_model_source(
                 "beta",
-                "m2",
+                "m1",
                 ModelInfo {
                     modalities: Modality::TEXT,
                     max_input: 4096,
@@ -580,6 +580,8 @@ mod tests {
         let catalog =
             build_from_source(&providers, &provider_models).expect("source build should succeed");
 
+        assert!(catalog.lookup("alpha", "m1").is_some());
+        assert!(catalog.lookup("beta", "m1").is_some());
         assert_eq!(catalog.provider_model_count(), 2);
         assert_eq!(catalog.model_config_count(), 1);
     }
