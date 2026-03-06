@@ -655,7 +655,7 @@ mod tests {
     fn too_many_total_env_vars_returns_error() {
         // 5462 providers * 3 env vars = 16386, so the 5463rd provider would have
         // a start index of 16386, which exceeds MAX_ENV_START (16383).
-        let mut providers = Vec::new();
+        let mut providers = Vec::with_capacity(5463);
         for i in 0..5463usize {
             providers.push(provider_source(
                 &format!("provider_{}", i),
@@ -666,7 +666,8 @@ mod tests {
                 ),
             ));
         }
-        let provider_models = vec![provider_model_source("provider_0", "m1", info(4096, 512))];
+        let mut provider_models = Vec::with_capacity(1);
+        provider_models.push(provider_model_source("provider_0", "m1", info(4096, 512)));
 
         match build_from_source(&providers, &provider_models) {
             Err(err) => {
@@ -686,7 +687,7 @@ mod tests {
     fn max_14bit_start_with_tail_entries_succeeds() {
         // The last provider's start index can be 16383 and still be valid when it
         // contributes 3 keys at indices 16383, 16384, and 16385.
-        let mut providers = Vec::new();
+        let mut providers = Vec::with_capacity(5462);
         for i in 0..5462usize {
             providers.push(provider_source(
                 &format!("provider_{}", i),
@@ -698,11 +699,12 @@ mod tests {
             ));
         }
         let last_provider_key = format!("provider_{}", 5461usize);
-        let provider_models = vec![provider_model_source(
+        let mut provider_models = Vec::with_capacity(1);
+        provider_models.push(provider_model_source(
             &last_provider_key,
             "m1",
             info(4096, 512),
-        )];
+        ));
 
         let catalog =
             build_from_source(&providers, &provider_models).expect("boundary case should pass");
