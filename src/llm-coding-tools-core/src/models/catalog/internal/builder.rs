@@ -730,12 +730,11 @@ mod tests {
             ));
         }
         let last_provider_key = format!("provider_{}", 5461usize);
-        let mut provider_models = Vec::with_capacity(1);
-        provider_models.push(provider_model_source(
+        let provider_models = vec![ProviderModelSource::new(
             &last_provider_key,
             "m1",
             info(4096, 512),
-        ));
+        )];
 
         let catalog =
             build_from_source(&providers, &provider_models).expect("boundary case should pass");
