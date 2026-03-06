@@ -405,14 +405,8 @@ impl ModelCatalog {
             model.modalities,
             model.max_input,
             model.max_output,
-            model
-                .temperature()
-                .and_then(Fixed4::from_f32)
-                .unwrap_or_else(|| Fixed4::from_encoded(Fixed4::NONE_SENTINEL)),
-            model
-                .top_p()
-                .and_then(Fixed4::from_f32)
-                .unwrap_or_else(|| Fixed4::from_encoded(Fixed4::NONE_SENTINEL)),
+            model.temperature_fixed(),
+            model.top_p_fixed(),
         ))
     }
 
@@ -484,19 +478,15 @@ impl ModelCatalog {
     fn model_from_index(&self, model_config_idx: ModelIdx) -> Option<Model> {
         let idx = model_config_idx.as_usize();
         let info = self.model_entries.get(idx)?.into_model_info();
-        let (temperature, top_p) = self
+        let (temperature_fixed, top_p_fixed) = self
             .model_config_entries
             .as_ref()
             .and_then(|entries| entries.get(idx))
-            .map(|entry| (entry.temperature(), entry.top_p()))
-            .unwrap_or((None, None));
-
-        let temperature_fixed = temperature
-            .and_then(Fixed4::from_f32)
-            .unwrap_or_else(|| Fixed4::from_encoded(Fixed4::NONE_SENTINEL));
-        let top_p_fixed = top_p
-            .and_then(Fixed4::from_f32)
-            .unwrap_or_else(|| Fixed4::from_encoded(Fixed4::NONE_SENTINEL));
+            .map(|entry| (entry.temperature_fixed(), entry.top_p_fixed()))
+            .unwrap_or_else(|| {
+                let none = Fixed4::from_encoded(Fixed4::NONE_SENTINEL);
+                (none, none)
+            });
 
         Some(Model::new(
             model_config_idx,

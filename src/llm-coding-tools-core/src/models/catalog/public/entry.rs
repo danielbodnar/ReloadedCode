@@ -64,6 +64,18 @@ impl Model {
         }
     }
 
+    /// Returns the raw temperature fixed4 value (may be sentinel).
+    #[inline]
+    pub(crate) const fn temperature_fixed(&self) -> Fixed4 {
+        self.temperature
+    }
+
+    /// Returns the raw top_p fixed4 value (may be sentinel).
+    #[inline]
+    pub(crate) const fn top_p_fixed(&self) -> Fixed4 {
+        self.top_p
+    }
+
     /// Returns temperature as an `f32`, or `None` if not specified.
     #[inline]
     pub fn temperature(&self) -> Option<f32> {
