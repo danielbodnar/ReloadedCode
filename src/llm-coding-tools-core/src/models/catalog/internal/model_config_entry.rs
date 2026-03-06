@@ -58,16 +58,16 @@ impl ModelConfigEntry {
         self.temperature.is_sentinel() && self.top_p.is_sentinel()
     }
 
-    /// Returns temperature as `Option<f32>`.
+    /// Returns the raw temperature fixed4 value (may be sentinel).
     #[inline]
-    pub fn temperature(self) -> Option<f32> {
-        self.temperature.value()
+    pub(crate) const fn temperature_fixed(self) -> Fixed4 {
+        self.temperature
     }
 
-    /// Returns top_p as `Option<f32>`.
+    /// Returns the raw top_p fixed4 value (may be sentinel).
     #[inline]
-    pub fn top_p(self) -> Option<f32> {
-        self.top_p.value()
+    pub(crate) const fn top_p_fixed(self) -> Fixed4 {
+        self.top_p
     }
 }
 
@@ -85,24 +85,24 @@ mod tests {
     fn none_roundtrips() {
         let packed = ModelConfigEntry::from_sampling(None, None).unwrap();
         assert!(packed.is_none());
-        assert_eq!(packed.temperature(), None);
-        assert_eq!(packed.top_p(), None);
+        assert_eq!(packed.temperature_fixed().value(), None);
+        assert_eq!(packed.top_p_fixed().value(), None);
     }
 
     #[test]
     fn values_roundtrip() {
         let packed = ModelConfigEntry::from_sampling(Some(1.2), Some(0.5)).unwrap();
 
-        assert_eq!(packed.temperature(), Some(1.2));
-        assert_eq!(packed.top_p(), Some(0.5));
+        assert_eq!(packed.temperature_fixed().value(), Some(1.2));
+        assert_eq!(packed.top_p_fixed().value(), Some(0.5));
     }
 
     #[test]
     fn partial_values() {
         let packed = ModelConfigEntry::from_sampling(Some(1.0), None).unwrap();
         assert!(!packed.is_none());
-        assert_eq!(packed.temperature(), Some(1.0));
-        assert_eq!(packed.top_p(), None);
+        assert_eq!(packed.temperature_fixed().value(), Some(1.0));
+        assert_eq!(packed.top_p_fixed().value(), None);
     }
 
     #[test]

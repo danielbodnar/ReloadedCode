@@ -1,13 +1,13 @@
 //! Lookup result types for provider and model queries.
 //!
 //! These are the flattened types returned by [`ModelCatalog`] lookup methods.
-//! For builder input types, see [`ProviderSourceRow`],
-//! [`ModelSourceRow`], [`ProviderInfo`],
+//! For builder input types, see [`ProviderSource`],
+//! [`ProviderModelSource`], [`ProviderInfo`],
 //! and [`ModelInfo`].
 //!
 //! [`ModelCatalog`]: crate::models::catalog::ModelCatalog
-//! [`ProviderSourceRow`]: crate::models::catalog::ProviderSourceRow
-//! [`ModelSourceRow`]: crate::models::catalog::ModelSourceRow
+//! [`ProviderSource`]: crate::models::catalog::ProviderSource
+//! [`ProviderModelSource`]: crate::models::catalog::ProviderModelSource
 //! [`ProviderInfo`]: crate::models::catalog::ProviderInfo
 //! [`ModelInfo`]: crate::models::catalog::ModelInfo
 
@@ -62,6 +62,18 @@ impl Model {
             temperature,
             top_p,
         }
+    }
+
+    /// Returns the raw temperature fixed4 value (may be sentinel).
+    #[inline]
+    pub(crate) const fn temperature_fixed(&self) -> Fixed4 {
+        self.temperature
+    }
+
+    /// Returns the raw top_p fixed4 value (may be sentinel).
+    #[inline]
+    pub(crate) const fn top_p_fixed(&self) -> Fixed4 {
+        self.top_p
     }
 
     /// Returns temperature as an `f32`, or `None` if not specified.

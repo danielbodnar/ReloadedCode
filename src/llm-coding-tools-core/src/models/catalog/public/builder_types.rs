@@ -34,20 +34,20 @@ pub struct ProviderInfo {
     pub api_type: ProviderType,
 }
 
-/// Source row that maps a provider key to provider metadata.
+/// Source that maps a provider key to provider metadata.
 ///
 /// This wrapper keeps builder input self-documenting and avoids tuple-position
 /// ambiguity at call sites.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProviderSourceRow {
+pub struct ProviderSource {
     /// Provider identifier used by lookups (for example, `"openai"`).
     pub provider_key: String,
     /// Provider metadata associated with [`Self::provider_key`].
     pub provider: ProviderInfo,
 }
 
-impl ProviderSourceRow {
-    /// Creates a provider source row.
+impl ProviderSource {
+    /// Creates a provider source.
     ///
     /// # Parameters
     ///
@@ -56,7 +56,7 @@ impl ProviderSourceRow {
     ///
     /// # Returns
     ///
-    /// A new [`ProviderSourceRow`].
+    /// A new [`ProviderSource`].
     #[inline]
     pub fn new(provider_key: impl Into<String>, provider: ProviderInfo) -> Self {
         Self {
@@ -66,7 +66,7 @@ impl ProviderSourceRow {
     }
 }
 
-impl From<(String, ProviderInfo)> for ProviderSourceRow {
+impl From<(String, ProviderInfo)> for ProviderSource {
     #[inline]
     fn from((provider_key, provider): (String, ProviderInfo)) -> Self {
         Self {
@@ -76,42 +76,54 @@ impl From<(String, ProviderInfo)> for ProviderSourceRow {
     }
 }
 
-/// Source row that maps a model key to model metadata.
+/// Source that maps a model under a specific provider to model metadata.
 ///
 /// This wrapper keeps builder input self-documenting and avoids tuple-position
 /// ambiguity at call sites.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ModelSourceRow {
+pub struct ProviderModelSource {
+    /// Provider identifier used by lookups (for example, `"openai"`).
+    pub provider_key: String,
     /// Model identifier used by lookups (for example, `"gpt-4"`).
     pub model_key: String,
     /// Model metadata associated with [`Self::model_key`].
     pub model: ModelInfo,
 }
 
-impl ModelSourceRow {
-    /// Creates a model source row.
+impl ProviderModelSource {
+    /// Creates a provider model source.
     ///
     /// # Parameters
     ///
-    /// * `model_key` - Model identifier used during model lookup.
-    /// * `model` - Model metadata for this key.
+    /// * `provider_key` - Provider identifier used during provider lookup.
+    /// * `model_key` - Model identifier used during model lookup for this provider.
+    /// * `model` - Model metadata for this provider model.
     ///
     /// # Returns
     ///
-    /// A new [`ModelSourceRow`].
+    /// A new [`ProviderModelSource`].
     #[inline]
-    pub fn new(model_key: impl Into<String>, model: ModelInfo) -> Self {
+    pub fn new(
+        provider_key: impl Into<String>,
+        model_key: impl Into<String>,
+        model: ModelInfo,
+    ) -> Self {
         Self {
+            provider_key: provider_key.into(),
             model_key: model_key.into(),
             model,
         }
     }
 }
 
-impl From<(String, ModelInfo)> for ModelSourceRow {
+impl From<(String, String, ModelInfo)> for ProviderModelSource {
     #[inline]
-    fn from((model_key, model): (String, ModelInfo)) -> Self {
-        Self { model_key, model }
+    fn from((provider_key, model_key, model): (String, String, ModelInfo)) -> Self {
+        Self {
+            provider_key,
+            model_key,
+            model,
+        }
     }
 }
 
@@ -120,15 +132,15 @@ impl From<(String, ModelInfo)> for ModelSourceRow {
 pub enum LookupTableKind {
     /// Provider-key lookup table.
     Provider,
-    /// Model-key lookup table.
-    Model,
+    /// Provider model lookup table.
+    ProviderModel,
 }
 
 impl core::fmt::Display for LookupTableKind {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Provider => f.write_str("provider"),
-            Self::Model => f.write_str("model"),
+            Self::ProviderModel => f.write_str("provider model"),
         }
     }
 }
@@ -159,6 +171,14 @@ pub enum ModelCatalogBuildError {
         count: usize,
         /// Maximum supported env vars for one provider.
         max: usize,
+    },
+    /// A provider model source references a provider key that does not exist.
+    #[error("provider model source references unknown provider_key={provider_key:?} for model_key={model_key:?}")]
+    ProviderKeyNotFoundForModel {
+        /// Provider key from the provider model source.
+        provider_key: String,
+        /// Model key from the provider model source.
+        model_key: String,
     },
     /// Model output token limit exceeds packed-entry capacity.
     #[error("max_output {max_output} exceeds supported maximum {max}")]
@@ -191,6 +211,14 @@ pub enum ModelCatalogBuildError {
     HashCollisionExhausted {
         /// Number of seeds attempted.
         attempts: u16,
+    },
+    /// Duplicate key detected during catalog construction.
+    #[error("duplicate key in {table} table: {key}")]
+    DuplicateKey {
+        /// Table where the duplicate was detected.
+        table: LookupTableKind,
+        /// The duplicate key (provider_key or "provider_key/model_key").
+        key: String,
     },
     /// Total env-var keys across all providers exceeds packed range capacity.
     #[error("total env-var keys {count} exceeds packed range capacity {max}")]
