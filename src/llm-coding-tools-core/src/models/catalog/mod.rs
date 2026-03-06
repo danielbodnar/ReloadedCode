@@ -9,7 +9,7 @@
 //! Model: `hf:moonshotai/Kimi-K2.5`
 //!
 //! Internally the providers and models are stored in separate hash tables,
-//! with friendly APIs to return them combined when needed:
+//! with friendly APIs to return them separately or combined when needed:
 //!
 //! - `ProviderTable`: `hash(provider_key) -> provider_idx`
 //! - `ProviderModelTable`: `hash(provider_key + 0xFF + model_key) -> model_config_idx`
@@ -34,6 +34,8 @@
 //!
 //! ## Querying a Catalog
 //!
+//! - [`ModelCatalog::lookup_provider`] - Provider-only lookup
+//! - [`ModelCatalog::lookup_provider_model`] - Provider-scoped model lookup
 //! - [`ModelCatalog::lookup`] - Combined provider + model lookup
 //! - [`ModelCatalog::provider_count`] - Total providers
 //! - [`ModelCatalog::providers`] - Iterate all providers
@@ -366,6 +368,44 @@ impl ModelCatalog {
         self.provider_table.is_empty() && self.provider_model_table.is_empty()
     }
 
+    /// Looks up one provider.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_key` - Provider identifier (for example, `"openai"`).
+    ///
+    /// # Returns
+    ///
+    /// A [`Provider`] if the requested provider exists, otherwise `None`.
+    #[inline]
+    pub fn lookup_provider(&self, provider_key: &str) -> Option<Provider<'_>> {
+        self.lookup_provider_hash(hash_provider_key(&self.hash_state, provider_key))
+    }
+
+    /// Looks up one model for a specific provider.
+    ///
+    /// This performs exact per-provider model lookup. The `model_key` must
+    /// exist under the specified `provider_key`; the same model name under
+    /// another provider does not match.
+    ///
+    /// # Parameters
+    ///
+    /// * `provider_key` - Provider identifier (for example, `"openai"`).
+    /// * `model_key` - Model identifier within that provider.
+    ///
+    /// # Returns
+    ///
+    /// A [`Model`] if the requested provider and model combination exists,
+    /// otherwise `None`.
+    #[inline]
+    pub fn lookup_provider_model(&self, provider_key: &str, model_key: &str) -> Option<Model> {
+        self.lookup_provider_model_hash(hash_provider_model_key(
+            &self.hash_state,
+            provider_key,
+            model_key,
+        ))
+    }
+
     /// Looks up both provider and model and returns a combined entry.
     ///
     /// This performs exact per-provider model lookup. The `model_key` must
@@ -383,13 +423,8 @@ impl ModelCatalog {
     /// exists, otherwise `None`.
     #[inline]
     pub fn lookup(&self, provider_key: &str, model_key: &str) -> Option<CatalogEntry<'_>> {
-        let provider =
-            self.lookup_provider_hash(hash_provider_key(&self.hash_state, provider_key))?;
-        let model = self.lookup_provider_model_hash(hash_provider_model_key(
-            &self.hash_state,
-            provider_key,
-            model_key,
-        ))?;
+        let provider = self.lookup_provider(provider_key)?;
+        let model = self.lookup_provider_model(provider_key, model_key)?;
 
         Some(CatalogEntry::new(
             provider.provider_idx,
@@ -575,9 +610,23 @@ mod tests {
             ],
         );
 
+        let alpha_provider = catalog.lookup_provider("alpha").expect("alpha exists");
+        let beta_provider = catalog.lookup_provider("beta").expect("beta exists");
+        let alpha_model = catalog
+            .lookup_provider_model("alpha", "m1")
+            .expect("alpha/m1 exists");
+        let beta_model = catalog
+            .lookup_provider_model("beta", "m1")
+            .expect("beta/m1 exists");
         let alpha = catalog.lookup("alpha", "m1").expect("alpha/m1 exists");
         let beta = catalog.lookup("beta", "m1").expect("beta/m1 exists");
 
+        assert_eq!(alpha_provider.api_url, "https://alpha.example");
+        assert_eq!(alpha_provider.api_type, ProviderType::OpenAiCompletions);
+        assert_eq!(beta_provider.api_url, "https://beta.example");
+        assert_eq!(beta_provider.api_type, ProviderType::Azure);
+        assert_eq!(alpha_model.max_output, 1024);
+        assert_eq!(beta_model.max_output, 2_048);
         assert_eq!(alpha.api_url, "https://alpha.example");
         assert_eq!(alpha.max_output, 1024);
         assert_eq!(beta.api_url, "https://beta.example");
@@ -603,6 +652,10 @@ mod tests {
             ],
         );
 
+        assert!(catalog.lookup_provider("missing").is_none());
+        assert!(catalog.lookup_provider_model("alpha", "m2").is_none());
+        assert!(catalog.lookup_provider_model("beta", "m1").is_none());
+        assert!(catalog.lookup_provider_model("missing", "m2").is_none());
         assert!(catalog.lookup("alpha", "m2").is_none());
         assert!(catalog.lookup("beta", "m1").is_none());
         assert!(catalog.lookup("missing", "m2").is_none());
