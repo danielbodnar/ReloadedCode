@@ -23,7 +23,7 @@
 //! ## Safety
 //!
 //! Not a 'safe' parser. We assume the file was created by the user.
-//! There's no validation for erroneous data; e.g. malociously crafted headers.
+//! There's no validation for erroneous data; e.g. maliciously crafted headers.
 //! Only validation for accidental corruption/truncation (e.g., from partial writes) is included.
 
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
 use endian_writer::{EndianReader, EndianWriter, HasSize, LittleEndianReader, LittleEndianWriter};
 use endian_writer_derive::EndianWritable;
 use std::mem::size_of;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::copy_nonoverlapping;
 
 /// Fixed v1 prelude, encoded little-endian.
@@ -77,6 +77,13 @@ pub(crate) struct CacheFileData {
     payload_len_decompressed: u32,
     /// Full file bytes laid out as `prelude || etag || payload_compressed`.
     file_bytes: Box<[u8]>,
+}
+
+/// Returns a temporary path for atomic cache writes.
+fn temp_cache_path(path: &Path) -> PathBuf {
+    let mut temp = path.as_os_str().to_os_string();
+    temp.push(".tmp");
+    PathBuf::from(temp)
 }
 
 impl CacheFileData {
@@ -134,7 +141,7 @@ pub(crate) async fn read_cache_file(path: &Path) -> CatalogResult<CacheFileData>
     let prelude = decode_prelude(&file_bytes[..CACHE_HEADER_LEN]);
     let etag_len = prelude.etag_len as usize;
     let payload_len_compressed = prelude.payload_len_compressed as usize;
-    let expected_total = CACHE_HEADER_LEN + etag_len + payload_len_compressed;
+    let expected_total = CACHE_HEADER_LEN + etag_len + payload_len_compressed; // unlikely to overflow. file is trusted.
 
     if file_bytes.len() != expected_total {
         return Err(CatalogError::CacheFormat(
@@ -205,7 +212,9 @@ pub(crate) async fn write_cache_file(
     }
 
     let file_bytes = fs::assume_init_u8_slice(uninit);
-    fs::write(path, &file_bytes).await?;
+    let temp_path = temp_cache_path(path);
+    fs::write(&temp_path, &file_bytes).await?;
+    fs::rename(&temp_path, path).await?;
     Ok(())
 }
 
@@ -229,7 +238,7 @@ fn encode_prelude(prelude: CachePreludeV1) -> [u8; CACHE_HEADER_LEN] {
 /// Decodes prelude from little-endian bytes.
 #[inline]
 fn decode_prelude(bytes: &[u8]) -> CachePreludeV1 {
-    // SAFETY: Caller guarantees `bytes` is at least `CACHE_PRELUDE_LEN`.
+    // SAFETY: Caller guarantees `bytes` is at least `CACHE_HEADER_LEN`.
     unsafe {
         let mut reader = LittleEndianReader::new(bytes.as_ptr());
         reader.read()
@@ -380,5 +389,44 @@ mod tests {
             .await
             .expect_err("payload length mismatch should fail");
         assert!(matches!(error, CatalogError::CacheFormat(_)));
+    }
+
+    // Verifies atomic replacement replaces existing cache file content.
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn write_replaces_existing_cache_atomically() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("atomic-test.cache");
+
+        // Write first payload
+        let first_input = CacheWriteInput {
+            etag: Some(b"etag-1"),
+            payload_compressed: b"first-payload",
+            payload_len_decompressed: 100,
+        };
+        write_cache_file(&path, &first_input)
+            .await
+            .expect("write first");
+
+        let first_data = read_cache_file(&path).await.expect("read first");
+        assert_eq!(first_data.etag_bytes(), Some(b"etag-1".as_slice()));
+        assert_eq!(first_data.payload_compressed(), b"first-payload");
+
+        // Write second payload (atomic replacement)
+        let second_input = CacheWriteInput {
+            etag: Some(b"etag-2"),
+            payload_compressed: b"second-payload-different",
+            payload_len_decompressed: 200,
+        };
+        write_cache_file(&path, &second_input)
+            .await
+            .expect("write second");
+
+        let second_data = read_cache_file(&path).await.expect("read second");
+        assert_eq!(second_data.etag_bytes(), Some(b"etag-2".as_slice()));
+        assert_eq!(
+            second_data.payload_compressed(),
+            b"second-payload-different"
+        );
+        assert_eq!(second_data.payload_len_decompressed(), 200);
     }
 }

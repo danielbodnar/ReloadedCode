@@ -8,7 +8,7 @@ for a cached fallback and caching via ETag(s).
 If you run coding agents against many providers, you want to have fresh data.
 [models.dev][models.dev] is one such source of data.
 
-This crate has the sufficient code to download from models.dev, distill down only
+This crate has sufficient code to download from models.dev, distill down only
 the relevant data we need; and create a llm_coding_tools_core `ModelCatalog`.
 
 ## Usage

@@ -14,46 +14,69 @@
 //!   core during catalog build.
 
 use super::schema::{parse_api_json, ApiModelEntry, ApiModelLimit, ApiModelModalities};
-use crate::error::CatalogResult;
+use crate::cache::payload::{
+    catalog_from_cache_payload, CachedModelRow, CachedProviderRow, CatalogCachePayload,
+};
+use crate::error::{CatalogError, CatalogResult};
 use llm_coding_tools_core::models::{
-    Modality, ModelCatalog, ModelInfo, ProviderInfo, ProviderModelSource, ProviderSource,
-    ProviderType,
+    Modality, ModelCatalog, ModelCatalogBuildError, ModelInfo, ProviderIdx, ProviderType,
 };
 
-/// Parses models.dev `api.json` bytes and builds a [`ModelCatalog`].
-pub(crate) fn catalog_from_api_json_bytes(json_bytes: &[u8]) -> CatalogResult<ModelCatalog> {
+pub(crate) fn cache_payload_from_api_json_bytes(
+    json_bytes: &[u8],
+) -> CatalogResult<CatalogCachePayload> {
     let provider_entries = parse_api_json(json_bytes)?;
-    let mut provider_model_count = 0usize;
-    for provider in provider_entries.values() {
-        provider_model_count = provider_model_count.saturating_add(provider.models.len());
-    }
 
-    let mut provider_rows = Vec::with_capacity(provider_entries.len());
-    let mut model_rows = Vec::with_capacity(provider_model_count);
-
-    for (provider_key, provider) in &provider_entries {
-        debug_assert!(provider.id.is_empty() || provider.id == *provider_key);
-
-        let api_type = provider_type_from_models_dev_npm(provider.npm.as_deref());
-        for (model_key, model_entry) in &provider.models {
-            model_rows.push(ProviderModelSource::new(
-                provider_key.as_str(),
-                model_key.as_str(),
-                model_info_from_entry(model_entry),
-            ));
-        }
-
-        provider_rows.push(ProviderSource::new(
-            provider_key.as_str(),
-            ProviderInfo {
-                api_url: provider.api.clone().unwrap_or_default(),
-                env_vars: provider.env.clone(),
-                api_type,
+    let provider_count = provider_entries.len();
+    if provider_count > (u16::MAX as usize) + 1 {
+        return Err(CatalogError::ModelCatalogBuild(
+            ModelCatalogBuildError::TooManyProviders {
+                count: provider_count,
+                max: (u16::MAX as usize) + 1,
             },
         ));
     }
 
-    Ok(ModelCatalog::build(&provider_rows, &model_rows)?)
+    let mut providers = Vec::with_capacity(provider_count);
+    let mut models = Vec::with_capacity(
+        provider_entries
+            .values()
+            .map(|provider| provider.models.len())
+            .sum(),
+    );
+
+    for (provider_key, provider) in provider_entries {
+        let provider_idx = ProviderIdx::new(providers.len() as u16);
+        let api_type = provider_type_from_models_dev_npm(provider.npm.as_deref());
+
+        providers.push(CachedProviderRow {
+            provider_key,
+            api_url: provider.api.unwrap_or_default(),
+            env_vars: provider.env,
+            api_type,
+        });
+
+        for (model_key, model_entry) in provider.models {
+            let model = model_info_from_entry(&model_entry);
+            models.push(CachedModelRow {
+                provider_idx,
+                model_key,
+                modalities_bits: model.modalities.bits(),
+                max_input: model.max_input,
+                max_output: model.max_output,
+                temperature: model.temperature,
+                top_p: model.top_p,
+            });
+        }
+    }
+
+    Ok(CatalogCachePayload { providers, models })
+}
+
+/// Parses models.dev `api.json` bytes and builds a [`ModelCatalog`].
+pub(crate) fn catalog_from_api_json_bytes(json_bytes: &[u8]) -> CatalogResult<ModelCatalog> {
+    let payload = cache_payload_from_api_json_bytes(json_bytes)?;
+    catalog_from_cache_payload(payload)
 }
 
 #[inline]
@@ -87,11 +110,7 @@ fn model_modalities(raw: Option<&ApiModelModalities>) -> Modality {
         modalities |= output_modality_flag(label.as_str());
     }
 
-    if modalities.is_empty() {
-        Modality::TEXT
-    } else {
-        modalities
-    }
+    modalities
 }
 
 #[inline]
@@ -101,10 +120,7 @@ fn input_modality_flag(label: &str) -> Modality {
         "image" => Modality::IMAGE_INPUT,
         "audio" => Modality::AUDIO_INPUT,
         "video" => Modality::VIDEO_INPUT,
-        // `pdf` appears in models.dev input modalities. Core has no PDF bit yet,
-        // so map it to text-input capability as closest supported fallback.
-        "pdf" => Modality::TEXT_INPUT,
-        _ => Modality::empty(),
+        _ => Modality::empty(), // pdf not supported
     }
 }
 
@@ -152,8 +168,11 @@ fn provider_type_from_models_dev_npm(npm_package: Option<&str>) -> ProviderType 
 
 #[cfg(test)]
 mod tests {
-    use super::{catalog_from_api_json_bytes, provider_type_from_models_dev_npm};
-    use llm_coding_tools_core::models::{Modality, ModelCatalog, ProviderType};
+    use super::{
+        cache_payload_from_api_json_bytes, catalog_from_api_json_bytes,
+        provider_type_from_models_dev_npm,
+    };
+    use llm_coding_tools_core::models::{Modality, ModelCatalog, ProviderIdx, ProviderType};
 
     fn catalog(json: &[u8]) -> ModelCatalog {
         catalog_from_api_json_bytes(json).expect("API payload should map")
@@ -195,11 +214,45 @@ mod tests {
     }
 
     #[test]
+    fn cache_payload_maps_single_provider_with_models() {
+        let api_json = br#"
+        {
+            "openai": {
+                "npm": "@ai-sdk/openai",
+                "api": "https://api.openai.com/v1",
+                "env": ["OPENAI_API_KEY"],
+                "models": {
+                    "gpt-4": {
+                        "modalities": { "input": ["text"], "output": ["text"] },
+                        "limit": { "context": 8192, "output": 4096 }
+                    }
+                }
+            }
+        }
+        "#;
+
+        let payload = cache_payload_from_api_json_bytes(api_json).expect("payload should build");
+        assert_eq!(payload.providers.len(), 1);
+        assert_eq!(payload.models.len(), 1);
+
+        assert_eq!(payload.providers[0].provider_key, "openai");
+        assert_eq!(
+            payload.providers[0].api_type,
+            ProviderType::OpenAiCompletions
+        );
+
+        assert_eq!(payload.models[0].provider_idx, ProviderIdx::new(0));
+        assert_eq!(payload.models[0].model_key, "gpt-4");
+        assert_eq!(payload.models[0].modalities_bits, Modality::TEXT.bits());
+        assert_eq!(payload.models[0].max_input, 8192);
+        assert_eq!(payload.models[0].max_output, 4096);
+    }
+
+    #[test]
     fn catalog_source_mapping_maps_provider_rows() {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": "@ai-sdk/openai-responses",
                 "api": "https://alpha.example/v1",
                 "env": ["ALPHA_KEY"],
@@ -223,7 +276,6 @@ mod tests {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": null,
                 "api": null,
                 "env": [],
@@ -249,7 +301,6 @@ mod tests {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": null,
                 "api": null,
                 "env": [],
@@ -279,7 +330,6 @@ mod tests {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": null,
                 "api": null,
                 "env": [],
@@ -310,11 +360,10 @@ mod tests {
     }
 
     #[test]
-    fn catalog_source_mapping_maps_pdf_input_to_text_input() {
+    fn catalog_source_mapping_maps_pdf_input_to_empty() {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": null,
                 "api": null,
                 "env": [],
@@ -334,15 +383,14 @@ mod tests {
         let model = catalog
             .lookup_provider_model("alpha", "m1")
             .expect("alpha/m1 should exist");
-        assert_eq!(model.modalities, Modality::TEXT_INPUT);
+        assert_eq!(model.modalities, Modality::empty());
     }
 
     #[test]
-    fn catalog_source_mapping_falls_back_to_text_for_unknown_modalities() {
+    fn catalog_source_mapping_falls_back_to_empty_for_unknown_modalities() {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": null,
                 "api": null,
                 "env": [],
@@ -362,7 +410,7 @@ mod tests {
         let model = catalog
             .lookup_provider_model("alpha", "m1")
             .expect("alpha/m1 should exist");
-        assert_eq!(model.modalities, Modality::TEXT);
+        assert_eq!(model.modalities, Modality::empty());
     }
 
     #[test]
@@ -370,7 +418,6 @@ mod tests {
         let api_json = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": "@ai-sdk/openai",
                 "api": null,
                 "env": [],
@@ -385,7 +432,6 @@ mod tests {
                 }
             },
             "beta": {
-                "id": "beta",
                 "npm": "@ai-sdk/anthropic",
                 "api": null,
                 "env": [],
@@ -431,7 +477,6 @@ mod tests {
         let api_json_a = br#"
         {
             "beta": {
-                "id": "beta",
                 "npm": "@ai-sdk/anthropic",
                 "api": null,
                 "env": [],
@@ -440,7 +485,6 @@ mod tests {
                 }
             },
             "alpha": {
-                "id": "alpha",
                 "npm": "@ai-sdk/openai",
                 "api": null,
                 "env": [],
@@ -454,7 +498,6 @@ mod tests {
         let api_json_b = br#"
         {
             "alpha": {
-                "id": "alpha",
                 "npm": "@ai-sdk/openai",
                 "api": null,
                 "env": [],
@@ -463,7 +506,6 @@ mod tests {
                 }
             },
             "beta": {
-                "id": "beta",
                 "npm": "@ai-sdk/anthropic",
                 "api": null,
                 "env": [],

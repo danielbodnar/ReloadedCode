@@ -32,3 +32,9 @@ pub(crate) fn write(path: impl AsRef<Path>, bytes: &[u8]) -> std::io::Result<()>
 pub(crate) fn create_dir_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
 }
+
+/// Renames a file, replacing the destination if it exists.
+#[inline]
+pub(crate) fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}

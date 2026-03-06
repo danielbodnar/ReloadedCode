@@ -15,6 +15,7 @@
 #[allow(dead_code)] // Wired into the load/sync path down the road
 pub(crate) mod format;
 mod path;
+pub(crate) mod payload;
 
 pub use crate::error::CatalogResult;
-pub use path::shared_cache_path;
+pub use path::{shared_cache_path, CACHE_PATH_ENV_VAR};

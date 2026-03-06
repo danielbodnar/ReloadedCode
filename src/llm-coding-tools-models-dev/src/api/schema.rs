@@ -1,7 +1,7 @@
 //! Minimal models.dev API schema used by this crate.
 //!
 //! We deserialize only fields needed for catalog-source mapping:
-//! provider metadata (`id`, `npm`, `api`, `env`) and model token limits
+//! provider metadata (`npm`, `api`, `env`) and model token limits
 //! (`limit.context`, `limit.input`, `limit.output`) plus directional modalities
 //! (`modalities.input[]`, `modalities.output[]`).
 //!
@@ -46,7 +46,6 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ApiProviderEntry {
-    pub(crate) id: String,
     #[serde(default)]
     pub(crate) npm: Option<String>,
     #[serde(default)]
@@ -104,7 +103,6 @@ mod tests {
         let providers = parse_api_json(api_json).expect("API payload should parse");
         let provider = providers.get("alpha").expect("provider should exist");
 
-        assert_eq!(provider.id, "alpha");
         assert_eq!(provider.npm.as_deref(), Some("@ai-sdk/openai"));
         assert_eq!(provider.env.as_slice(), ["ALPHA_KEY"]);
 

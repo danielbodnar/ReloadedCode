@@ -4,7 +4,7 @@
 ///
 /// Used to reference a specific provider in the catalog's
 /// packed provider entry tables and string tables.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, bitcode::Encode, bitcode::Decode)]
 #[repr(transparent)]
 pub struct ProviderIdx(pub(crate) u16);
 

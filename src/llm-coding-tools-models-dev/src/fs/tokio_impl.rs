@@ -33,3 +33,9 @@ pub(crate) async fn write(path: impl AsRef<Path>, bytes: &[u8]) -> std::io::Resu
 pub(crate) async fn create_dir_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     tokio::fs::create_dir_all(path).await
 }
+
+/// Renames a file, replacing the destination if it exists.
+#[inline]
+pub(crate) async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<()> {
+    tokio::fs::rename(from, to).await
+}

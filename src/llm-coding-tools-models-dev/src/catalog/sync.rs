@@ -1,0 +1,210 @@
+use crate::api::catalog_sources::cache_payload_from_api_json_bytes;
+use crate::cache::format::{read_cache_file, write_cache_file, CacheWriteInput};
+use crate::cache::payload::{catalog_from_cache_payload, encode_cache_payload};
+use crate::catalog::load_cache::load_catalog_from_cache_file_data;
+use crate::catalog::load_result::{CatalogLoadResult, CatalogLoadSource};
+use crate::error::{CatalogError, CatalogResult};
+use reqwest::header::{ETAG, IF_NONE_MATCH};
+use reqwest::StatusCode;
+use std::borrow::Cow;
+use std::io::ErrorKind;
+use std::path::Path;
+
+const MODELS_DEV_API_URL: &str = "https://models.dev/api.json";
+
+#[cfg(test)]
+static TEST_MODELS_DEV_API_URL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_test_models_dev_api_url(url: Option<String>) {
+    *TEST_MODELS_DEV_API_URL.lock().unwrap() = url;
+}
+
+fn models_dev_api_url() -> Cow<'static, str> {
+    #[cfg(test)]
+    if let Some(url) = TEST_MODELS_DEV_API_URL.lock().unwrap().clone() {
+        return Cow::Owned(url);
+    }
+
+    Cow::Borrowed(MODELS_DEV_API_URL)
+}
+
+#[maybe_async::maybe_async]
+pub(crate) async fn load_catalog_at_path(path: &Path) -> CatalogResult<CatalogLoadResult> {
+    let url = models_dev_api_url();
+    load_catalog_from_url(path, url.as_ref()).await
+}
+
+#[maybe_async::maybe_async]
+pub(crate) async fn load_catalog_from_url(
+    path: &Path,
+    url: &str,
+) -> CatalogResult<CatalogLoadResult> {
+    let mut cache_file = None;
+    let mut cache_error = None;
+    match read_cache_file(path).await {
+        Ok(file) => cache_file = Some(file),
+        Err(CatalogError::Io(error)) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => cache_error = Some(error),
+    }
+
+    #[cfg(feature = "tokio")]
+    let client = reqwest::Client::new();
+    #[cfg(feature = "blocking")]
+    let client = reqwest::blocking::Client::new();
+
+    let mut request = client.get(url);
+    if let Some(etag) = cache_file.as_ref().and_then(|file| file.etag_bytes()) {
+        request = request.header(IF_NONE_MATCH, etag);
+    }
+
+    let response = request.send().await?;
+    match response.status() {
+        StatusCode::OK => {
+            let response_etag: Option<Vec<u8>> = response
+                .headers()
+                .get(ETAG)
+                .map(|value| value.as_bytes().to_vec());
+            let body = response.bytes().await?;
+            let payload = cache_payload_from_api_json_bytes(body.as_ref())?;
+            let payload_encoded = encode_cache_payload(&payload);
+            let catalog = catalog_from_cache_payload(payload)?;
+            let payload_compressed =
+                zstd::bulk::compress(payload_encoded.as_slice(), zstd::DEFAULT_COMPRESSION_LEVEL)
+                    .map_err(|error| CatalogError::Zstd(error.to_string()))?;
+
+            write_cache_file(
+                path,
+                &CacheWriteInput {
+                    etag: response_etag.as_deref(),
+                    payload_compressed: &payload_compressed,
+                    payload_len_decompressed: payload_encoded.len(),
+                },
+            )
+            .await?;
+
+            Ok(CatalogLoadResult {
+                catalog,
+                source: CatalogLoadSource::Downloaded,
+            })
+        }
+        StatusCode::NOT_MODIFIED => {
+            if let Some(cache_file) = cache_file.as_ref() {
+                load_catalog_from_cache_file_data(cache_file, CatalogLoadSource::NotModifiedCache)
+            } else if let Some(error) = cache_error {
+                Err(error)
+            } else {
+                Err(CatalogError::CacheFormat(
+                    "received 304 but no cached payload is available",
+                ))
+            }
+        }
+        status => Err(CatalogError::Configuration(format!(
+            "unexpected catalog sync status: {status}",
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_utils::{sample_api_json, start_mock_server, MockResponse};
+    use super::*;
+    use crate::cache::format::CacheWriteInput;
+    use crate::cache::payload::{
+        encode_cache_payload, CachedModelRow, CachedProviderRow, CatalogCachePayload,
+    };
+    use llm_coding_tools_core::models::{Modality, ProviderIdx, ProviderType};
+    use tempfile::TempDir;
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_downloaded_on_200() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        // Start mock server returning 200 OK with fresh catalog data
+        let body = String::from_utf8_lossy(sample_api_json()).to_string();
+        let (_handle, url) = start_mock_server(MockResponse::Ok {
+            etag: "\"test-etag-123\"",
+            body,
+        });
+
+        let result = load_catalog_from_url(&cache_path, &url)
+            .await
+            .expect("sync should succeed");
+
+        // Verify source is Downloaded (not from cache)
+        assert_eq!(result.source, CatalogLoadSource::Downloaded);
+        let provider = result
+            .catalog
+            .lookup_provider("openai")
+            .expect("openai provider should exist");
+        assert_eq!(provider.api_type, ProviderType::OpenAiCompletions);
+        assert_eq!(provider.api_url, "https://api.openai.com/v1");
+
+        // Verify cache file was written with the ETag from response
+        let cache_file = read_cache_file(&cache_path)
+            .await
+            .expect("cache should exist");
+        assert_eq!(
+            cache_file.etag_bytes(),
+            Some(b"\"test-etag-123\"".as_slice())
+        );
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_cached_on_304_with_if_none_match() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        // Pre-seed cache with a valid catalog payload
+        let payload = CatalogCachePayload {
+            providers: vec![CachedProviderRow {
+                provider_key: "openai".to_string(),
+                api_url: "https://api.openai.com/v1".to_string(),
+                env_vars: vec!["OPENAI_API_KEY".to_string()],
+                api_type: ProviderType::OpenAiCompletions,
+            }],
+            models: vec![CachedModelRow {
+                provider_idx: ProviderIdx::new(0),
+                model_key: "gpt-4".to_string(),
+                modalities_bits: Modality::TEXT.bits(),
+                max_input: 8192,
+                max_output: 4096,
+                temperature: None,
+                top_p: None,
+            }],
+        };
+        let encoded = encode_cache_payload(&payload);
+        let compressed =
+            zstd::bulk::compress(&encoded, zstd::DEFAULT_COMPRESSION_LEVEL).expect("compress");
+
+        // Write the seeded cache file with ETag
+        crate::cache::format::write_cache_file(
+            &cache_path,
+            &CacheWriteInput {
+                etag: Some(b"\"cached-etag-456\""),
+                payload_compressed: &compressed,
+                payload_len_decompressed: encoded.len(),
+            },
+        )
+        .await
+        .expect("seed cache");
+
+        // Server returns 304 Not Modified (ETag matches If-None-Match)
+        let (_handle, url) = start_mock_server(MockResponse::NotModified {
+            etag: "\"cached-etag-456\"",
+        });
+
+        let result = load_catalog_from_url(&cache_path, &url)
+            .await
+            .expect("sync should succeed");
+
+        // Verify source is NotModifiedCache (loaded from local file)
+        assert_eq!(result.source, CatalogLoadSource::NotModifiedCache);
+        let provider = result
+            .catalog
+            .lookup_provider("openai")
+            .expect("openai provider should exist");
+        assert_eq!(provider.api_type, ProviderType::OpenAiCompletions);
+    }
+}
