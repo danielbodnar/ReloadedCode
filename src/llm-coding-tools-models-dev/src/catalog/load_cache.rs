@@ -59,7 +59,7 @@ mod tests {
         let payload = sample_payload();
         let encoded = encode_cache_payload(&payload);
         let compressed =
-            zstd::bulk::compress(&encoded, zstd::DEFAULT_COMPRESSION_LEVEL).expect("compress");
+            zstd::bulk::compress(&encoded, 1).expect("compress");
 
         write_cache_file(
             &path,

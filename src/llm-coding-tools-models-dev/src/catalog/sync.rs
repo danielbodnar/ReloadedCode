@@ -91,7 +91,7 @@ pub(crate) async fn load_catalog_from_url(
             let payload_encoded = encode_cache_payload(&payload);
             let catalog = catalog_from_cache_payload(payload)?;
             let payload_compressed =
-                zstd::bulk::compress(payload_encoded.as_slice(), zstd::DEFAULT_COMPRESSION_LEVEL)
+                zstd::bulk::compress(payload_encoded.as_slice(), 17)
                     .map_err(|error| CatalogError::Zstd(error.to_string()))?;
 
             write_cache_file(
@@ -197,7 +197,7 @@ mod tests {
         };
         let encoded = encode_cache_payload(&payload);
         let compressed =
-            zstd::bulk::compress(&encoded, zstd::DEFAULT_COMPRESSION_LEVEL).expect("compress");
+            zstd::bulk::compress(&encoded, 1).expect("compress");
 
         // Write the seeded cache file with ETag
         crate::cache::format::write_cache_file(
@@ -260,7 +260,7 @@ mod tests {
         };
         let encoded = encode_cache_payload(&payload);
         let compressed =
-            zstd::bulk::compress(&encoded, zstd::DEFAULT_COMPRESSION_LEVEL).expect("compress");
+            zstd::bulk::compress(&encoded, 1).expect("compress");
         crate::cache::format::write_cache_file(
             &cache_path,
             &CacheWriteInput {
