@@ -27,7 +27,7 @@
 //!
 //! - [`ModelCatalog::build`] - Batch builder entry point
 //! - [`ProviderSource`] - Provider key + metadata input
-//! - [`ProviderModelSource`] - Model key + metadata input for a provider
+//! - [`ProviderModelSource`] - Model key + metadata input keyed by [`ProviderIdx`] and model key
 //! - [`ModelInfo`] - Model metadata input (modalities, token limits, sampling)
 //! - [`ProviderInfo`] - Provider metadata input (API URL, env vars, type)
 //! - [`Modality`] - Content modality flags (text, image, audio, video)
@@ -286,14 +286,15 @@ impl ModelCatalog {
     /// # Parameters
     ///
     /// * `providers` - [`ProviderSource`] values keyed by provider identifier.
-    /// * `provider_models` - [`ProviderModelSource`] values keyed by provider and model.
+    /// * `provider_models` - [`ProviderModelSource`] values keyed by [`ProviderIdx`] and model key.
+    ///   The `provider_idx` must point at an element in the `providers` slice.
     ///
     /// # Errors
     ///
     /// Returns [`ModelCatalogBuildError`] when:
     /// - input exceeds supported numeric limits,
     /// - token limits cannot be represented in packed model entries,
-    /// - provider model sources reference unknown providers,
+    /// - provider model sources reference out-of-range provider indices,
     /// - or all seed-retry attempts still result in collisions.
     #[inline]
     pub fn build(
@@ -518,7 +519,7 @@ impl ModelCatalog {
 mod tests {
     use super::*;
     use crate::models::catalog::{
-        Modality, ModelInfo, ProviderInfo, ProviderModelSource, ProviderSource,
+        Modality, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource, ProviderSource,
     };
 
     fn provider(api_url: &str, env_vars: &[&str], api_type: ProviderType) -> ProviderInfo {
@@ -565,7 +566,13 @@ mod tests {
         let provider_model_sources: Vec<ProviderModelSource<'_>> = provider_models
             .into_iter()
             .map(|(provider_key, model_key, info)| {
-                ProviderModelSource::new(provider_key, model_key, info)
+                let provider_idx = ProviderIdx::new(
+                    provider_sources
+                        .iter()
+                        .position(|provider| provider.provider_key == provider_key)
+                        .expect("provider key should exist") as u16,
+                );
+                ProviderModelSource::new(provider_idx, model_key, info)
             })
             .collect();
         ModelCatalog::build(&provider_sources, &provider_model_sources)

@@ -56,15 +56,8 @@ pub(crate) fn catalog_from_cache_payload(
 
     let mut model_sources = Vec::with_capacity(models.len());
     for row in &models {
-        let provider_source =
-            provider_sources
-                .get(row.provider_idx.as_usize())
-                .ok_or(CatalogError::CacheFormat(
-                    "provider index out of range in cache payload",
-                ))?;
-
         model_sources.push(ProviderModelSource {
-            provider_key: provider_source.provider_key.as_str(),
+            provider_idx: row.provider_idx,
             model_key: row.model_key.as_str(),
             model: ModelInfo {
                 modalities: Modality::from_bits_retain(row.modalities_bits),
@@ -138,6 +131,8 @@ mod tests {
 
     #[test]
     fn catalog_from_payload_rejects_out_of_range_provider_idx() {
+        use llm_coding_tools_core::models::ModelCatalogBuildError;
+
         let payload = CatalogCachePayload {
             providers: vec![CachedProviderRow {
                 provider_key: "test".to_string(),
@@ -157,7 +152,12 @@ mod tests {
         };
 
         let result = catalog_from_cache_payload(payload);
-        assert!(matches!(result, Err(CatalogError::CacheFormat(_))));
+        assert!(matches!(
+            result,
+            Err(CatalogError::ModelCatalogBuild(
+                ModelCatalogBuildError::ProviderIdxOutOfRangeForModel { .. }
+            ))
+        ));
     }
 
     #[test]
