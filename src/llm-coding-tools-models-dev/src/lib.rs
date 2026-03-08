@@ -10,7 +10,6 @@ compile_error!(concat!(
     "must be enabled."
 ));
 
-#[allow(dead_code)] // Wired into catalog build/load slices
 mod api;
 pub mod cache;
 pub mod catalog;

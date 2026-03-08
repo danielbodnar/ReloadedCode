@@ -14,12 +14,10 @@
 //!   core during catalog build.
 
 use super::schema::{parse_api_json, ApiModelEntry, ApiModelLimit, ApiModelModalities};
-use crate::cache::payload::{
-    catalog_from_cache_payload, CachedModelRow, CachedProviderRow, CatalogCachePayload,
-};
+use crate::cache::payload::{CachedModelRow, CachedProviderRow, CatalogCachePayload};
 use crate::error::{CatalogError, CatalogResult};
 use llm_coding_tools_core::models::{
-    Modality, ModelCatalog, ModelCatalogBuildError, ModelInfo, ProviderIdx, ProviderType,
+    Modality, ModelCatalogBuildError, ModelInfo, ProviderIdx, ProviderType,
 };
 
 pub(crate) fn cache_payload_from_api_json_bytes(
@@ -71,12 +69,6 @@ pub(crate) fn cache_payload_from_api_json_bytes(
     }
 
     Ok(CatalogCachePayload { providers, models })
-}
-
-/// Parses models.dev `api.json` bytes and builds a [`ModelCatalog`].
-pub(crate) fn catalog_from_api_json_bytes(json_bytes: &[u8]) -> CatalogResult<ModelCatalog> {
-    let payload = cache_payload_from_api_json_bytes(json_bytes)?;
-    catalog_from_cache_payload(payload)
 }
 
 #[inline]
@@ -168,11 +160,14 @@ fn provider_type_from_models_dev_npm(npm_package: Option<&str>) -> ProviderType 
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        cache_payload_from_api_json_bytes, catalog_from_api_json_bytes,
-        provider_type_from_models_dev_npm,
-    };
+    use super::{cache_payload_from_api_json_bytes, provider_type_from_models_dev_npm};
+    use crate::cache::payload::catalog_from_cache_payload;
     use llm_coding_tools_core::models::{Modality, ModelCatalog, ProviderIdx, ProviderType};
+
+    fn catalog_from_api_json_bytes(json_bytes: &[u8]) -> crate::error::CatalogResult<ModelCatalog> {
+        let payload = cache_payload_from_api_json_bytes(json_bytes)?;
+        catalog_from_cache_payload(payload)
+    }
 
     fn catalog(json: &[u8]) -> ModelCatalog {
         catalog_from_api_json_bytes(json).expect("API payload should map")

@@ -116,6 +116,7 @@ impl CacheFileData {
     }
 
     /// Returns compressed payload length in bytes.
+    #[allow(dead_code)] // public API
     #[inline]
     pub(crate) fn payload_len_compressed(&self) -> u32 {
         self.payload_len_compressed

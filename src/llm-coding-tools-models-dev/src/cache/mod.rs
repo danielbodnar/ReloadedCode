@@ -12,7 +12,6 @@
 //! The public API currently exposes path resolution only; container helpers are
 //! crate-internal until the sync/load flow is wired.
 
-#[allow(dead_code)] // Wired into the load/sync path down the road
 pub(crate) mod format;
 mod path;
 pub(crate) mod payload;
