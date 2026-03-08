@@ -5,7 +5,10 @@
 compile_error!("Features `async` and `blocking` are mutually exclusive.");
 
 #[cfg(not(any(feature = "async", feature = "blocking")))]
-compile_error!("Either an async runtime (e.g., `tokio`) or `blocking` feature must be enabled.");
+compile_error!(concat!(
+    "Either an async runtime (e.g., `tokio`) or `blocking` feature ",
+    "must be enabled."
+));
 
 #[allow(dead_code)] // Wired into catalog build/load slices
 mod api;

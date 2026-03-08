@@ -58,7 +58,7 @@ jobs:
               echo "Running semver checks for ${CRATE}..."
               # Note: llm-coding-tools-core has mutually exclusive async/blocking features,
               # so we must use --only-explicit-features to avoid enabling all features.
-              # The serdesai and models-dev crates are async-only and don't have the tokio feature.
+              # llm-coding-tools-serdesai is async-only. models-dev supports both tokio and blocking.
               if [ "${CRATE}" = "llm-coding-tools-core" ]; then
                 cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features tokio
               else

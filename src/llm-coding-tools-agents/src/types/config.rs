@@ -108,6 +108,8 @@ pub struct AgentConfig {
     #[serde(default)]
     pub description: String,
     /// Optional model override (format: "provider/model-id").
+    ///
+    /// Use [`AgentConfig::model_parts`] before catalog lookup.
     #[serde(default)]
     pub model: Option<String>,
     /// Legacy visibility flag accepted for compatibility only.
@@ -136,6 +138,18 @@ pub struct AgentConfig {
 }
 
 impl AgentConfig {
+    /// Returns the configured model split into `(provider, model)` parts.
+    #[inline]
+    pub fn model_parts(&self) -> Option<(&str, &str)> {
+        let value = self.model.as_deref()?;
+        let (provider, model) = value.split_once('/')?;
+        if provider.is_empty() || model.is_empty() {
+            return None;
+        }
+
+        Some((provider, model))
+    }
+
     /// Creates an [`AgentConfig`] from raw frontmatter and parsed prompt body.
     pub(crate) fn from_raw(default_name: String, raw: RawFrontmatter, prompt: String) -> Self {
         Self {
@@ -150,5 +164,51 @@ impl AgentConfig {
             options: raw.options,
             prompt,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AgentConfig, AgentMode};
+    use ahash::AHashMap;
+    use indexmap::IndexMap;
+
+    fn config_with_model(model: Option<&str>) -> AgentConfig {
+        AgentConfig {
+            name: "example".to_string(),
+            mode: AgentMode::All,
+            description: String::new(),
+            model: model.map(str::to_string),
+            hidden: false,
+            temperature: None,
+            top_p: None,
+            permission: IndexMap::new(),
+            options: AHashMap::new(),
+            prompt: String::new(),
+        }
+    }
+
+    #[test]
+    fn model_parts_returns_provider_and_model() {
+        let config = config_with_model(Some("synthetic/hf:moonshotai/Kimi-K2.5"));
+
+        assert_eq!(
+            config.model_parts(),
+            Some(("synthetic", "hf:moonshotai/Kimi-K2.5"))
+        );
+    }
+
+    #[test]
+    fn model_parts_rejects_missing_separator() {
+        let config = config_with_model(Some("synthetic-only"));
+
+        assert_eq!(config.model_parts(), None);
+    }
+
+    #[test]
+    fn model_parts_handles_absent_model() {
+        let config = config_with_model(None);
+
+        assert_eq!(config.model_parts(), None);
     }
 }

@@ -8,8 +8,8 @@ for a cached fallback and caching via ETag(s).
 If you run coding agents against many providers, you want to have fresh data.
 [models.dev][models.dev] is one such source of data.
 
-This crate has sufficient code to download from models.dev, distill down only
-the relevant data we need; and create a llm_coding_tools_core `ModelCatalog`.
+This crate downloads from models.dev, keeps only the fields we need, and
+builds a `llm_coding_tools_core::models::ModelCatalog`.
 
 ## Usage
 
@@ -18,8 +18,10 @@ the relevant data we need; and create a llm_coding_tools_core `ModelCatalog`.
 1. Read cache header (if present) and get the old ETag.
 2. Send request to models.dev with `If-None-Match` when ETag exists.
 3. If server returns `304 Not Modified`, load catalog from cache.
-4. If server returns `200 OK`, parse JSON, map it into catalog sources, write fresh cache, then build catalog.
-5. If network fails, try cached data as fallback; if no valid cache exists, return an error.
+4. If server returns `200 OK`, parse JSON, map it into catalog sources,
+   write fresh cache, then build catalog.
+5. If network fails, try cached data as fallback; if no valid cache exists,
+   return an error.
 
 ### Non-blocking (`tokio`)
 
@@ -31,9 +33,15 @@ async fn load_catalog() -> Result<(), Box<dyn std::error::Error>> {
     let result = ModelsDevCatalog::load().await?;
 
     match result.source {
-        CatalogLoadSource::Downloaded => println!("Downloaded fresh catalog data."),
-        CatalogLoadSource::NotModifiedCache => println!("Cache is already up to date."),
-        CatalogLoadSource::FallbackCache => println!("Network unavailable, using cached catalog data."),
+        CatalogLoadSource::Downloaded => {
+            println!("Downloaded fresh catalog data.")
+        }
+        CatalogLoadSource::NotModifiedCache => {
+            println!("Cache is already up to date.")
+        }
+        CatalogLoadSource::FallbackCache => {
+            println!("Network unavailable, using cached catalog data.")
+        }
     }
 
     if let Some(entry) = result.catalog.lookup("openai", "gpt-4") {
@@ -55,9 +63,15 @@ fn load_catalog() -> Result<(), Box<dyn std::error::Error>> {
     let result = ModelsDevCatalog::load()?;
 
     match result.source {
-        CatalogLoadSource::Downloaded => println!("Downloaded fresh catalog data."),
-        CatalogLoadSource::NotModifiedCache => println!("Cache is already up to date."),
-        CatalogLoadSource::FallbackCache => println!("Network unavailable, using cached catalog data."),
+        CatalogLoadSource::Downloaded => {
+            println!("Downloaded fresh catalog data.")
+        }
+        CatalogLoadSource::NotModifiedCache => {
+            println!("Cache is already up to date.")
+        }
+        CatalogLoadSource::FallbackCache => {
+            println!("Network unavailable, using cached catalog data.")
+        }
     }
 
     if let Some(entry) = result.catalog.lookup("openai", "gpt-4") {
@@ -65,6 +79,39 @@ fn load_catalog() -> Result<(), Box<dyn std::error::Error>> {
         println!("max input tokens: {}", entry.1.max_input);
     }
 
+    Ok(())
+}
+```
+
+### Load from a custom cache path
+
+```rust
+use llm_coding_tools_models_dev::ModelsDevCatalog;
+use std::path::PathBuf;
+
+#[cfg(feature = "tokio")]
+async fn load_catalog() -> Result<(), Box<dyn std::error::Error>> {
+    let cache_path = PathBuf::from("/tmp/models-dev.cache");
+    let _result = ModelsDevCatalog::load_at(&cache_path).await?;
+    Ok(())
+}
+
+#[cfg(feature = "blocking")]
+fn load_catalog() -> Result<(), Box<dyn std::error::Error>> {
+    let cache_path = PathBuf::from("/tmp/models-dev.cache");
+    let _result = ModelsDevCatalog::load_at(&cache_path)?;
+    Ok(())
+}
+```
+
+### Resolve the shared cache path
+
+```rust
+use llm_coding_tools_models_dev::shared_cache_path;
+
+fn print_cache_path() -> Result<(), Box<dyn std::error::Error>> {
+    let path = shared_cache_path()?;
+    println!("{}", path.display());
     Ok(())
 }
 ```
