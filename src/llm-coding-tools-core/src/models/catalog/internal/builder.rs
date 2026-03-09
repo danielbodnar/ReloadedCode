@@ -116,7 +116,7 @@ fn populate_tables_once(
             provider_info.api_type,
         )?;
 
-        // SAFETY: analyze_provider_sources bounds env_start and env_count (<= 3).
+        // SAFETY: analyze_provider_sources bounds env_start and env_count (<= 7).
         env_start += u16::from(env_count);
     }
 
@@ -331,7 +331,7 @@ fn analyze_provider_sources(
 
     for provider in providers {
         // SAFETY: total_env_keys is the start index for this provider.
-        // It must fit the 14-bit PackedEnvRange start field.
+        // It must fit the 13-bit PackedEnvRange start field.
         if total_env_keys > max_env_start {
             return Err(ModelCatalogBuildError::TooManyEnvVarKeys {
                 count: total_env_keys,
@@ -341,7 +341,7 @@ fn analyze_provider_sources(
 
         let provider_info = &provider.provider;
         let env_count = provider_info.env_vars.len();
-        // SAFETY: per-provider count must fit the 2-bit count field.
+        // SAFETY: per-provider count must fit the 3-bit count field.
         if env_count > max_env_count {
             return Err(
                 ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider {
@@ -611,7 +611,7 @@ mod tests {
             "alpha",
             provider(
                 "https://alpha.example",
-                &["A", "B", "C", "D"],
+                &["A", "B", "C", "D", "E", "F", "G", "H"],
                 ProviderType::Azure,
             ),
         )];
@@ -626,8 +626,8 @@ mod tests {
                 assert_eq!(
                     err,
                     ModelCatalogBuildError::TooManyProviderEnvVarsForOneProvider {
-                        count: 4,
-                        max: 3,
+                        count: 8,
+                        max: 7,
                     }
                 );
             }
@@ -685,17 +685,13 @@ mod tests {
 
     #[test]
     fn too_many_total_env_vars_returns_error() {
-        // 5462 providers * 3 env vars = 16386, so the 5463rd provider would have
-        // a start index of 16386, which exceeds MAX_ENV_START (16383).
-        let mut providers = Vec::with_capacity(5463);
-        for i in 0..5463usize {
+        // 8192 providers * 1 env var = 8192, so the 8193rd provider would have
+        // a start index of 8192, which exceeds MAX_ENV_START (8191).
+        let mut providers = Vec::with_capacity(8193);
+        for i in 0..8193usize {
             providers.push(provider_source(
                 &format!("provider_{}", i),
-                provider(
-                    "https://example.com",
-                    &["VAR1", "VAR2", "VAR3"],
-                    ProviderType::Azure,
-                ),
+                provider("https://example.com", &["VAR1"], ProviderType::Azure),
             ));
         }
         let mut provider_models = Vec::with_capacity(1);
@@ -710,8 +706,8 @@ mod tests {
                 assert_eq!(
                     err,
                     ModelCatalogBuildError::TooManyEnvVarKeys {
-                        count: 16_386,
-                        max: 16_383,
+                        count: 8_192,
+                        max: 8_191,
                     }
                 );
             }
@@ -720,32 +716,43 @@ mod tests {
     }
 
     #[test]
-    fn max_14bit_start_with_tail_entries_succeeds() {
-        // The last provider's start index can be 16383 and still be valid when it
-        // contributes 3 keys at indices 16383, 16384, and 16385.
-        let mut providers = Vec::with_capacity(5462);
-        for i in 0..5462usize {
+    fn max_13bit_start_with_tail_entries_succeeds() {
+        // The last provider's start index can be 8191 and still be valid when it
+        // contributes keys at indices 8191 through 8197.
+        let mut providers = Vec::with_capacity(1172);
+        for i in 0..1170usize {
             providers.push(provider_source(
                 &format!("provider_{}", i),
                 provider(
                     "https://example.com",
-                    &["VAR1", "VAR2", "VAR3"],
+                    &["VAR1", "VAR2", "VAR3", "VAR4", "VAR5", "VAR6", "VAR7"],
                     ProviderType::Azure,
                 ),
             ));
         }
-        let provider_models = vec![ProviderModelSource::new(
-            ProviderIdx::new(5461),
-            "m1",
-            info(4096, 512),
-        )];
+        providers.push(provider_source(
+            "provider_1170",
+            provider("https://example.com", &["VAR1"], ProviderType::Azure),
+        ));
+        providers.push(provider_source(
+            "provider_1171",
+            provider(
+                "https://example.com",
+                &["VAR1", "VAR2", "VAR3", "VAR4", "VAR5", "VAR6", "VAR7"],
+                ProviderType::Azure,
+            ),
+        ));
+        let provider_models = Vec::new();
 
         let catalog =
             build_from_source(&providers, &provider_models).expect("boundary case should pass");
-        let (provider, _) = catalog
-            .lookup("provider_5461", "m1")
+        let provider = catalog
+            .provider_from_index(ProviderIdx::new(1171))
             .expect("last provider should be addressable");
 
-        assert_eq!(provider.env_vars(), &["VAR1", "VAR2", "VAR3"]);
+        assert_eq!(
+            provider.env_vars(),
+            &["VAR1", "VAR2", "VAR3", "VAR4", "VAR5", "VAR6", "VAR7"]
+        );
     }
 }

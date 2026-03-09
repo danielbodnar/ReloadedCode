@@ -32,7 +32,7 @@ impl Dataset {
     }
 }
 
-fn make_dataset(provider_count: usize, model_count: usize) -> Dataset {
+fn make_dataset(provider_count: usize, model_count: usize, with_env_vars: bool) -> Dataset {
     debug_assert!(provider_count > 0);
 
     let mut providers = Vec::with_capacity(provider_count);
@@ -41,7 +41,11 @@ fn make_dataset(provider_count: usize, model_count: usize) -> Dataset {
             format!("provider-{i}"),
             ProviderInfo {
                 api_url: format!("https://provider-{i}.example/v1"),
-                env_vars: vec![format!("PROVIDER_{i}_API_KEY")],
+                env_vars: if with_env_vars {
+                    vec![format!("PROVIDER_{i}_API_KEY")]
+                } else {
+                    Vec::new()
+                },
                 api_type: if (i & 1) == 0 {
                     ProviderType::OpenAiCompletions
                 } else {
@@ -99,11 +103,11 @@ fn construct_batch(providers: &[ProviderSource], provider_models: &[ProviderMode
 fn benchmark_builder_construction(c: &mut Criterion) {
     let mut group = c.benchmark_group("model_catalog_builder_construct");
 
-    for (name, provider_count, model_count) in [
-        ("models_dev_snapshot", 96usize, 3031usize),
-        ("max", 16384usize, 65535usize),
+    for (name, provider_count, model_count, with_env_vars) in [
+        ("models_dev_snapshot", 96usize, 3031usize, true),
+        ("max", 16384usize, 65535usize, false),
     ] {
-        let dataset = make_dataset(provider_count, model_count);
+        let dataset = make_dataset(provider_count, model_count, with_env_vars);
         let provider_model_sources = dataset.provider_model_sources();
         group.throughput(Throughput::Elements(
             (provider_count + dataset.provider_models.len()) as u64,

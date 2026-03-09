@@ -14,6 +14,11 @@
 use super::{Modality, ModelIdx, ProviderIdx};
 use crate::models::catalog::internal::Fixed4;
 use crate::models::ProviderType;
+use tinyvec::TinyVec;
+
+pub(crate) const INLINE_PROVIDER_ENV_VARS: usize = 2;
+
+pub(crate) type ProviderEnvVars<'a> = TinyVec<[&'a str; INLINE_PROVIDER_ENV_VARS]>;
 
 /// Provider lookup result.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,9 +28,7 @@ pub struct Provider<'a> {
     /// Provider base URL.
     pub api_url: &'a str,
     /// Candidate environment variables used to resolve API keys.
-    env_vars: [&'a str; 3],
-    /// Number of valid entries in `env_vars`.
-    env_vars_count: u8,
+    env_vars: ProviderEnvVars<'a>,
     /// Type of API used by the provider.
     pub api_type: ProviderType,
 }
@@ -36,15 +39,13 @@ impl<'a> Provider<'a> {
     pub(crate) fn new(
         provider_idx: ProviderIdx,
         api_url: &'a str,
-        env_vars: [&'a str; 3],
-        env_vars_count: u8,
+        env_vars: ProviderEnvVars<'a>,
         api_type: ProviderType,
     ) -> Self {
         Self {
             provider_idx,
             api_url,
             env_vars,
-            env_vars_count,
             api_type,
         }
     }
@@ -52,7 +53,7 @@ impl<'a> Provider<'a> {
     /// Returns the candidate environment variables used to resolve API keys.
     #[inline]
     pub fn env_vars(&self) -> &[&'a str] {
-        &self.env_vars[..self.env_vars_count as usize]
+        self.env_vars.as_slice()
     }
 }
 

@@ -175,7 +175,7 @@ pub enum ModelCatalogBuildError {
         /// Maximum supported unique model configuration count.
         max: usize,
     },
-    /// One provider has too many env vars for the packed count field (max 3).
+    /// One provider has too many env vars for the packed count field (max 7).
     #[error("provider env-var count {count} exceeds supported maximum {max}")]
     TooManyProviderEnvVarsForOneProvider {
         /// Number of env vars supplied for one provider.

@@ -151,8 +151,8 @@
 //! | ------------------------- | ----------: | ------------------------------------------------ |
 //! | Max providers             |      65,536 | Addressable by 16-bit provider index             |
 //! | Max model configs         |      65,536 | Addressable by 16-bit model configuration index  |
-//! | Max provider env vars     |      16,384 | Global env-var pool offset (14-bit)              |
-//! | Max env vars per provider |           3 | Count field in provider range entry (2-bit)      |
+//! | Max provider env vars     |       8,192 | Global env-var pool offset (13-bit)              |
+//! | Max env vars per provider |           7 | Count field in provider range entry (3-bit)      |
 //! | Max input tokens          | 536,870,911 | 29-bit packed field (≈536M)                      |
 //! | Max output tokens         | 134,217,727 | 27-bit packed field (≈134M)                      |
 //! | Hash bits retained        |          48 | Truncated from 64-bit hash output                |
@@ -231,6 +231,7 @@ use internal::{
     PackedEnvRange, PackedModelEntry, PackedProviderModelTableEntry, PackedProviderTableEntry,
 };
 use lite_strtab::{StringId, StringTable};
+use public::{ProviderEnvVars, INLINE_PROVIDER_ENV_VARS};
 
 pub use public::builder_types::{ModelCatalogBuildError, ProviderModelSource, ProviderSource};
 pub use public::*;
@@ -472,21 +473,16 @@ impl ModelCatalog {
         let start = range.start();
         let count = range.count() as usize;
 
-        let mut env_vars = ["", "", ""];
-        #[allow(clippy::needless_range_loop)]
+        let mut env_vars: ProviderEnvVars<'_> =
+            ProviderEnvVars::with_capacity(count.max(INLINE_PROVIDER_ENV_VARS));
         for x in 0..count {
-            env_vars[x] = self
-                .provider_env_keys
-                .get(StringId::new(ProviderIdx::new(start + x as u16)))?;
+            env_vars.push(
+                self.provider_env_keys
+                    .get(StringId::new(ProviderIdx::new(start + x as u16)))?,
+            );
         }
 
-        Some(Provider::new(
-            provider_idx,
-            api_url,
-            env_vars,
-            count as u8,
-            api_type,
-        ))
+        Some(Provider::new(provider_idx, api_url, env_vars, api_type))
     }
 
     /// Looks up a model by its configuration index.
