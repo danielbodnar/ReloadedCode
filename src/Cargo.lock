@@ -917,9 +917,9 @@ dependencies = [
 
 [[package]]
 name = "html-to-markdown-rs"
-version = "2.27.2"
+version = "2.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06f53f29c48f234830ccc312f652770723419fe9b3529fa5e0b027a0fedb7869"
+checksum = "9acd7c0cb550ef05c40eed72a866a220c64c1b37b3ff57ae53064a8e47e3552d"
 dependencies = [
  "ahash",
  "astral-tl",
@@ -2647,7 +2647,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0136791f7c95b1f6dd99f9cc786b91bb81c3800b639b3478e561ddb7be95e5f1"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
