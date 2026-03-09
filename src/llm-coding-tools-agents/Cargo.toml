@@ -21,7 +21,7 @@ indexmap = { version = "2", features = ["serde"] }
 thiserror = "2.0"
 
 # Fast CRLF to LF conversion
-crlf-to-lf-inplace = "0.1"
+crlf-to-lf-inplace = "0.2"
 
 
 # Directory scanning with gitignore support

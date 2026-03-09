@@ -406,9 +406,9 @@ dependencies = [
 
 [[package]]
 name = "crlf-to-lf-inplace"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88f39809752bc1bfd0311d98d352eb7b5afaa984dce3f1e94bb44bf0d6045d96"
+checksum = "f01495b370f10c8cd482b7678593186dec9c2cb8e95e9da2a597989e7b64849f"
 dependencies = [
  "memchr",
 ]
@@ -2647,7 +2647,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0136791f7c95b1f6dd99f9cc786b91bb81c3800b639b3478e561ddb7be95e5f1"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
