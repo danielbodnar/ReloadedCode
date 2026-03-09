@@ -43,7 +43,7 @@ run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blo
 run_cmd cargo test -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet
 
 echo "Docs..."
-run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
+run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --document-private-items --no-deps --quiet
 
 echo "Formatting..."
 run_cmd cargo fmt --all --check --quiet

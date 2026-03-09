@@ -1,7 +1,7 @@
 //! models.dev API -> `ModelCatalog` mapping.
 //!
 //! This module parses models.dev `api.json`, maps provider/model metadata into
-//! transient core builder inputs, and immediately constructs a [`ModelCatalog`].
+//! transient core builder inputs, and immediately constructs a [`ModelCatalog`](llm_coding_tools_core::models::ModelCatalog).
 //!
 //! Mapping policy:
 //! - missing limits default to `0`;

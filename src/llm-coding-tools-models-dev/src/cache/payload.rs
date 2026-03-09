@@ -1,7 +1,7 @@
 //! Cache payload serialization for models.dev catalog data.
 //!
 //! The payload is stored as simple owned rows so it can be encoded compactly
-//! with bitcode and rebuilt into a [`ModelCatalog`](llm_coding_tools_core::models::ModelCatalog)
+//! with bitcode and rebuilt into a [`ModelCatalog`]
 //! without reparsing the original JSON.
 //!
 //! ## Compression Benchmark

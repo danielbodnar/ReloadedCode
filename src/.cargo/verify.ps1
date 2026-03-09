@@ -57,7 +57,7 @@ Write-Host "Docs..."
 $originalRustdocFlags = $env:RUSTDOCFLAGS
 $env:RUSTDOCFLAGS = "-D warnings"
 try {
-    Invoke-LoggedCommand "cargo" @("doc", "--workspace", "--no-deps", "--quiet")
+    Invoke-LoggedCommand "cargo" @("doc", "--workspace", "--document-private-items", "--no-deps", "--quiet")
 } finally {
     $env:RUSTDOCFLAGS = $originalRustdocFlags
 }
