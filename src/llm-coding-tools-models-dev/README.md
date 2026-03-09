@@ -126,6 +126,17 @@ By default, cache is stored in the platform cache directory:
 
 Set `LLM_CODING_TOOLS_MODELS_DEV_CACHE_PATH` to override this path.
 
+## Cache size and performance
+
+Current ballpark from a recent `models.dev/api.json` snapshot:
+
+- Size: about `1.31 MiB` JSON -> `109 KiB` serialized payload -> `23.7 KiB` compressed cache
+- Compression: about `10.1 ms` with current `zstd` level `17`
+- Decompression: about `0.057 ms` (`57 us`) in `--release`
+- Cache load into `ModelCatalog`: about `0.31 ms` (`read + decompress + decode + build`)
+
+Measured on a single core of a Ryzen `9950X3D`; these are rough guidance numbers and will drift as the upstream catalog changes.
+
 ## Feature flags
 
 - `tokio` (default): async runtime support.
