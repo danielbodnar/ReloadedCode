@@ -21,20 +21,8 @@ pub(crate) fn read(path: impl AsRef<Path>) -> std::io::Result<Box<[u8]>> {
     Ok(super::assume_init_u8_slice(bytes))
 }
 
-/// Writes all bytes to a file, creating or truncating it.
-#[inline]
-pub(crate) fn write(path: impl AsRef<Path>, bytes: &[u8]) -> std::io::Result<()> {
-    std::fs::write(path, bytes)
-}
-
 /// Creates a directory and all parent directories.
 #[inline]
 pub(crate) fn create_dir_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
-}
-
-/// Renames a file, replacing the destination if it exists.
-#[inline]
-pub(crate) fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<()> {
-    std::fs::rename(from, to)
 }

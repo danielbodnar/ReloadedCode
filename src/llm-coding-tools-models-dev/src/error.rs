@@ -41,6 +41,11 @@ pub enum CatalogError {
     /// The catalog failed to build from source rows.
     #[error("catalog build error: {0}")]
     ModelCatalogBuild(#[from] ModelCatalogBuildError),
+
+    /// A spawn_blocking task failed.
+    #[cfg(feature = "tokio")]
+    #[error("blocking task failed: {0}")]
+    JoinHandle(#[from] tokio::task::JoinError),
 }
 
 /// Convenience type alias for catalog operations.

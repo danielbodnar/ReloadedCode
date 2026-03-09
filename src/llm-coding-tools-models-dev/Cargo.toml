@@ -55,10 +55,12 @@ serde_json = "1.0.145"
 # Ergonomic error definitions
 thiserror = "2.0.18"
 
+# Temp file with atomic rename support
+tempfile = "3.26"
+
 # Async runtime (when tokio feature enabled)
 tokio = { version = "1.49", features = ["fs", "io-util"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.49", features = ["rt", "macros"] }
-tempfile = "3.26"
 serial_test = "3"

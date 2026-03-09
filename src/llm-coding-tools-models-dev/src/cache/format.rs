@@ -41,7 +41,7 @@ use crate::{
 use endian_writer::{EndianReader, EndianWriter, HasSize, LittleEndianReader, LittleEndianWriter};
 use endian_writer_derive::EndianWritable;
 use std::mem::size_of;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 
 /// Fixed v1 prelude, encoded little-endian.
@@ -87,12 +87,7 @@ pub(crate) struct CacheFileData {
     file_bytes: Box<[u8]>,
 }
 
-/// Returns a temporary path for atomic cache writes.
-fn temp_cache_path(path: &Path) -> PathBuf {
-    let mut temp = path.as_os_str().to_os_string();
-    temp.push(".tmp");
-    PathBuf::from(temp)
-}
+
 
 impl CacheFileData {
     /// Returns the optional ETag as a borrowed byte slice.
@@ -175,20 +170,24 @@ pub(crate) async fn read_cache_file(path: &Path) -> CatalogResult<CacheFileData>
     })
 }
 
-/// Writes a cache container to disk.
+/// Writes a cache container to disk atomically.
+///
+/// Uses `tempfile::NamedTempFile` to ensure unique temp files for concurrent
+/// writers and cross-platform atomic replacement via `persist()`.
 ///
 /// # Errors
 ///
 /// Returns [`CatalogError::CacheFormat`] if a block length exceeds v1 `u32`
-/// limits.
+/// limits, or [`CatalogError::Io`] on I/O failure.
 #[maybe_async::maybe_async]
 pub(crate) async fn write_cache_file(
     path: &Path,
     input: &CacheWriteInput<'_>,
 ) -> CatalogResult<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await?;
-    }
+    let parent = path.parent().ok_or_else(|| {
+        CatalogError::CacheFormat("cache path has no parent directory")
+    })?;
+    fs::create_dir_all(parent).await?;
 
     let etag_bytes = input.etag.unwrap_or(&[]);
     let prelude = CachePreludeV1 {
@@ -230,9 +229,29 @@ pub(crate) async fn write_cache_file(
     }
 
     let file_bytes = fs::assume_init_u8_slice(uninit);
-    let temp_path = temp_cache_path(path);
-    fs::write(&temp_path, &file_bytes).await?;
-    fs::rename(&temp_path, path).await?;
+
+    #[cfg(feature = "blocking")]
+    {
+        use std::io::Write as _;
+        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+        temp.write_all(&file_bytes)?;
+        temp.persist(path).map_err(|e| e.error)?;
+    }
+
+    #[cfg(feature = "tokio")]
+    {
+        let file_bytes: Box<[u8]> = file_bytes;
+        let path = path.to_path_buf();
+        let parent = parent.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            use std::io::Write as _;
+            let mut temp = tempfile::NamedTempFile::new_in(&parent)?;
+            temp.write_all(&file_bytes)?;
+            temp.persist(&path).map_err(|e| e.error)
+        })
+        .await??;
+    }
+
     Ok(())
 }
 

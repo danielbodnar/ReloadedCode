@@ -22,20 +22,8 @@ pub(crate) async fn read(path: impl AsRef<Path>) -> std::io::Result<Box<[u8]>> {
     Ok(super::assume_init_u8_slice(bytes))
 }
 
-/// Writes all bytes to a file, creating or truncating it.
-#[inline]
-pub(crate) async fn write(path: impl AsRef<Path>, bytes: &[u8]) -> std::io::Result<()> {
-    tokio::fs::write(path, bytes).await
-}
-
 /// Creates a directory and all parent directories.
 #[inline]
 pub(crate) async fn create_dir_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     tokio::fs::create_dir_all(path).await
-}
-
-/// Renames a file, replacing the destination if it exists.
-#[inline]
-pub(crate) async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<()> {
-    tokio::fs::rename(from, to).await
 }
