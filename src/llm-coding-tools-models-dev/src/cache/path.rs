@@ -46,8 +46,14 @@ const CACHE_FILENAME: &str = "models.dev.catalog.v1.cache";
 /// ```
 pub fn shared_cache_path() -> CatalogResult<PathBuf> {
     // 1. Check env var first
-    if let Ok(path) = std::env::var(CACHE_PATH_ENV_VAR) {
-        return Ok(PathBuf::from(path));
+    if let Some(os_str) = std::env::var_os(CACHE_PATH_ENV_VAR) {
+        if os_str.is_empty() {
+            return Err(CatalogError::Configuration(format!(
+                "{} is set but empty",
+                CACHE_PATH_ENV_VAR
+            )));
+        }
+        return Ok(PathBuf::from(&os_str));
     }
 
     // 2. Fall back to dirs::cache_dir()

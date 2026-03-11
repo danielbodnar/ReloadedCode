@@ -152,7 +152,12 @@ pub(crate) async fn read_cache_file(path: &Path) -> CatalogResult<CacheFileData>
     let prelude = decode_prelude(&file_bytes[..CACHE_HEADER_LEN]);
     let etag_len = prelude.etag_len as usize;
     let payload_len_compressed = prelude.payload_len_compressed as usize;
-    let expected_total = CACHE_HEADER_LEN + etag_len + payload_len_compressed; // unlikely to overflow. file is trusted.
+    let expected_total = CACHE_HEADER_LEN
+        .checked_add(etag_len)
+        .and_then(|v| v.checked_add(payload_len_compressed))
+        .ok_or(CatalogError::CacheFormat(
+            "cache file size exceeds platform limits",
+        ))?;
 
     if file_bytes.len() != expected_total {
         return Err(CatalogError::CacheFormat(
