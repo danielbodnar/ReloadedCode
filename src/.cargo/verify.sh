@@ -3,8 +3,8 @@
 # All steps must pass without warnings
 # Keep in sync with verify.ps1
 #
-# Note: llm-coding-tools-serdesai is async-only (implements async Tool traits).
-# The blocking feature only applies to llm-coding-tools-core.
+# Note: llm-coding-tools-serdesai is async-only.
+# Blocking mode is validated for core and models-dev.
 
 set -e
 
@@ -24,22 +24,26 @@ echo "Building..."
 run_cmd cargo build -p llm-coding-tools-core --quiet
 run_cmd cargo build -p llm-coding-tools-agents --quiet
 run_cmd cargo build -p llm-coding-tools-serdesai --quiet
+run_cmd cargo build -p llm-coding-tools-models-dev --quiet
 
 echo "Testing..."
 run_cmd cargo test -p llm-coding-tools-core --quiet
 run_cmd cargo test -p llm-coding-tools-agents --quiet
 run_cmd cargo test -p llm-coding-tools-serdesai --quiet
+run_cmd cargo test -p llm-coding-tools-models-dev --quiet
 
 echo "Clippy..."
 run_cmd cargo clippy -p llm-coding-tools-core --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-agents --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings
+run_cmd cargo clippy -p llm-coding-tools-models-dev --quiet -- -D warnings
 
 echo "Testing blocking feature..."
 run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
+run_cmd cargo test -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet
 
 echo "Docs..."
-run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --quiet
+run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --document-private-items --no-deps --quiet
 
 echo "Formatting..."
 run_cmd cargo fmt --all --check --quiet
@@ -48,5 +52,6 @@ echo "Publish dry-run..."
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-core --quiet
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-agents --quiet
 run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-serdesai --quiet
+run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-models-dev --quiet
 
 echo "All checks passed!"

@@ -1,0 +1,66 @@
+[package]
+name = "llm-coding-tools-models-dev"
+version = "0.1.0"
+edition = "2021"
+description = "models.dev catalog ingestion with online-first sync pipeline"
+repository = "https://github.com/Sewer56/llm-coding-tools"
+license = "Apache-2.0"
+include = ["src/**/*", "README.md"]
+readme = "README.md"
+
+[features]
+default = ["tokio"]
+# Base async signatures (enabled by runtime features)
+async = []
+# Async with tokio runtime
+tokio = ["async", "dep:tokio", "dep:reqwest", "llm-coding-tools-core/tokio"]
+# Blocking/sync mode - mutually exclusive with tokio/async
+blocking = [
+    "dep:reqwest",
+    "reqwest/blocking",
+    "llm-coding-tools-core/blocking",
+    "maybe-async/is_sync",
+]
+
+[dependencies]
+# Core library for ModelCatalog and related types
+llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0", default-features = false }
+
+# Cross-platform cache directory detection
+dirs = "6.0.0"
+
+# HTTP client for conditional GET requests
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",
+    "rustls-native-certs",
+], optional = true }
+
+# Fast binary serialization
+bitcode = "0.6.9"
+
+# Compression for cache payload
+zstd = "0.13.3"
+
+# Shared async/sync implementation for load/cache APIs
+maybe-async = "0.2"
+
+# Endian-aware fixed-header serialization helpers
+endian-writer = "2.2.0"
+endian-writer-derive = "0.1.0"
+
+# JSON parsing for models.dev API responses
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+
+# Ergonomic error definitions
+thiserror = "2.0.18"
+
+# Temp file with atomic rename support
+tempfile = "3.26"
+
+# Async runtime (when tokio feature enabled)
+tokio = { version = "1.49", features = ["fs", "io-util"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.49", features = ["rt", "macros"] }
+serial_test = "3"

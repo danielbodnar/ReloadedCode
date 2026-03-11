@@ -1,18 +1,30 @@
 # llm-coding-tools
 
 [![Crates.io - llm-coding-tools-core](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core)
+[![Crates.io - llm-coding-tools-agents](https://img.shields.io/crates/v/llm-coding-tools-agents.svg)](https://crates.io/crates/llm-coding-tools-agents)
 [![Crates.io - llm-coding-tools-serdesai](https://img.shields.io/crates/v/llm-coding-tools-serdesai.svg)](https://crates.io/crates/llm-coding-tools-serdesai)
+[![Crates.io - llm-coding-tools-models-dev](https://img.shields.io/crates/v/llm-coding-tools-models-dev.svg)](https://crates.io/crates/llm-coding-tools-models-dev)
 [![Docs.rs](https://docs.rs/llm-coding-tools-serdesai/badge.svg)](https://docs.rs/llm-coding-tools-serdesai)
 [![CI](https://github.com/Sewer56/llm-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/llm-coding-tools/actions)
 
-Lightweight, high-performance coding tool implementations for LLM-powered development agents. Plug and play into your favourite frameworks.
+Lightweight, heavily optimized coding tool implementations for LLM-powered
+development agents.
+
+Suitable for server use (<3 MiB), or as building blocks for your own TUI coding agent.
 
 ## About This Workspace
 
-This workspace contains multiple Rust crates for integrating coding tools with LLM agents:
+This workspace contains multiple Rust crates for integrating coding tools with
+LLM agents:
 
-- **[llm-coding-tools-core](./src/llm-coding-tools-core/)**: Framework-agnostic core operations and utilities
-- **[llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/)**: serdesAI framework-specific Tool implementations
+- **[llm-coding-tools-core](./src/llm-coding-tools-core/)**:
+  Framework-agnostic core operations and utilities
+- **[llm-coding-tools-agents](./src/llm-coding-tools-agents/)**:
+  OpenCode agent markdown loader and typed catalogue
+- **[llm-coding-tools-serdesai](./src/llm-coding-tools-serdesai/)**:
+  serdesAI framework-specific Tool implementations
+- **[llm-coding-tools-models-dev](./src/llm-coding-tools-models-dev/)**:
+  models.dev catalog sync with cached fallback and ETag refresh
 
 ## Features
 
@@ -22,6 +34,9 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 - **Web**: URL fetching with HTML-to-markdown conversion
 - **Path Security**: Choose between unrestricted or sandboxed file access
 - **Context Strings**: Embedded LLM guidance for tool usage
+- **Agent Loading**: Parse OpenCode-compatible agent markdown into typed configs
+- **Model Catalog Sync**: Download and cache the models.dev catalog for
+  provider/model lookups
 
 ## Feature Flags (llm-coding-tools-core)
 
@@ -30,41 +45,24 @@ This workspace contains multiple Rust crates for integrating coding tools with L
 
 ## Quick Start
 
-Add to your `Cargo.toml`:
+Pick the crate that matches your use case:
 
 ```toml
 [dependencies]
-llm-coding-tools-serdesai = "0.1"
+llm-coding-tools-core = "0.2"         # Framework-agnostic tool implementations
+llm-coding-tools-agents = "0.1"       # OpenCode agent markdown loader
+llm-coding-tools-models-dev = "0.1"   # models.dev catalog sync and cache
+llm-coding-tools-serdesai = "0.2"     # serdesAI integration
 ```
 
-```rust,no_run
-use llm_coding_tools_serdesai::{AgentBuilder, BashTool, TodoTools};
-use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool, EditTool, GlobTool, GrepTool};
-
-let mut builder = AgentBuilder::new();
-let todos = TodoTools::new();
-
-builder
-    .track(ReadTool::<true>::new())
-    .track(WriteTool::new())
-    .track(EditTool::<true>::new())
-    .track(GlobTool::new())
-    .track(GrepTool::<true>::new())
-    .track(BashTool::new())
-    .track(&todos.read)
-    .track(&todos.write);
-
-let mut agent = builder.build();
-
-// Use the agent
-// let response = agent.invoke("List all files").await?;
-```
+For a runnable agent setup, start with `llm-coding-tools-serdesai` and the
+examples below.
 
 ## Examples
 
 ```bash
 # serdesAI framework - Basic agent setup
-cargo run --example serdesai-agents -p llm-coding-tools-serdesai
+cargo run --example serdesai-basic -p llm-coding-tools-serdesai
 
 # serdesAI framework - Sandboxed file access
 cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
@@ -73,18 +71,26 @@ cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 ## Documentation
 
 - [llm-coding-tools-core README](./src/llm-coding-tools-core/README.md)
+- [llm-coding-tools-agents README](./src/llm-coding-tools-agents/README.md)
 - [llm-coding-tools-serdesai README](./src/llm-coding-tools-serdesai/README.md)
+- [llm-coding-tools-models-dev README](./src/llm-coding-tools-models-dev/README.md)
 - [Developer Guidelines](./src/AGENTS.md)
 
 ## Contributing
 
-Contributions are welcome! Please ensure all tests pass and the code follows our guidelines.
+Contributions are welcome! Please ensure all tests pass and the code follows
+our guidelines.
 
 ## Deprecation Notice
 
-**Rig framework support (`llm-coding-tools-rig`) has been removed** (commit 17158db) due to library bugs that prevented examples from running reliably.
+**Rig framework support (`llm-coding-tools-rig`) has been removed**
+(commit 17158db) due to library bugs that prevented examples from running
+reliably.
 
-You're welcome to submit a PR re-adding rig support if you're willing to maintain it. Since I don't use rig personally, I'm not able to actively maintain that integration. Alternatively, you can create your own crate building on `llm-coding-tools-core` directly.
+You're welcome to submit a PR re-adding rig support if you're willing to
+maintain it. Since I don't use rig personally, I'm not able to actively
+maintain that integration. Alternatively, you can create your own crate
+building on `llm-coding-tools-core` directly.
 
 ## License
 

@@ -4,13 +4,16 @@ Load OpenCode agent markdown files into a typed Rust catalogue.
 
 This crate is a loader for the [OpenCode agent schema](https://opencode.ai/docs/agents/).
 
-It is a drop-in replacement for OpenCode agent files: agents you create for OpenCode should load here unchanged.
+It is a drop-in replacement for OpenCode agent files: agents you create for
+OpenCode should load here unchanged.
 
 ## What it provides
 
-- [`AgentLoader`] for loading agent configs from directories, files, or in-memory markdown.
+- [`AgentLoader`] for loading agent configs from directories, files, or
+  in-memory markdown.
 - [`AgentCatalog`] for storing and looking up loaded [`AgentConfig`] entries.
-- [`RulesetExt`] for converting frontmatter `permission` data into runtime [`Ruleset`]s.
+- [`RulesetExt`] for converting frontmatter `permission` data into runtime
+  [`Ruleset`]s.
 
 ## Quick start
 
@@ -43,19 +46,34 @@ permission:
 Prompt body here...
 ```
 
-For field behaviour, see OpenCode docs for [`mode`](https://opencode.ai/docs/agents#mode), [`model`](https://opencode.ai/docs/agents#model), and [`permissions`](https://opencode.ai/docs/agents#permissions).
+For field behaviour, see OpenCode docs for
+[`mode`](https://opencode.ai/docs/agents#mode),
+[`model`](https://opencode.ai/docs/agents#model), and
+[`permissions`](https://opencode.ai/docs/agents#permissions).
 
 ## Compatibility notes
 
-This library does not provide interactive UX extensions (for example, TUI approval flows).
-To avoid false expectations, settings that require interaction are rejected, while settings with no runtime effect are accepted and ignored:
+This library does not provide interactive UX extensions (for example, TUI
+approval flows).
 
-- [`permission.task`](https://opencode.ai/docs/agents#task-permissions): `ask` is rejected with a schema validation error (`allow`/`deny` only), because `ask` is an interactive approval mode in OpenCode ([docs](https://opencode.ai/docs/permissions#what-ask-does)).
-- [`hidden`](https://opencode.ai/docs/agents#hidden) is accepted for compatibility, but ignored at runtime.
+To avoid false expectations, settings that require interaction are rejected,
+while settings with no runtime effect are accepted and ignored:
+
+- [`permission.task`](https://opencode.ai/docs/agents#task-permissions):
+  `ask` is rejected with a schema validation error (`allow`/`deny` only),
+  because `ask` is an interactive approval mode in OpenCode
+  ([docs](https://opencode.ai/docs/permissions#what-ask-does)).
+- [`hidden`](https://opencode.ai/docs/agents#hidden) is accepted for
+  compatibility, but ignored at runtime.
 
 ## Integration
 
 This crate only loads and validates agent configs.
-Pass [`AgentCatalog`] to your runtime adapter (for example, `llm-coding-tools-serdesai`) to build registries and Task tooling.
+Pass [`AgentCatalog`] to your runtime adapter (for example,
+`llm-coding-tools-serdesai`) to build registries and Task tooling.
+
+If you want to validate `model` strings against a catalog, call
+[`AgentConfig::model_parts`] and pass the returned `(provider, model)` into
+your lookup layer.
 
 [`Ruleset`]: llm_coding_tools_core::permissions::Ruleset

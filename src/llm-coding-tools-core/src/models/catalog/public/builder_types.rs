@@ -3,6 +3,7 @@
 //! [`ModelCatalog`]: crate::models::catalog::ModelCatalog
 
 use super::Modality;
+use super::ProviderIdx;
 use crate::models::ProviderType;
 use thiserror::Error;
 
@@ -80,47 +81,57 @@ impl From<(String, ProviderInfo)> for ProviderSource {
 ///
 /// This wrapper keeps builder input self-documenting and avoids tuple-position
 /// ambiguity at call sites.
+///
+/// The `model_key` is borrowed because the catalog builder hashes it during
+/// construction and does not retain it afterward. Callers must therefore keep
+/// the referenced string alive until [`crate::models::catalog::ModelCatalog::build`]
+/// returns.
+///
+/// The `provider_idx` must correspond to an entry in the `providers` slice passed
+/// to [`ModelCatalog::build`].
+///
+/// [`ModelCatalog::build`]: crate::models::catalog::ModelCatalog::build
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProviderModelSource {
-    /// Provider identifier used by lookups (for example, `"openai"`).
-    pub provider_key: String,
-    /// Model identifier used by lookups (for example, `"gpt-4"`).
-    pub model_key: String,
+pub struct ProviderModelSource<'a> {
+    /// Index into the `providers` slice passed to [`ModelCatalog::build`].
+    ///
+    /// [`ModelCatalog::build`]: crate::models::catalog::ModelCatalog::build
+    pub provider_idx: ProviderIdx,
+    /// Borrowed model identifier used by lookups (for example, `"gpt-4"`).
+    pub model_key: &'a str,
     /// Model metadata associated with [`Self::model_key`].
     pub model: ModelInfo,
 }
 
-impl ProviderModelSource {
+impl<'a> ProviderModelSource<'a> {
     /// Creates a provider model source.
     ///
     /// # Parameters
     ///
-    /// * `provider_key` - Provider identifier used during provider lookup.
+    /// * `provider_idx` - Index into the `providers` slice passed to [`ModelCatalog::build`].
     /// * `model_key` - Model identifier used during model lookup for this provider.
     /// * `model` - Model metadata for this provider model.
     ///
     /// # Returns
     ///
     /// A new [`ProviderModelSource`].
+    ///
+    /// [`ModelCatalog::build`]: crate::models::catalog::ModelCatalog::build
     #[inline]
-    pub fn new(
-        provider_key: impl Into<String>,
-        model_key: impl Into<String>,
-        model: ModelInfo,
-    ) -> Self {
+    pub fn new(provider_idx: ProviderIdx, model_key: &'a str, model: ModelInfo) -> Self {
         Self {
-            provider_key: provider_key.into(),
-            model_key: model_key.into(),
+            provider_idx,
+            model_key,
             model,
         }
     }
 }
 
-impl From<(String, String, ModelInfo)> for ProviderModelSource {
+impl<'a> From<(ProviderIdx, &'a str, ModelInfo)> for ProviderModelSource<'a> {
     #[inline]
-    fn from((provider_key, model_key, model): (String, String, ModelInfo)) -> Self {
+    fn from((provider_idx, model_key, model): (ProviderIdx, &'a str, ModelInfo)) -> Self {
         Self {
-            provider_key,
+            provider_idx,
             model_key,
             model,
         }
@@ -164,7 +175,7 @@ pub enum ModelCatalogBuildError {
         /// Maximum supported unique model configuration count.
         max: usize,
     },
-    /// One provider has too many env vars for the packed count field (max 3).
+    /// One provider has too many env vars for the packed count field (max 7).
     #[error("provider env-var count {count} exceeds supported maximum {max}")]
     TooManyProviderEnvVarsForOneProvider {
         /// Number of env vars supplied for one provider.
@@ -172,11 +183,11 @@ pub enum ModelCatalogBuildError {
         /// Maximum supported env vars for one provider.
         max: usize,
     },
-    /// A provider model source references a provider key that does not exist.
-    #[error("provider model source references unknown provider_key={provider_key:?} for model_key={model_key:?}")]
-    ProviderKeyNotFoundForModel {
-        /// Provider key from the provider model source.
-        provider_key: String,
+    /// A provider model source references a provider index that does not exist.
+    #[error("provider model source references out-of-range provider_idx={} for model_key={model_key:?}", provider_idx.as_usize())]
+    ProviderIdxOutOfRangeForModel {
+        /// Provider index from the provider model source.
+        provider_idx: ProviderIdx,
         /// Model key from the provider model source.
         model_key: String,
     },

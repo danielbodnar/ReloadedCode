@@ -40,6 +40,9 @@ serde_json = "1.0"
 # Zero overhead compile time bitflag generation
 bitflags = "2.11.0"
 
+# Fast binary serialization for catalog cache types
+bitcode = "0.6.9"
+
 # Compile-time generated packed bitfield structs for model metadata
 bitfields = "1.0.2"
 
@@ -51,6 +54,7 @@ hashbrown = "0.16"
 
 # Inline string storage for patterns
 tinyvec_string = { version = "0.3", features = ["alloc"] }
+tinyvec = { version = "1.10", features = ["alloc"] }
 
 # Efficient immutable string table for provider URLs and env vars
 lite-strtab = "0.2"

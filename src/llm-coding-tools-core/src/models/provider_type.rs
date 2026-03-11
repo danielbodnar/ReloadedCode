@@ -1,5 +1,5 @@
 /// Provider behavior profile used by model resolver logic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, bitcode::Encode, bitcode::Decode)]
 #[repr(u8)]
 pub enum ProviderType {
     /// Unknown or unsupported provider package.
