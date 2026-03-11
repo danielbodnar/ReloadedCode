@@ -43,7 +43,7 @@ fn models_dev_api_url() -> Cow<'static, str> {
     Cow::Borrowed(MODELS_DEV_API_URL)
 }
 
-/// Resolves the result to return after a request failure.
+/// Resolves the result to return after a transient request failure.
 ///
 /// Cached data takes precedence over surfacing the request error so callers can
 /// continue with the last known-good catalog when possible.
@@ -61,6 +61,11 @@ fn load_after_request_failure(
     }
 
     Err(CatalogError::Reqwest(request_error))
+}
+
+#[inline]
+fn is_transient_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
 #[maybe_async::maybe_async]
@@ -83,7 +88,7 @@ pub(crate) async fn load_catalog_at_path(path: &Path) -> CatalogResult<CatalogLo
 /// - send `If-None-Match` when the cache includes an ETag
 /// - on `200 OK`, decode the response and rewrite the cache
 /// - on `304 Not Modified`, load the existing cache
-/// - on request failure, fall back to cache when available
+/// - on request, response-body, or transient status failure, fall back to cache when available
 ///
 /// # Performance
 ///
@@ -140,7 +145,12 @@ pub(crate) async fn load_catalog_from_url(
                 .headers()
                 .get(ETAG)
                 .map(|value| value.as_bytes().to_vec());
-            let body = response.bytes().await?;
+            let body = match response.bytes().await {
+                Ok(body) => body,
+                Err(error) => {
+                    return load_after_request_failure(error, cache_file.as_ref(), cache_error);
+                }
+            };
             let payload = cache_payload_from_api_json_bytes(body.as_ref())?;
             let payload_encoded = encode_cache_payload(&payload);
             let catalog = catalog_from_cache_payload(payload)?;
@@ -171,6 +181,17 @@ pub(crate) async fn load_catalog_from_url(
                 Err(CatalogError::CacheFormat(
                     "received 304 but no cached payload is available",
                 ))
+            }
+        }
+        status if is_transient_status(status) => {
+            if let Some(cache_file) = cache_file.as_ref() {
+                load_catalog_from_cache_file_data(cache_file, CatalogLoadSource::FallbackCache)
+            } else if let Some(error) = cache_error {
+                Err(error)
+            } else {
+                Err(CatalogError::Configuration(format!(
+                    "unexpected catalog sync status: {status}",
+                )))
             }
         }
         status => Err(CatalogError::Configuration(format!(
@@ -288,11 +309,8 @@ mod tests {
         format!("http://127.0.0.1:{port}/api.json")
     }
 
-    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
-    async fn sync_returns_fallback_cache_on_request_failure_with_valid_cache() {
-        let temp = TempDir::new().expect("tempdir");
-        let cache_path = temp.path().join("test.cache");
-
+    #[maybe_async::maybe_async]
+    async fn seed_cache(cache_path: &Path) {
         let payload = CatalogCachePayload {
             providers: vec![CachedProviderRow {
                 provider_key: "openai".to_string(),
@@ -313,7 +331,7 @@ mod tests {
         let encoded = encode_cache_payload(&payload);
         let compressed = zstd::bulk::compress(&encoded, 1).expect("compress");
         crate::cache::format::write_cache_file(
-            &cache_path,
+            cache_path,
             &CacheWriteInput {
                 etag: Some(b"\"cached-etag-456\""),
                 payload_compressed: &compressed,
@@ -322,8 +340,82 @@ mod tests {
         )
         .await
         .expect("seed cache");
+    }
+
+    #[test]
+    fn transient_status_detection_matches_retryable_responses() {
+        assert!(is_transient_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_transient_status(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(!is_transient_status(StatusCode::NOT_FOUND));
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_fallback_cache_on_request_failure_with_valid_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        seed_cache(&cache_path).await;
 
         let result = load_catalog_from_url(&cache_path, &refused_local_url())
+            .await
+            .expect("fallback should succeed");
+
+        assert_eq!(result.source, CatalogLoadSource::FallbackCache);
+        assert!(result.catalog.lookup_provider("openai").is_some());
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_fallback_cache_on_transient_status_with_valid_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        seed_cache(&cache_path).await;
+
+        let (_handle, url) = start_mock_server(MockResponse::Status {
+            code: 503,
+            reason: "Service Unavailable",
+        });
+
+        let result = load_catalog_from_url(&cache_path, &url)
+            .await
+            .expect("fallback should succeed");
+
+        assert_eq!(result.source, CatalogLoadSource::FallbackCache);
+        assert!(result.catalog.lookup_provider("openai").is_some());
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_cache_error_on_transient_status_with_corrupt_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("corrupt.cache");
+
+        std::fs::write(&cache_path, [0_u8; 11]).expect("write corrupt cache");
+
+        let (_handle, url) = start_mock_server(MockResponse::Status {
+            code: 429,
+            reason: "Too Many Requests",
+        });
+
+        match load_catalog_from_url(&cache_path, &url).await {
+            Err(error) => assert!(matches!(error, CatalogError::CacheFormat(_))),
+            Ok(_) => panic!("transient status with corrupt cache should error"),
+        }
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn sync_returns_fallback_cache_on_body_read_failure_with_valid_cache() {
+        let temp = TempDir::new().expect("tempdir");
+        let cache_path = temp.path().join("test.cache");
+
+        seed_cache(&cache_path).await;
+
+        let (_handle, url) = start_mock_server(MockResponse::PartialOk {
+            etag: "\"fresh-etag\"",
+            body: "{".to_string(),
+            content_length: 32,
+        });
+
+        let result = load_catalog_from_url(&cache_path, &url)
             .await
             .expect("fallback should succeed");
 

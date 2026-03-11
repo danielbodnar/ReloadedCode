@@ -1,8 +1,22 @@
 use std::io::{BufRead, Write};
 
 pub enum MockResponse {
-    Ok { etag: &'static str, body: String },
-    NotModified { etag: &'static str },
+    Ok {
+        etag: &'static str,
+        body: String,
+    },
+    PartialOk {
+        etag: &'static str,
+        body: String,
+        content_length: usize,
+    },
+    NotModified {
+        etag: &'static str,
+    },
+    Status {
+        code: u16,
+        reason: &'static str,
+    },
 }
 
 pub fn sample_api_json() -> &'static [u8] {
@@ -65,8 +79,25 @@ pub fn start_mock_server(response: MockResponse) -> (std::thread::JoinHandle<()>
                 stream.write_all(response.as_bytes()).expect("write");
                 stream.flush().expect("flush");
             }
+            MockResponse::PartialOk {
+                etag,
+                body,
+                content_length,
+            } => {
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nETag: {}\r\nContent-Length: {}\r\n\r\n{}",
+                    etag, content_length, body
+                );
+                stream.write_all(response.as_bytes()).expect("write");
+                stream.flush().expect("flush");
+            }
             MockResponse::NotModified { etag } => {
                 let response = format!("HTTP/1.1 304 Not Modified\r\nETag: {}\r\n\r\n", etag);
+                stream.write_all(response.as_bytes()).expect("write");
+                stream.flush().expect("flush");
+            }
+            MockResponse::Status { code, reason } => {
+                let response = format!("HTTP/1.1 {code} {reason}\r\nContent-Length: 0\r\n\r\n");
                 stream.write_all(response.as_bytes()).expect("write");
                 stream.flush().expect("flush");
             }
