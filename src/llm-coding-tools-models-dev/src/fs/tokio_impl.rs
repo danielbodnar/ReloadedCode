@@ -5,6 +5,14 @@ use std::path::Path;
 use tokio::io::AsyncReadExt as _;
 
 /// Reads a file into memory in one pre-sized allocation.
+///
+/// # Safety
+///
+/// We snapshot file length then call `read_exact`, which would miss data appended after
+/// the metadata call if the file grew mid-read. However, within this codebase all
+/// writes go to a temp file first, then rename to target — so files are never
+/// appended to in place.
+/// Therefore this race cannot occur.
 #[inline]
 pub(crate) async fn read(path: impl AsRef<Path>) -> std::io::Result<Box<[u8]>> {
     let mut file = tokio::fs::File::open(path).await?;
