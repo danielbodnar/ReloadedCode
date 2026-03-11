@@ -87,8 +87,6 @@ pub(crate) struct CacheFileData {
     file_bytes: Box<[u8]>,
 }
 
-
-
 impl CacheFileData {
     /// Returns the optional ETag as a borrowed byte slice.
     #[inline]
@@ -184,9 +182,9 @@ pub(crate) async fn write_cache_file(
     path: &Path,
     input: &CacheWriteInput<'_>,
 ) -> CatalogResult<()> {
-    let parent = path.parent().ok_or_else(|| {
-        CatalogError::CacheFormat("cache path has no parent directory")
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| CatalogError::CacheFormat("cache path has no parent directory"))?;
     fs::create_dir_all(parent).await?;
 
     let etag_bytes = input.etag.unwrap_or(&[]);
