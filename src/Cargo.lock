@@ -1521,8 +1521,10 @@ dependencies = [
 name = "llm-coding-tools-serdesai"
 version = "0.2.0"
 dependencies = [
+ "ahash",
  "async-trait",
  "futures",
+ "indexmap",
  "llm-coding-tools-agents",
  "llm-coding-tools-core",
  "llm-coding-tools-models-dev",

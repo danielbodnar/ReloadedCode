@@ -138,9 +138,9 @@ pub struct AgentConfig {
 }
 
 impl AgentConfig {
-    /// Returns the configured model split into `(provider, model)` parts.
+    /// Returns the provider+model split into `(provider, model)` parts.
     #[inline]
-    pub fn model_parts(&self) -> Option<(&str, &str)> {
+    pub fn get_provider_model(&self) -> Option<(&str, &str)> {
         let value = self.model.as_deref()?;
         let (provider, model) = value.split_once('/')?;
         if provider.is_empty() || model.is_empty() {
@@ -193,7 +193,7 @@ mod tests {
         let config = config_with_model(Some("synthetic/hf:moonshotai/Kimi-K2.5"));
 
         assert_eq!(
-            config.model_parts(),
+            config.get_provider_model(),
             Some(("synthetic", "hf:moonshotai/Kimi-K2.5"))
         );
     }
@@ -202,13 +202,13 @@ mod tests {
     fn model_parts_rejects_missing_separator() {
         let config = config_with_model(Some("synthetic-only"));
 
-        assert_eq!(config.model_parts(), None);
+        assert_eq!(config.get_provider_model(), None);
     }
 
     #[test]
     fn model_parts_handles_absent_model() {
         let config = config_with_model(None);
 
-        assert_eq!(config.model_parts(), None);
+        assert_eq!(config.get_provider_model(), None);
     }
 }

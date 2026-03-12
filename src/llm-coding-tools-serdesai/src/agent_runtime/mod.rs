@@ -23,6 +23,7 @@
 //! [`AgentCatalog`]: llm_coding_tools_agents::AgentCatalog
 
 mod builder;
+mod model;
 mod runtime;
 
 pub use builder::AgentRuntimeBuilder;
