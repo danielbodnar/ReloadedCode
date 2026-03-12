@@ -70,7 +70,7 @@ pub fn default_tools() -> Vec<ToolCatalogEntry> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_tools, ToolCatalogEntry, ToolCatalogKind};
+    use super::{ToolCatalogEntry, ToolCatalogKind, default_tools};
     use llm_coding_tools_core::tool_names;
     use std::collections::BTreeSet;
 
