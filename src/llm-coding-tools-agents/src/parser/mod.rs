@@ -126,7 +126,7 @@ fn validate_headless_compatibility(frontmatter: &Value) -> Result<(), AgentParse
         return Ok(());
     };
 
-    // Reject "ask" — requires interactive user confirmation
+    // Reject "ask" - requires interactive user confirmation
     if task_rule_contains_ask(task_rule) {
         return Err(AgentParseError::SchemaValidation {
             message: "permission.task: ask is unsupported; use allow or deny".to_string(),
@@ -262,7 +262,7 @@ mod tests {
         };
         let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
 
-        assert_eq!(result.data.description, "Test agent".to_string());
+        assert_eq!(&*result.data.description, "Test agent");
         assert_eq!(result.content, "Prompt body here.");
     }
 
@@ -409,7 +409,7 @@ mod tests {
         let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
 
         // Model should NOT have trailing newline
-        assert_eq!(result.data.model, Some("provider/model:tag".to_string()));
+        assert_eq!(result.data.model.as_deref(), Some("provider/model:tag"));
     }
 
     #[test]
@@ -483,7 +483,7 @@ mod tests {
             body"
         };
         let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-        assert_eq!(result.data.description, "Test");
+        assert_eq!(&*result.data.description, "Test");
     }
 
     #[test]
@@ -496,7 +496,7 @@ mod tests {
             body"
         };
         let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-        assert_eq!(result.data.description, "Test");
+        assert_eq!(&*result.data.description, "Test");
         assert!(result.data.hidden);
     }
 }

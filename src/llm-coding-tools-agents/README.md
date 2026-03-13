@@ -1,21 +1,16 @@
 # llm-coding-tools-agents
 
-Load OpenCode agent markdown files into a typed Rust catalogue.
+Load OpenCode agent markdown files into Rust.
 
-This crate is a loader for the [OpenCode agent schema](https://opencode.ai/docs/agents/).
+This crate reads agent definitions from markdown files with YAML frontmatter,
+following the [OpenCode agent schema](https://opencode.ai/docs/agents/).
 
-It is a drop-in replacement for OpenCode agent files: agents you create for
-OpenCode should load here unchanged.
+Agents you create for OpenCode work here unchanged.
 
-## What it provides
+## Loading agents
 
-- [`AgentLoader`] for loading agent configs from directories, files, or
-  in-memory markdown.
-- [`AgentCatalog`] for storing and looking up loaded [`AgentConfig`] entries.
-- [`RulesetExt`] for converting frontmatter `permission` data into runtime
-  [`Ruleset`]s.
-
-## Quick start
+Use [`AgentLoader`] to read agent files from a directory, then store them in
+an [`AgentCatalog`] for lookup by name:
 
 ```rust,no_run
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader};
@@ -51,6 +46,35 @@ For field behaviour, see OpenCode docs for
 [`model`](https://opencode.ai/docs/agents#model), and
 [`permissions`](https://opencode.ai/docs/agents#permissions).
 
+## Building agents
+
+Framework adapters (like `llm-coding-tools-serdesai`) use [`AgentRuntime`] to
+build runnable agents. An `AgentRuntime` bundles your loaded agents with default
+settings and available tools:
+
+```rust,no_run
+use llm_coding_tools_agents::{
+    AgentCatalog, AgentDefaults, AgentLoader, AgentRuntimeBuilder,
+};
+
+let loader = AgentLoader::new();
+let mut catalog = AgentCatalog::new();
+loader.add_directory(&mut catalog, "/home/user/.opencode")?;
+
+let runtime = AgentRuntimeBuilder::new()
+    .catalog(catalog)
+    .defaults(AgentDefaults {
+        model: Some("openai/gpt-4o-mini".into()),
+        temperature: Some(0.2),
+        top_p: Some(0.95),
+    })
+    // .tools(my_custom_tools)  // optional; defaults to read/write/edit/glob/grep/bash/webfetch/todoread/todowrite
+    .build();
+
+// Pass `runtime` to your framework adapter to build agents by name
+# Ok::<(), llm_coding_tools_agents::AgentLoadError>(())
+```
+
 ## Compatibility notes
 
 This library does not provide interactive UX extensions (for example, TUI
@@ -65,15 +89,3 @@ while settings with no runtime effect are accepted and ignored:
   ([docs](https://opencode.ai/docs/permissions#what-ask-does)).
 - [`hidden`](https://opencode.ai/docs/agents#hidden) is accepted for
   compatibility, but ignored at runtime.
-
-## Integration
-
-This crate only loads and validates agent configs.
-Pass [`AgentCatalog`] to your runtime adapter (for example,
-`llm-coding-tools-serdesai`) to build registries and Task tooling.
-
-If you want to validate `model` strings against a catalog, call
-[`AgentConfig::model_parts`] and pass the returned `(provider, model)` into
-your lookup layer.
-
-[`Ruleset`]: llm_coding_tools_core::permissions::Ruleset

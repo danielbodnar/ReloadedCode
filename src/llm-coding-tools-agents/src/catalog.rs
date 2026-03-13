@@ -71,7 +71,7 @@ impl AgentCatalog {
     /// - [`Option::Some`] with the previous [`AgentConfig`] if the name already existed.
     /// - [`Option::None`] if the name was not present.
     pub(crate) fn insert(&mut self, config: AgentConfig) -> Option<AgentConfig> {
-        self.agents.insert(config.name.clone(), config)
+        self.agents.insert(config.name.to_string(), config)
     }
 
     /// Creates a catalog from an iterator of agent configurations.
@@ -84,7 +84,10 @@ impl AgentCatalog {
     /// - If duplicate names exist, the last entry for each name is retained.
     pub fn from_entries(entries: impl IntoIterator<Item = AgentConfig>) -> Self {
         Self {
-            agents: entries.into_iter().map(|c| (c.name.clone(), c)).collect(),
+            agents: entries
+                .into_iter()
+                .map(|c| (c.name.to_string(), c))
+                .collect(),
         }
     }
 }
@@ -100,31 +103,31 @@ mod tests {
     fn catalog_iter_and_by_name() {
         let mut catalog = AgentCatalog::new();
         catalog.insert(AgentConfig {
-            name: "alpha".to_string(),
+            name: "alpha".into(),
             mode: AgentMode::Subagent,
-            description: String::new(),
+            description: Default::default(),
             model: None,
             hidden: false,
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
             options: AHashMap::new(),
-            prompt: String::new(),
+            prompt: Default::default(),
         });
         catalog.insert(AgentConfig {
-            name: "beta".to_string(),
+            name: "beta".into(),
             mode: AgentMode::Subagent,
-            description: String::new(),
+            description: Default::default(),
             model: None,
             hidden: false,
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
             options: AHashMap::new(),
-            prompt: String::new(),
+            prompt: Default::default(),
         });
 
-        let names: Vec<_> = catalog.iter().map(|config| config.name.as_str()).collect();
+        let names: Vec<_> = catalog.iter().map(|config| &*config.name).collect();
         assert!(names.contains(&"alpha"));
         assert!(names.contains(&"beta"));
         assert!(catalog.by_name("beta").is_some());

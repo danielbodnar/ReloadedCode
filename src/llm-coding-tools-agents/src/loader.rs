@@ -115,7 +115,7 @@ impl AgentLoader {
     ) -> AgentLoadResult<()> {
         let dir = directory.into();
         load_directory_with(&dir, |path, name| {
-            match load_agent_file(path, name.to_string()) {
+            match load_agent_file(path, name) {
                 Ok(config) => {
                     catalog.insert(config);
                 }
@@ -169,7 +169,7 @@ impl AgentLoader {
         &self,
         catalog: &mut AgentCatalog,
         path: impl Into<PathBuf>,
-        name: impl Into<String>,
+        name: impl Into<Box<str>>,
     ) -> AgentLoadResult<()> {
         let path = path.into();
         let override_name = name.into();
@@ -179,7 +179,7 @@ impl AgentLoader {
                 "agent name is empty",
             ));
         }
-        let mut config = load_agent_file(&path, String::new())?;
+        let mut config = load_agent_file(&path, Box::default())?;
         config.name = override_name;
         catalog.insert(config);
         Ok(())
@@ -221,7 +221,7 @@ impl AgentLoader {
         &self,
         catalog: &mut AgentCatalog,
         markdown: impl Into<String>,
-        default_name: impl Into<String>,
+        default_name: impl Into<Box<str>>,
     ) -> AgentLoadResult<()> {
         let config = config_from_str_strict(markdown, default_name)?;
         catalog.insert(config);
@@ -242,7 +242,7 @@ impl AgentLoader {
         &self,
         catalog: &mut AgentCatalog,
         bytes: impl AsRef<[u8]>,
-        default_name: impl Into<String>,
+        default_name: impl Into<Box<str>>,
     ) -> AgentLoadResult<()> {
         let content = std::str::from_utf8(bytes.as_ref()).map_err(|err| {
             AgentLoadError::schema_validation(None, format!("invalid UTF-8: {err}"))
@@ -318,7 +318,7 @@ fn load_directory_with(
 /// Shared parse helper that reuses existing loader parsing.
 fn parse_agent_config(
     content: String,
-    default_name: String,
+    default_name: impl Into<Box<str>>,
 ) -> Result<AgentConfig, AgentParseError> {
     let result = parse_agent::<RawFrontmatter>(content)?;
     Ok(AgentConfig::from_raw(
@@ -338,21 +338,19 @@ fn map_parse_error(path: Option<PathBuf>, err: AgentParseError) -> AgentLoadErro
 }
 
 /// Loads a single agent configuration from a file.
-fn load_agent_file(path: &Path, name: String) -> AgentLoadResult<AgentConfig> {
+fn load_agent_file(path: &Path, name: impl Into<Box<str>>) -> AgentLoadResult<AgentConfig> {
     let content =
         fs::read_to_string(path).map_err(|e| AgentLoadError::io(Some(path.to_path_buf()), e))?;
-
     parse_agent_config(content, name).map_err(|err| map_parse_error(Some(path.to_path_buf()), err))
 }
 
 /// Strict parser for catalog-only string loading (validates non-empty name).
 fn config_from_str_strict(
     markdown: impl Into<String>,
-    default_name: impl Into<String>,
+    default_name: impl Into<Box<str>>,
 ) -> AgentLoadResult<AgentConfig> {
-    let name = default_name.into();
-    let config =
-        parse_agent_config(markdown.into(), name).map_err(|err| map_parse_error(None, err))?;
+    let config = parse_agent_config(markdown.into(), default_name)
+        .map_err(|err| map_parse_error(None, err))?;
     if config.name.is_empty() {
         return Err(AgentLoadError::schema_validation(
             None,
@@ -492,8 +490,8 @@ mod tests {
         loader.add_directory(&mut catalog, dir.path()).unwrap();
 
         assert!(catalog.by_name("test-agent").is_some());
-        assert_eq!(catalog.by_name("test-agent").unwrap().description, "Test");
-        assert_eq!(catalog.by_name("test-agent").unwrap().prompt, "Prompt");
+        assert_eq!(&*catalog.by_name("test-agent").unwrap().description, "Test");
+        assert_eq!(&*catalog.by_name("test-agent").unwrap().prompt, "Prompt");
     }
 
     #[test]
@@ -617,8 +615,8 @@ mod tests {
         loader.add_directory(&mut catalog, dir.path()).unwrap();
 
         assert_eq!(
-            catalog.by_name("test").unwrap().model,
-            Some("provider/model:tag".to_string())
+            catalog.by_name("test").unwrap().model.as_deref(),
+            Some("provider/model:tag")
         );
     }
 
@@ -672,16 +670,16 @@ mod tests {
 
     fn make_agent(name: &str, description: &str) -> AgentConfig {
         AgentConfig {
-            name: name.to_string(),
+            name: name.into(),
             mode: AgentMode::Subagent,
-            description: description.to_string(),
+            description: description.into(),
             model: None,
             hidden: false,
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
             options: AHashMap::new(),
-            prompt: String::new(),
+            prompt: Default::default(),
         }
     }
 
@@ -772,7 +770,7 @@ mod tests {
             .add_config(&mut catalog, make_agent("agent", "Second"))
             .unwrap();
 
-        assert_eq!(catalog.by_name("agent").unwrap().description, "Second");
+        assert_eq!(&*catalog.by_name("agent").unwrap().description, "Second");
     }
 
     #[test]
@@ -811,7 +809,7 @@ mod tests {
             .unwrap();
 
         let agent = catalog.by_name("explicit").unwrap();
-        assert_eq!(agent.description, "Explicit");
+        assert_eq!(&*agent.description, "Explicit");
     }
 
     #[test]
@@ -859,7 +857,7 @@ mod tests {
             .add_config(&mut catalog, make_agent("override", "new"))
             .unwrap();
 
-        assert_eq!(catalog.by_name("override").unwrap().description, "new");
+        assert_eq!(&*catalog.by_name("override").unwrap().description, "new");
     }
 
     // ========== String/Bytes Tests ==========
@@ -881,7 +879,7 @@ mod tests {
             .unwrap();
 
         let agent = catalog.by_name("string-agent").unwrap();
-        assert_eq!(agent.description, "From string");
+        assert_eq!(&*agent.description, "From string");
     }
 
     #[test]
@@ -1013,7 +1011,7 @@ mod tests {
 
         let agent = catalog.by_name("no-mode").unwrap();
         assert_eq!(agent.mode, AgentMode::All);
-        assert_eq!(agent.description, "Test agent");
+        assert_eq!(&*agent.description, "Test agent");
     }
 
     #[test]
@@ -1161,6 +1159,6 @@ mod tests {
             .unwrap();
         let agent = catalog.by_name("hidden-agent").unwrap();
         assert!(agent.hidden);
-        assert_eq!(agent.description, "Hidden agent");
+        assert_eq!(&*agent.description, "Hidden agent");
     }
 }
