@@ -1,24 +1,26 @@
-//! Generic JIT runtime foundation for agent construction.
+//! Build agents with tools and default settings.
 //!
-//! This module provides framework-agnostic runtime types used for on-demand
-//! agent construction. Framework adapters (like `llm-coding-tools-serdesai`)
-//! consume these types and add concrete execution/build behavior.
+//! This module holds everything you need to prepare agents for use:
+//! loaded agent definitions, default settings, and available tools.
 //!
 //! # Public API
 //!
-//! - [`AgentDefaults`] - Runtime-wide fallback settings
-//! - [`AgentRuntime`] - Owned runtime state for later agent construction
-//! - [`AgentRuntimeBuilder`] - Builder for assembling runtime state
-//! - [`ToolCatalogEntry`] - Cloneable metadata for a runtime tool
-//! - [`ToolCatalogKind`] - Tool variants supported by the default surface
-//! - [`default_tools()`] - Returns the default non-Task tool catalog
-//! - [`ResolvedModel`] - A resolved and validated model identifier
-//! - [`ModelResolutionError`] - Error type for model resolution failures
-//! - [`resolve_model_with_catalog`] - Resolves the effective model for an agent
+//! Runtime construction:
+//! - [`AgentRuntime`] - Your agents plus their default settings and tools
+//! - [`AgentRuntimeBuilder`] - Builds an [`AgentRuntime`]
+//! - [`AgentDefaults`] - Default model, temperature, and top-p when agents don't specify them
 //!
-//! # Usage
+//! Tools:
+//! - [`ToolCatalogEntry`] - One tool the runtime can provide to agents
+//! - [`ToolCatalogKind`] - Which tools are available
+//! - [`default_tools()`] - The standard tool set (read, write, edit, glob, grep, bash, webfetch, todo)
 //!
-//! Build an [`AgentRuntime`] using [`AgentRuntimeBuilder`]:
+//! Model resolution:
+//! - [`ResolvedModel`] - A model identifier that's been validated against your catalog
+//! - [`resolve_model_with_catalog()`] - Picks which model an agent will use
+//! - [`ModelResolutionError`] - Errors when model selection fails
+//!
+//! # Example
 //!
 //! ```no_run
 //! use llm_coding_tools_agents::{AgentCatalog, AgentDefaults, AgentRuntimeBuilder};

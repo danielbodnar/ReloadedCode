@@ -1,48 +1,31 @@
-//! Generic model configuration resolution for agent runtimes.
+//! Picks which model an agent uses.
 //!
-//! This module provides framework-agnostic model resolution that validates
-//! agent model overrides and runtime defaults against a provided catalog.
-//! It provides deterministic resolution with clear error paths for invalid
-//! or unknown model identifiers.
+//! An agent can specify its own model, or fall back to the runtime default.
+//! This module validates that the chosen model exists in your catalog.
 //!
 //! # Public API
 //!
-//! ## Resolution
+//! - [`resolve_model_with_catalog()`] - Picks which model an agent will use
+//! - [`ResolvedModel`] - A model identifier that's been validated
+//! - [`ModelResolutionError`] - Errors when model selection fails
 //!
-//! - [`resolve_model_with_catalog`] - Pure function that resolves the effective model
+//! # Precedence
 //!
-//! ## Errors
-//!
-//! - [`ModelResolutionError`] - All failure cases during model resolution
-//!
-//! # Model Resolution Precedence
-//!
-//! The effective model is determined by this precedence order:
-//!
-//! 1. **Agent override**: `model` field in agent markdown frontmatter
-//! 2. **Runtime default**: `model` field in [`AgentDefaults`]
-//!
-//! If neither provides a valid model identifier, resolution fails with
-//! [`ModelResolutionError::MissingEffectiveModel`].
+//! 1. If the agent's markdown file specifies a model, use that
+//! 2. Otherwise, use the default from [`AgentDefaults`]
+//! 3. If neither is set, return [`ModelResolutionError::MissingEffectiveModel`]
 //!
 //! # Identifier Format
 //!
-//! Model identifiers use `provider/model-id` syntax (e.g., `openai/gpt-4o`,
-//! `openrouter/anthropic/claude-3-5-sonnet`). Invalid formats (missing `/`,
-//! empty segments) produce [`ModelResolutionError::MalformedModelIdentifier`].
+//! Models use `provider/model-id` format, like `openai/gpt-4o` or
+//! `openrouter/anthropic/claude-3-5-sonnet`. Invalid formats (missing `/`
+//! or empty segments) produce [`ModelResolutionError::MalformedModelIdentifier`].
 //!
 //! # Validation
 //!
-//! Resolved identifiers are validated against a provided [`ModelCatalog`]:
-//!
-//! - Unknown providers produce [`ModelResolutionError::UnknownProvider`]
-//! - Unknown models produce [`ModelResolutionError::UnknownModel`]
-//!
-//! # Usage
-//!
-//! Call [`resolve_model_with_catalog`] with a catalog, agent defaults, and config
-//! to obtain a validated [`ResolvedModel`]. Framework adapters can then convert
-//! the resolved model into framework-specific model configuration.
+//! The resolved model is validated against a [`ModelCatalog`]:
+//! - Unknown provider → [`ModelResolutionError::UnknownProvider`]
+//! - Unknown model for that provider → [`ModelResolutionError::UnknownModel`]
 //!
 //! [`AgentDefaults`]: super::state::AgentDefaults
 //! [`ModelCatalog`]: llm_coding_tools_core::models::ModelCatalog
@@ -50,11 +33,10 @@
 use crate::AgentConfig;
 use llm_coding_tools_core::models::ModelCatalog;
 
-/// A resolved and validated model identifier.
+/// A model identifier that's been validated against your catalog.
 ///
-/// This value type represents a model that has been validated against
-/// a model catalog. Framework adapters convert this into their specific
-/// model configuration types.
+/// Use [`provider()`][`Self::provider()`] and [`model()`][`Self::model()`] to get the
+/// parts, or [`slash_spec()`][`Self::slash_spec()`] for the combined `provider/model-id` string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedModel {
     provider: Box<str>,
@@ -62,59 +44,56 @@ pub struct ResolvedModel {
 }
 
 impl ResolvedModel {
-    /// Returns the provider identifier.
+    /// Returns the provider (e.g., `openai`).
     #[inline]
     pub fn provider(&self) -> &str {
         &self.provider
     }
 
-    /// Returns the model identifier within the provider.
+    /// Returns the model name within the provider.
     #[inline]
     pub fn model(&self) -> &str {
         &self.model
     }
 
-    /// Returns the slash-formatted spec: `provider/model-id`.
+    /// Returns `provider/model-id` format.
     #[inline]
     pub fn slash_spec(&self) -> String {
         format!("{}/{}", self.provider, self.model)
     }
 }
 
-/// Error type for model resolution failures.
-///
-/// This enum covers all error cases when resolving and validating model
-/// identifiers from agent configs and runtime defaults.
+/// Errors when picking or validating a model.
 #[derive(Debug)]
 pub enum ModelResolutionError {
-    /// Model identifier is malformed (missing `/` or empty segments).
+    /// Model string is malformed (missing `/` or empty parts).
     MalformedModelIdentifier {
         /// Agent name for error context.
         agent: Box<str>,
-        /// Source of the malformed identifier.
+        /// Where the bad model string came from.
         location: &'static str,
-        /// The raw malformed identifier.
+        /// The malformed model string.
         model: Box<str>,
     },
-    /// Neither agent override nor runtime default provides a model.
+    /// Neither the agent nor the runtime default specifies a model.
     MissingEffectiveModel {
         /// Agent name for error context.
         agent: Box<str>,
     },
-    /// Provider is not found in the catalog.
+    /// The provider isn't in the catalog.
     UnknownProvider {
         /// Agent name for error context.
         agent: Box<str>,
-        /// The unknown provider identifier.
+        /// The unknown provider.
         provider: Box<str>,
     },
-    /// Model is not found for the given provider in the catalog.
+    /// The model isn't in the catalog for this provider.
     UnknownModel {
         /// Agent name for error context.
         agent: Box<str>,
-        /// Provider identifier.
+        /// Provider.
         provider: Box<str>,
-        /// Model identifier within the provider.
+        /// Model name within the provider.
         model: Box<str>,
     },
 }
@@ -154,21 +133,20 @@ impl core::fmt::Display for ModelResolutionError {
 
 impl std::error::Error for ModelResolutionError {}
 
-/// Resolves the effective model for an agent using a provided catalog.
+/// Picks which model an agent will use.
 ///
-/// This is the primary entrypoint for model resolution. It applies the
-/// precedence rules (agent override first, then runtime default) and
-/// validates the result against the catalog.
+/// Checks the agent's model first, then the runtime default.
+/// Validates the result against the catalog.
 ///
 /// # Arguments
 ///
-/// * `catalog` - Model catalog for validation
-/// * `defaults` - Runtime-wide fallback settings
-/// * `agent` - Agent configuration being resolved
+/// * `catalog` - Your model catalog for validation
+/// * `defaults` - Default settings (used if agent doesn't specify a model)
+/// * `agent` - The agent configuration
 ///
 /// # Returns
 ///
-/// A [`ResolvedModel`] on success, or a [`ModelResolutionError`] on failure.
+/// A [`ResolvedModel`] on success, or a [`ModelResolutionError`] if something's wrong.
 pub fn resolve_model_with_catalog(
     catalog: &ModelCatalog,
     defaults: &super::state::AgentDefaults,
@@ -197,10 +175,7 @@ pub fn resolve_model_with_catalog(
     })
 }
 
-/// Determines the effective model parts by applying override precedence.
-///
-/// Agent override takes precedence over runtime defaults. Returns an error
-/// if neither provides a valid model identifier.
+/// Extracts provider and model parts, checking agent override first.
 fn get_provider_model<'a>(
     defaults: &'a super::state::AgentDefaults,
     agent: &'a AgentConfig,

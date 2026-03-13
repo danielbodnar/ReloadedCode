@@ -1,15 +1,10 @@
-//! Builder for assembling owned agent runtime state.
-//!
-//! # Public API
-//!
-//! - [`AgentRuntimeBuilder`]: Builder for constructing [`AgentRuntime`] with
-//!   custom catalog, defaults, and tool catalog.
+//! Builds an [`AgentRuntime`] from your agents, defaults, and tools.
 
 use super::state::{AgentDefaults, AgentRuntime};
 use super::tool_catalog::{default_tools, ToolCatalogEntry};
 use crate::AgentCatalog;
 
-/// Single assembly path for owned runtime state.
+/// Builds an [`AgentRuntime`] step by step.
 #[derive(Debug, Clone)]
 pub struct AgentRuntimeBuilder {
     catalog: AgentCatalog,
@@ -25,7 +20,7 @@ impl Default for AgentRuntimeBuilder {
 }
 
 impl AgentRuntimeBuilder {
-    /// Creates a builder seeded with empty catalog/defaults and the default tool catalog.
+    /// Creates a builder with empty catalog, empty defaults, and the standard tool set.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -35,28 +30,28 @@ impl AgentRuntimeBuilder {
         }
     }
 
-    /// Replaces the owned parsed catalog.
+    /// Sets the agent catalog.
     #[inline]
     pub fn catalog(mut self, catalog: AgentCatalog) -> Self {
         self.catalog = catalog;
         self
     }
 
-    /// Replaces the owned runtime defaults.
+    /// Sets the default settings.
     #[inline]
     pub fn defaults(mut self, defaults: AgentDefaults) -> Self {
         self.defaults = defaults;
         self
     }
 
-    /// Replaces the owned tool catalog metadata.
+    /// Sets the available tools.
     #[inline]
     pub fn tools(mut self, tools: Vec<ToolCatalogEntry>) -> Self {
         self.tools = tools;
         self
     }
 
-    /// Consumes the builder and returns one owned runtime.
+    /// Finishes building and returns the [`AgentRuntime`].
     #[inline]
     pub fn build(self) -> AgentRuntime {
         AgentRuntime::from_parts(self.catalog, self.defaults, self.tools)

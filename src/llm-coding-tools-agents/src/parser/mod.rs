@@ -126,7 +126,7 @@ fn validate_headless_compatibility(frontmatter: &Value) -> Result<(), AgentParse
         return Ok(());
     };
 
-    // Reject "ask" — requires interactive user confirmation
+    // Reject "ask" - requires interactive user confirmation
     if task_rule_contains_ask(task_rule) {
         return Err(AgentParseError::SchemaValidation {
             message: "permission.task: ask is unsupported; use allow or deny".to_string(),

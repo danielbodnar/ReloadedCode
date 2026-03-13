@@ -9,7 +9,7 @@ use std::path::Path;
 ///
 /// We snapshot file length then call `read_exact`, which would miss data appended after
 /// the metadata call if the file grew mid-read. However, within this codebase all
-/// writes go to a temp file first, then rename to target — so files are never
+/// writes go to a temp file first, then rename to target - so files are never
 /// appended to in place.
 /// Therefore this race cannot occur.
 #[inline]
