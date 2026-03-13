@@ -1,8 +1,13 @@
 //! Builder for assembling owned agent runtime state.
+//!
+//! # Public API
+//!
+//! - [`AgentRuntimeBuilder`]: Builder for constructing [`AgentRuntime`] with
+//!   custom catalog, defaults, and tool catalog.
 
-use super::runtime::{AgentDefaults, AgentRuntime};
-use crate::tool_catalog::{ToolCatalogEntry, default_tools};
-use llm_coding_tools_agents::AgentCatalog;
+use super::state::{AgentDefaults, AgentRuntime};
+use super::tool_catalog::{default_tools, ToolCatalogEntry};
+use crate::AgentCatalog;
 
 /// Single assembly path for owned runtime state.
 #[derive(Debug, Clone)]
@@ -61,23 +66,23 @@ impl AgentRuntimeBuilder {
 #[cfg(test)]
 mod tests {
     use super::AgentRuntimeBuilder;
-    use crate::agent_runtime::AgentDefaults;
-    use crate::tool_catalog::{ToolCatalogEntry, ToolCatalogKind, default_tools};
-    use llm_coding_tools_agents::{AgentCatalog, AgentConfig, AgentMode};
+    use crate::runtime::tool_catalog::{default_tools, ToolCatalogEntry, ToolCatalogKind};
+    use crate::runtime::AgentDefaults;
+    use crate::{AgentCatalog, AgentConfig, AgentMode};
     use llm_coding_tools_core::tool_names;
 
     fn sample_config(name: &str, model: Option<&str>) -> AgentConfig {
         AgentConfig {
-            name: name.to_string(),
+            name: name.into(),
             mode: AgentMode::Subagent,
-            description: format!("{name} description"),
-            model: model.map(str::to_string),
+            description: format!("{name} description").into(),
+            model: model.map(Into::into),
             hidden: false,
             temperature: Some(0.3),
             top_p: Some(0.8),
             permission: Default::default(),
             options: Default::default(),
-            prompt: format!("You are {name}."),
+            prompt: format!("You are {name}.").into(),
         }
     }
 
@@ -85,7 +90,7 @@ mod tests {
     fn builder_builds_runtime_from_owned_inputs() {
         let catalog = AgentCatalog::from_entries([sample_config("planner", Some("openai/gpt-4o"))]);
         let defaults = AgentDefaults {
-            model: Some("openai/gpt-4.1-mini".to_string()),
+            model: Some("openai/gpt-4.1-mini".into()),
             temperature: Some(0.2),
             top_p: Some(0.95),
         };

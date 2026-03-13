@@ -1,20 +1,30 @@
-//! Owned runtime state for later SerdesAI agent construction.
+//! Owned runtime state for later agent construction.
+//!
+//! This module provides the core [`AgentRuntime`] type that holds catalog,
+//! defaults, and tool metadata for on-demand agent materialization. Framework
+//! adapters consume this state and add concrete execution/build behavior.
+//!
+//! # Public API
+//!
+//! - [`AgentDefaults`] - Runtime-wide fallback settings applied when agent
+//!   configs omit them
+//! - [`AgentRuntime`] - Owned runtime state used for later agent construction
 
-use crate::tool_catalog::ToolCatalogEntry;
-use llm_coding_tools_agents::AgentCatalog;
+use super::tool_catalog::ToolCatalogEntry;
+use crate::AgentCatalog;
 
 /// Runtime-wide fallback settings applied when an agent config omits them.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AgentDefaults {
     /// Default model identifier in `provider/model-id` format.
-    pub model: Option<String>,
+    pub model: Option<Box<str>>,
     /// Default sampling temperature.
-    pub temperature: Option<f64>,
+    pub temperature: Option<f32>,
     /// Default nucleus sampling top-p.
-    pub top_p: Option<f64>,
+    pub top_p: Option<f32>,
 }
 
-/// Owned runtime state used for later on-demand SerdesAI agent construction.
+/// Owned runtime state used for later on-demand agent construction.
 #[derive(Debug, Clone)]
 pub struct AgentRuntime {
     catalog: AgentCatalog,

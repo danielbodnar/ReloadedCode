@@ -1,7 +1,7 @@
-//! Model configuration resolution for agent runtimes.
+//! Generic model configuration resolution for agent runtimes.
 //!
-//! This module translates agent model overrides and runtime defaults into
-//! [`ModelConfig`] instances by validating against the models.dev catalog.
+//! This module provides framework-agnostic model resolution that validates
+//! agent model overrides and runtime defaults against a provided catalog.
 //! It provides deterministic resolution with clear error paths for invalid
 //! or unknown model identifiers.
 //!
@@ -9,12 +9,11 @@
 //!
 //! ## Resolution
 //!
-//! - [`resolve_model_config`] - Async entrypoint that loads models.dev and resolves the effective model
-//! - [`resolve_model_config_with_catalog`] - Pure testable variant accepting a pre-loaded catalog
+//! - [`resolve_model_with_catalog`] - Pure function that resolves the effective model
 //!
 //! ## Errors
 //!
-//! - [`ModelTranslationError`] - All failure cases during model resolution
+//! - [`ModelResolutionError`] - All failure cases during model resolution
 //!
 //! # Model Resolution Precedence
 //!
@@ -24,69 +23,103 @@
 //! 2. **Runtime default**: `model` field in [`AgentDefaults`]
 //!
 //! If neither provides a valid model identifier, resolution fails with
-//! [`ModelTranslationError::MissingEffectiveModel`].
+//! [`ModelResolutionError::MissingEffectiveModel`].
 //!
 //! # Identifier Format
 //!
 //! Model identifiers use `provider/model-id` syntax (e.g., `openai/gpt-4o`,
 //! `openrouter/anthropic/claude-3-5-sonnet`). Invalid formats (missing `/`,
-//! empty segments) produce [`ModelTranslationError::MalformedModelIdentifier`].
+//! empty segments) produce [`ModelResolutionError::MalformedModelIdentifier`].
 //!
 //! # Validation
 //!
-//! Resolved identifiers are validated against the models.dev catalog:
+//! Resolved identifiers are validated against a provided [`ModelCatalog`]:
 //!
-//! - Unknown providers produce [`ModelTranslationError::UnknownProvider`]
-//! - Unknown models produce [`ModelTranslationError::UnknownModel`]
-//! - Catalog load failures produce [`ModelTranslationError::CatalogLoad`]
+//! - Unknown providers produce [`ModelResolutionError::UnknownProvider`]
+//! - Unknown models produce [`ModelResolutionError::UnknownModel`]
 //!
 //! # Usage
 //!
-//! Call [`resolve_model_config`] with agent defaults and config to obtain a
-//! validated [`ModelConfig`]. The returned `model_config.spec` uses `provider:model-id`
-//! format suitable for SerdesAI agent builders.
+//! Call [`resolve_model_with_catalog`] with a catalog, agent defaults, and config
+//! to obtain a validated [`ResolvedModel`]. Framework adapters can then convert
+//! the resolved model into framework-specific model configuration.
 //!
-//! For unit tests, use [`resolve_model_config_with_catalog`] with a synthetic catalog
-//! to avoid network dependencies.
-//!
-//! [`ModelConfig`]: serdes_ai::ModelConfig
-//! [`AgentDefaults`]: crate::agent_runtime::AgentDefaults
+//! [`AgentDefaults`]: super::state::AgentDefaults
+//! [`ModelCatalog`]: llm_coding_tools_core::models::ModelCatalog
 
-#![allow(dead_code)]
-
-use crate::AgentDefaults;
-use llm_coding_tools_agents::AgentConfig;
+use crate::AgentConfig;
 use llm_coding_tools_core::models::ModelCatalog;
-use llm_coding_tools_models_dev::{CatalogError, ModelsDevCatalog};
-use serdes_ai::ModelConfig;
 
-/// Error type for model translation failures.
+/// A resolved and validated model identifier.
+///
+/// This value type represents a model that has been validated against
+/// a model catalog. Framework adapters convert this into their specific
+/// model configuration types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedModel {
+    provider: Box<str>,
+    model: Box<str>,
+}
+
+impl ResolvedModel {
+    /// Returns the provider identifier.
+    #[inline]
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// Returns the model identifier within the provider.
+    #[inline]
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Returns the slash-formatted spec: `provider/model-id`.
+    #[inline]
+    pub fn slash_spec(&self) -> String {
+        format!("{}/{}", self.provider, self.model)
+    }
+}
+
+/// Error type for model resolution failures.
 ///
 /// This enum covers all error cases when resolving and validating model
 /// identifiers from agent configs and runtime defaults.
 #[derive(Debug)]
-pub(super) enum ModelTranslationError {
+pub enum ModelResolutionError {
+    /// Model identifier is malformed (missing `/` or empty segments).
     MalformedModelIdentifier {
-        agent: String,
+        /// Agent name for error context.
+        agent: Box<str>,
+        /// Source of the malformed identifier.
         location: &'static str,
-        model: String,
+        /// The raw malformed identifier.
+        model: Box<str>,
     },
+    /// Neither agent override nor runtime default provides a model.
     MissingEffectiveModel {
-        agent: String,
+        /// Agent name for error context.
+        agent: Box<str>,
     },
+    /// Provider is not found in the catalog.
     UnknownProvider {
-        agent: String,
-        provider: String,
+        /// Agent name for error context.
+        agent: Box<str>,
+        /// The unknown provider identifier.
+        provider: Box<str>,
     },
+    /// Model is not found for the given provider in the catalog.
     UnknownModel {
-        agent: String,
-        provider: String,
-        model: String,
+        /// Agent name for error context.
+        agent: Box<str>,
+        /// Provider identifier.
+        provider: Box<str>,
+        /// Model identifier within the provider.
+        model: Box<str>,
     },
-    CatalogLoad(CatalogError),
 }
 
-impl core::fmt::Display for ModelTranslationError {
+impl core::fmt::Display for ModelResolutionError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::MalformedModelIdentifier {
@@ -115,70 +148,53 @@ impl core::fmt::Display for ModelTranslationError {
                 f,
                 "agent `{agent}` references unknown model `{provider}/{model}`",
             ),
-            Self::CatalogLoad(source) => write!(f, "failed to load models.dev catalog: {source}"),
         }
     }
 }
 
-impl std::error::Error for ModelTranslationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::CatalogLoad(source) => Some(source),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for ModelResolutionError {}
 
-/// Resolves the effective model configuration for an agent.
+/// Resolves the effective model for an agent using a provided catalog.
 ///
-/// Loads the models.dev catalog and delegates to the pure testable helper.
-pub(super) async fn resolve_model_config(
-    defaults: &AgentDefaults,
-    agent: &AgentConfig,
-) -> Result<ModelConfig, ModelTranslationError> {
-    let load_result = ModelsDevCatalog::load()
-        .await
-        .map_err(ModelTranslationError::CatalogLoad)?;
-    resolve_model_config_with_catalog(&load_result.catalog, defaults, agent)
-}
-
-struct ProviderModel<'a> {
-    provider: &'a str,
-    model: &'a str,
-}
-
-/// Pure function for resolving model configuration with a provided catalog.
+/// This is the primary entrypoint for model resolution. It applies the
+/// precedence rules (agent override first, then runtime default) and
+/// validates the result against the catalog.
 ///
-/// Enables unit testing without network access by accepting a synthetic catalog.
-fn resolve_model_config_with_catalog(
+/// # Arguments
+///
+/// * `catalog` - Model catalog for validation
+/// * `defaults` - Runtime-wide fallback settings
+/// * `agent` - Agent configuration being resolved
+///
+/// # Returns
+///
+/// A [`ResolvedModel`] on success, or a [`ModelResolutionError`] on failure.
+pub fn resolve_model_with_catalog(
     catalog: &ModelCatalog,
-    defaults: &AgentDefaults,
+    defaults: &super::state::AgentDefaults,
     agent: &AgentConfig,
-) -> Result<ModelConfig, ModelTranslationError> {
-    let parts = get_provider_model(defaults, agent)?;
+) -> Result<ResolvedModel, ModelResolutionError> {
+    let (provider, model) = get_provider_model(defaults, agent)?;
 
-    if catalog.lookup_provider(parts.provider).is_none() {
-        return Err(ModelTranslationError::UnknownProvider {
+    if catalog.lookup_provider(provider).is_none() {
+        return Err(ModelResolutionError::UnknownProvider {
             agent: agent.name.clone(),
-            provider: parts.provider.to_string(),
+            provider: provider.into(),
         });
     }
 
-    if catalog
-        .lookup_provider_model(parts.provider, parts.model)
-        .is_none()
-    {
-        return Err(ModelTranslationError::UnknownModel {
+    if catalog.lookup_provider_model(provider, model).is_none() {
+        return Err(ModelResolutionError::UnknownModel {
             agent: agent.name.clone(),
-            provider: parts.provider.to_string(),
-            model: parts.model.to_string(),
+            provider: provider.into(),
+            model: model.into(),
         });
     }
 
-    Ok(ModelConfig::new(format!(
-        "{}:{}",
-        parts.provider, parts.model
-    )))
+    Ok(ResolvedModel {
+        provider: provider.into(),
+        model: model.into(),
+    })
 }
 
 /// Determines the effective model parts by applying override precedence.
@@ -186,73 +202,59 @@ fn resolve_model_config_with_catalog(
 /// Agent override takes precedence over runtime defaults. Returns an error
 /// if neither provides a valid model identifier.
 fn get_provider_model<'a>(
-    defaults: &'a AgentDefaults,
+    defaults: &'a super::state::AgentDefaults,
     agent: &'a AgentConfig,
-) -> Result<ProviderModel<'a>, ModelTranslationError> {
+) -> Result<(&'a str, &'a str), ModelResolutionError> {
     if let Some(raw) = agent.model.as_deref() {
-        let (provider, model) = agent.get_provider_model().ok_or_else(|| {
-            ModelTranslationError::MalformedModelIdentifier {
+        let (provider, model) = crate::parse_model_parts(raw).ok_or_else(|| {
+            ModelResolutionError::MalformedModelIdentifier {
                 agent: agent.name.clone(),
                 location: "agent override",
-                model: raw.to_string(),
+                model: raw.into(),
             }
         })?;
-        return Ok(ProviderModel { provider, model });
+        return Ok((provider, model));
     }
 
     if let Some(raw) = defaults.model.as_deref() {
-        let parts = parse_model_parts(raw).ok_or_else(|| {
-            ModelTranslationError::MalformedModelIdentifier {
+        let (provider, model) = crate::parse_model_parts(raw).ok_or_else(|| {
+            ModelResolutionError::MalformedModelIdentifier {
                 agent: agent.name.clone(),
                 location: "runtime default",
-                model: raw.to_string(),
+                model: raw.into(),
             }
         })?;
-        return Ok(parts);
+        return Ok((provider, model));
     }
 
-    Err(ModelTranslationError::MissingEffectiveModel {
+    Err(ModelResolutionError::MissingEffectiveModel {
         agent: agent.name.clone(),
     })
 }
 
-/// Parses a model identifier into `(provider, model)` parts.
-///
-/// Mirrors `AgentConfig::model_parts()` semantics for runtime defaults.
-/// Returns `None` if the value lacks a `/` separator or has empty segments.
-fn parse_model_parts(value: &str) -> Option<ProviderModel<'_>> {
-    let (provider, model) = value.split_once('/')?;
-    if provider.is_empty() || model.is_empty() {
-        return None;
-    }
-
-    Some(ProviderModel { provider, model })
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ModelTranslationError, resolve_model_config_with_catalog};
-    use crate::agent_runtime::AgentDefaults;
+    use super::{resolve_model_with_catalog, ModelResolutionError};
+    use crate::runtime::AgentDefaults;
     use ahash::AHashMap;
     use indexmap::IndexMap;
-    use llm_coding_tools_agents::{AgentConfig, AgentMode};
     use llm_coding_tools_core::models::{
         Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
         ProviderSource, ProviderType,
     };
 
-    fn config_with_model(name: &str, model: Option<&str>) -> AgentConfig {
-        AgentConfig {
-            name: name.to_string(),
-            mode: AgentMode::All,
-            description: String::new(),
-            model: model.map(str::to_string),
+    fn config_with_model(name: &str, model: Option<&str>) -> crate::AgentConfig {
+        crate::AgentConfig {
+            name: name.into(),
+            mode: crate::AgentMode::All,
+            description: Default::default(),
+            model: model.map(Into::into),
             hidden: false,
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
             options: AHashMap::new(),
-            prompt: String::new(),
+            prompt: Default::default(),
         }
     }
 
@@ -313,16 +315,18 @@ mod tests {
             vec![("openai", "gpt-4.1-mini", model_info(128_000, 16_384))],
         );
         let defaults = AgentDefaults {
-            model: Some("openai/gpt-4.1-mini".to_string()),
+            model: Some("openai/gpt-4.1-mini".into()),
             temperature: None,
             top_p: None,
         };
         let agent = config_with_model("planner", None);
 
-        let resolved = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let resolved = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect("runtime default should resolve");
 
-        assert_eq!(resolved.spec, "openai:gpt-4.1-mini");
+        assert_eq!(resolved.provider(), "openai");
+        assert_eq!(resolved.model(), "gpt-4.1-mini");
+        assert_eq!(resolved.slash_spec(), "openai/gpt-4.1-mini");
     }
 
     #[test]
@@ -346,16 +350,17 @@ mod tests {
             ],
         );
         let defaults = AgentDefaults {
-            model: Some("openrouter/openai/gpt-4.1-mini".to_string()),
+            model: Some("openrouter/openai/gpt-4.1-mini".into()),
             temperature: None,
             top_p: None,
         };
         let agent = config_with_model("planner", Some("openrouter/openai/gpt-4o"));
 
-        let resolved = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let resolved = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect("override should resolve");
 
-        assert_eq!(resolved.spec, "openrouter:openai/gpt-4o");
+        assert_eq!(resolved.provider(), "openrouter");
+        assert_eq!(resolved.model(), "openai/gpt-4o");
     }
 
     #[test]
@@ -372,21 +377,21 @@ mod tests {
             vec![("openai", "gpt-4.1-mini", model_info(128_000, 16_384))],
         );
         let defaults = AgentDefaults {
-            model: Some("openai/gpt-4.1-mini".to_string()),
+            model: Some("openai/gpt-4.1-mini".into()),
             temperature: None,
             top_p: None,
         };
         let agent = config_with_model("planner", Some("openai-only"));
 
-        let err = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect_err("malformed override should fail");
 
         match err {
-            ModelTranslationError::MalformedModelIdentifier {
+            ModelResolutionError::MalformedModelIdentifier {
                 location, model, ..
             } => {
                 assert_eq!(location, "agent override");
-                assert_eq!(model, "openai-only");
+                assert_eq!(&*model, "openai-only");
             }
             other => panic!("unexpected error: {other}"),
         }
@@ -408,12 +413,12 @@ mod tests {
         let defaults = AgentDefaults::default();
         let agent = config_with_model("planner", Some("anthropic/claude-3-5-sonnet"));
 
-        let err = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect_err("missing provider should fail");
 
         match err {
-            ModelTranslationError::UnknownProvider { provider, .. } => {
-                assert_eq!(provider, "anthropic");
+            ModelResolutionError::UnknownProvider { provider, .. } => {
+                assert_eq!(&*provider, "anthropic");
             }
             other => panic!("unexpected error: {other}"),
         }
@@ -435,15 +440,15 @@ mod tests {
         let defaults = AgentDefaults::default();
         let agent = config_with_model("planner", Some("openai/gpt-4.1-mini"));
 
-        let err = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect_err("missing provider/model pair should fail");
 
         match err {
-            ModelTranslationError::UnknownModel {
+            ModelResolutionError::UnknownModel {
                 provider, model, ..
             } => {
-                assert_eq!(provider, "openai");
-                assert_eq!(model, "gpt-4.1-mini");
+                assert_eq!(&*provider, "openai");
+                assert_eq!(&*model, "gpt-4.1-mini");
             }
             other => panic!("unexpected error: {other}"),
         }
@@ -465,12 +470,12 @@ mod tests {
         let defaults = AgentDefaults::default();
         let agent = config_with_model("planner", None);
 
-        let err = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect_err("missing effective model should fail");
 
         match err {
-            ModelTranslationError::MissingEffectiveModel { agent } => {
-                assert_eq!(agent, "planner");
+            ModelResolutionError::MissingEffectiveModel { agent } => {
+                assert_eq!(&*agent, "planner");
             }
             other => panic!("unexpected error: {other}"),
         }
@@ -490,21 +495,21 @@ mod tests {
             vec![("openai", "gpt-4o", model_info(128_000, 16_384))],
         );
         let defaults = AgentDefaults {
-            model: Some("openai-only".to_string()),
+            model: Some("openai-only".into()),
             temperature: None,
             top_p: None,
         };
         let agent = config_with_model("planner", None);
 
-        let err = resolve_model_config_with_catalog(&catalog, &defaults, &agent)
+        let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
             .expect_err("malformed runtime default should fail");
 
         match err {
-            ModelTranslationError::MalformedModelIdentifier {
+            ModelResolutionError::MalformedModelIdentifier {
                 location, model, ..
             } => {
                 assert_eq!(location, "runtime default");
-                assert_eq!(model, "openai-only");
+                assert_eq!(&*model, "openai-only");
             }
             other => panic!("unexpected error: {other}"),
         }

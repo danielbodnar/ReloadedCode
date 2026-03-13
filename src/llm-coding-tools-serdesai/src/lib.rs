@@ -3,13 +3,11 @@
 
 pub mod absolute;
 pub mod agent_ext;
-pub mod agent_runtime;
 pub mod allowed;
 pub mod bash;
 mod common;
 pub mod convert;
 pub mod todo;
-pub mod tool_catalog;
 pub mod webfetch;
 
 /// Re-export core types for convenience.
@@ -47,8 +45,6 @@ pub use llm_coding_tools_core::{
 };
 
 // Re-export standalone tools
-pub use agent_runtime::{AgentDefaults, AgentRuntime, AgentRuntimeBuilder};
 pub use bash::BashTool;
 pub use todo::{TodoReadTool, TodoWriteTool, create_todo_tools};
-pub use tool_catalog::{ToolCatalogEntry, ToolCatalogKind, default_tools};
 pub use webfetch::WebFetchTool;

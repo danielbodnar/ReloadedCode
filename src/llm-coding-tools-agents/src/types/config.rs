@@ -72,21 +72,21 @@ impl Default for PermissionRule {
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct RawFrontmatter {
     #[serde(default)]
-    pub name: Option<String>,
+    pub name: Option<Box<str>>,
     #[serde(default)]
     pub mode: AgentMode,
-    pub description: String,
+    pub description: Box<str>,
     #[serde(default)]
-    pub model: Option<String>,
+    pub model: Option<Box<str>>,
     /// Legacy visibility flag accepted for compatibility only.
     ///
     /// Runtime behavior in headless mode ignores this field.
     #[serde(default)]
     pub hidden: bool,
     #[serde(default)]
-    pub temperature: Option<f64>,
+    pub temperature: Option<f32>,
     #[serde(default)]
-    pub top_p: Option<f64>,
+    pub top_p: Option<f32>,
     #[serde(default)]
     pub permission: IndexMap<String, PermissionRule>,
     #[serde(default)]
@@ -100,18 +100,18 @@ pub struct AgentConfig {
     ///
     /// This comes from frontmatter `name` when present; otherwise a loader-
     /// provided default (for example, derived from a file path) is used.
-    pub name: String,
+    pub name: Box<str>,
     /// Execution mode.
     #[serde(default)]
     pub mode: AgentMode,
     /// Human-readable description.
     #[serde(default)]
-    pub description: String,
+    pub description: Box<str>,
     /// Optional model override (format: "provider/model-id").
     ///
-    /// Use [`AgentConfig::model_parts`] before catalog lookup.
+    /// Use [`AgentConfig::get_provider_model`] before catalog lookup.
     #[serde(default)]
-    pub model: Option<String>,
+    pub model: Option<Box<str>>,
     /// Legacy visibility flag accepted for compatibility only.
     ///
     /// Runtime behavior in headless mode ignores this field.
@@ -119,10 +119,10 @@ pub struct AgentConfig {
     pub hidden: bool,
     /// Temperature for sampling.
     #[serde(default)]
-    pub temperature: Option<f64>,
+    pub temperature: Option<f32>,
     /// Top-p for nucleus sampling.
     #[serde(default)]
-    pub top_p: Option<f64>,
+    pub top_p: Option<f32>,
     /// Tool permissions map.
     #[serde(default)]
     pub permission: IndexMap<String, PermissionRule>,
@@ -134,26 +134,37 @@ pub struct AgentConfig {
     /// The parser stores this with LF line endings and trims surrounding ASCII
     /// whitespace.
     #[serde(skip)]
-    pub prompt: String,
+    pub prompt: Box<str>,
 }
 
 impl AgentConfig {
-    /// Returns the provider+model split into `(provider, model)` parts.
+    /// Returns the provider and model identifier from [`AgentConfig::model`].
+    ///
+    /// Delegates to [`parse_model_parts`] for parsing.
+    ///
+    /// ## Expected Format
+    /// `"provider/model-id"` (e.g., `"openai/gpt-4"`, `"synthetic/hf:moonshotai/Kimi-K2.5"`).
+    ///
+    /// ## Returns
+    /// - `Some(("provider", "model-id"))` on valid input
+    /// - `None` if [`AgentConfig::model`] is unset or malformed (missing `/` or empty segments)
     #[inline]
     pub fn get_provider_model(&self) -> Option<(&str, &str)> {
-        let value = self.model.as_deref()?;
-        let (provider, model) = value.split_once('/')?;
-        if provider.is_empty() || model.is_empty() {
-            return None;
-        }
-
-        Some((provider, model))
+        self.model.as_deref().and_then(parse_model_parts)
     }
 
     /// Creates an [`AgentConfig`] from raw frontmatter and parsed prompt body.
-    pub(crate) fn from_raw(default_name: String, raw: RawFrontmatter, prompt: String) -> Self {
+    pub(crate) fn from_raw(
+        default_name: impl Into<Box<str>>,
+        raw: RawFrontmatter,
+        prompt: impl Into<Box<str>>,
+    ) -> Self {
+        let name = match raw.name {
+            Some(s) => s,
+            None => default_name.into(),
+        };
         Self {
-            name: raw.name.unwrap_or(default_name),
+            name,
             mode: raw.mode,
             description: raw.description,
             model: raw.model,
@@ -162,9 +173,26 @@ impl AgentConfig {
             top_p: raw.top_p,
             permission: raw.permission,
             options: raw.options,
-            prompt,
+            prompt: prompt.into(),
         }
     }
+}
+
+/// Parses a model identifier string into `(provider, model)` parts.
+///
+/// ## Expected Format
+/// `"provider/model-id"` (e.g., `"openai/gpt-4"`, `"synthetic/hf:moonshotai/Kimi-K2.5"`).
+///
+/// ## Returns
+/// - `Some(("provider", "model-id"))` on valid input
+/// - `None` if the value lacks a `/` separator or has empty segments
+#[inline]
+pub fn parse_model_parts(value: &str) -> Option<(&str, &str)> {
+    let (provider, model) = value.split_once('/')?;
+    if provider.is_empty() || model.is_empty() {
+        return None;
+    }
+    Some((provider, model))
 }
 
 #[cfg(test)]
@@ -175,21 +203,21 @@ mod tests {
 
     fn config_with_model(model: Option<&str>) -> AgentConfig {
         AgentConfig {
-            name: "example".to_string(),
+            name: "example".into(),
             mode: AgentMode::All,
-            description: String::new(),
-            model: model.map(str::to_string),
+            description: Default::default(),
+            model: model.map(Into::into),
             hidden: false,
             temperature: None,
             top_p: None,
             permission: IndexMap::new(),
             options: AHashMap::new(),
-            prompt: String::new(),
+            prompt: Default::default(),
         }
     }
 
     #[test]
-    fn model_parts_returns_provider_and_model() {
+    fn get_provider_model_returns_provider_and_model() {
         let config = config_with_model(Some("synthetic/hf:moonshotai/Kimi-K2.5"));
 
         assert_eq!(
@@ -199,14 +227,14 @@ mod tests {
     }
 
     #[test]
-    fn model_parts_rejects_missing_separator() {
+    fn get_provider_model_rejects_missing_separator() {
         let config = config_with_model(Some("synthetic-only"));
 
         assert_eq!(config.get_provider_model(), None);
     }
 
     #[test]
-    fn model_parts_handles_absent_model() {
+    fn get_provider_model_handles_absent_model() {
         let config = config_with_model(None);
 
         assert_eq!(config.get_provider_model(), None);

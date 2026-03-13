@@ -1,4 +1,4 @@
-//! Explicit default runtime tool catalog for SerdesAI agent builds.
+//! Explicit default runtime tool catalog for agent builds.
 //!
 //! This module provides a cloneable, data-only tool catalog used during JIT agent
 //! construction. Each [`ToolCatalogEntry`] pairs a canonical tool name with a
@@ -27,7 +27,7 @@ impl ToolCatalogEntry {
     }
 }
 
-/// Explicit tool variants supported by the default SerdesAI runtime surface.
+/// Explicit tool variants supported by the default runtime surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolCatalogKind {
     /// Read file contents tool.
@@ -62,15 +62,14 @@ const DEFAULT_TOOLS: [ToolCatalogEntry; 9] = [
     ToolCatalogEntry::new(tool_names::TODO_WRITE, ToolCatalogKind::TodoWrite),
 ];
 
-/// Returns the explicit default non-Task tool catalog for SerdesAI runtimes.
+/// Returns the explicit default non-Task tool catalog for runtimes.
 pub fn default_tools() -> Vec<ToolCatalogEntry> {
-    // Keep the exported value data-only so later prompts can instantiate tools explicitly.
     DEFAULT_TOOLS.to_vec()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ToolCatalogEntry, ToolCatalogKind, default_tools};
+    use super::{default_tools, ToolCatalogEntry, ToolCatalogKind};
     use llm_coding_tools_core::tool_names;
     use std::collections::BTreeSet;
 

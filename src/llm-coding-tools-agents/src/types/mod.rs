@@ -9,7 +9,7 @@
 mod config;
 mod error;
 
-pub use config::{AgentConfig, AgentMode, PermissionRule};
+pub use config::{parse_model_parts, AgentConfig, AgentMode, PermissionRule};
 pub use error::{AgentLoadError, AgentLoadResult};
 
 pub(crate) use config::RawFrontmatter;
