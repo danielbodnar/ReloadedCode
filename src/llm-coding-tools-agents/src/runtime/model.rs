@@ -85,6 +85,8 @@ pub enum ModelResolutionError {
     UnknownProvider {
         /// Agent name for error context.
         agent: Box<str>,
+        /// Where the provider came from.
+        location: &'static str,
         /// The unknown provider.
         provider: Box<str>,
     },
@@ -92,6 +94,8 @@ pub enum ModelResolutionError {
     UnknownModel {
         /// Agent name for error context.
         agent: Box<str>,
+        /// Where the model came from.
+        location: &'static str,
         /// Provider.
         provider: Box<str>,
         /// Model name within the provider.
@@ -114,19 +118,24 @@ impl core::fmt::Display for ModelResolutionError {
                 f,
                 "agent `{agent}` does not define a model override and runtime defaults do not define one either",
             ),
-            Self::UnknownProvider { agent, provider } => {
+            Self::UnknownProvider {
+                agent: _,
+                location,
+                provider,
+            } => {
                 write!(
                     f,
-                    "agent `{agent}` references unknown provider `{provider}`"
+                    "effective provider `{provider}` from {location} is not in catalog"
                 )
             }
             Self::UnknownModel {
-                agent,
+                agent: _,
+                location,
                 provider,
                 model,
             } => write!(
                 f,
-                "agent `{agent}` references unknown model `{provider}/{model}`",
+                "effective model `{provider}/{model}` from {location} is not in catalog",
             ),
         }
     }
@@ -153,11 +162,12 @@ pub fn resolve_model_with_catalog(
     defaults: &super::state::AgentDefaults,
     agent: &AgentConfig,
 ) -> Result<ResolvedModel, ModelResolutionError> {
-    let (provider, model) = get_provider_model(defaults, agent)?;
+    let (provider, model, location) = get_provider_model(defaults, agent)?;
 
     if catalog.lookup_provider(provider).is_none() {
         return Err(ModelResolutionError::UnknownProvider {
             agent: agent.name.clone(),
+            location,
             provider: provider.into(),
         });
     }
@@ -165,6 +175,7 @@ pub fn resolve_model_with_catalog(
     if catalog.lookup_provider_model(provider, model).is_none() {
         return Err(ModelResolutionError::UnknownModel {
             agent: agent.name.clone(),
+            location,
             provider: provider.into(),
             model: model.into(),
         });
@@ -180,7 +191,7 @@ pub fn resolve_model_with_catalog(
 fn get_provider_model<'a>(
     defaults: &'a super::state::AgentDefaults,
     agent: &'a AgentConfig,
-) -> Result<(&'a str, &'a str), ModelResolutionError> {
+) -> Result<(&'a str, &'a str, &'static str), ModelResolutionError> {
     if let Some(raw) = agent.model.as_deref() {
         let (provider, model) = crate::parse_model_parts(raw).ok_or_else(|| {
             ModelResolutionError::MalformedModelIdentifier {
@@ -189,7 +200,7 @@ fn get_provider_model<'a>(
                 model: raw.into(),
             }
         })?;
-        return Ok((provider, model));
+        return Ok((provider, model, "agent override"));
     }
 
     if let Some(raw) = defaults.model.as_deref() {
@@ -200,7 +211,7 @@ fn get_provider_model<'a>(
                 model: raw.into(),
             }
         })?;
-        return Ok((provider, model));
+        return Ok((provider, model, "runtime default"));
     }
 
     Err(ModelResolutionError::MissingEffectiveModel {
@@ -393,7 +404,10 @@ mod tests {
             .expect_err("missing provider should fail");
 
         match err {
-            ModelResolutionError::UnknownProvider { provider, .. } => {
+            ModelResolutionError::UnknownProvider {
+                location, provider, ..
+            } => {
+                assert_eq!(location, "agent override");
                 assert_eq!(&*provider, "anthropic");
             }
             other => panic!("unexpected error: {other}"),
@@ -421,8 +435,12 @@ mod tests {
 
         match err {
             ModelResolutionError::UnknownModel {
-                provider, model, ..
+                location,
+                provider,
+                model,
+                ..
             } => {
+                assert_eq!(location, "agent override");
                 assert_eq!(&*provider, "openai");
                 assert_eq!(&*model, "gpt-4.1-mini");
             }
