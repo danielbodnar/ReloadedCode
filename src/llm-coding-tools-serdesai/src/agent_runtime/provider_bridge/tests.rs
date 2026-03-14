@@ -7,45 +7,6 @@ use llm_coding_tools_core::models::{
     Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
     ProviderSource, ProviderType,
 };
-use std::sync::{Mutex, MutexGuard};
-
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-struct EnvGuard {
-    _lock: MutexGuard<'static, ()>,
-    saved: Vec<(&'static str, Option<String>)>,
-}
-
-impl EnvGuard {
-    fn new(updates: &[(&'static str, Option<&'static str>)]) -> Self {
-        let lock = ENV_LOCK.lock().expect("env lock should be available");
-        let mut saved = Vec::with_capacity(updates.len());
-        for (name, value) in updates {
-            saved.push((*name, std::env::var(name).ok()));
-            unsafe {
-                match value {
-                    Some(value) => std::env::set_var(name, value),
-                    None => std::env::remove_var(name),
-                }
-            }
-        }
-        Self { _lock: lock, saved }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (name, value) in self.saved.drain(..).rev() {
-            unsafe {
-                match value {
-                    Some(value) => std::env::set_var(name, value),
-                    None => std::env::remove_var(name),
-                }
-            }
-        }
-    }
-}
-
 struct Case {
     provider_key: &'static str,
     provider: ProviderInfo,
@@ -132,9 +93,10 @@ fn resolve_case(case: &Case) -> ResolvedSerdesModel {
         top_p: None,
     };
     let agent = config_with_model("planner", None);
-    let _env = EnvGuard::new(case.env_updates);
-    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
-    build_serdes_model(&catalog, &resolved).expect("model should build")
+    temp_env::with_vars(case.env_updates, || {
+        let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+        build_serdes_model(&catalog, &resolved).expect("model should build")
+    })
 }
 
 #[test]
@@ -391,14 +353,17 @@ fn build_serdes_model_skips_empty_credential_env_vars() {
         top_p: None,
     };
     let agent = config_with_model("planner", None);
-    let _env = EnvGuard::new(&[
-        ("PRIMARY_API_KEY", Some("")),
-        ("SECONDARY_API_KEY", Some("fallback-key")),
-    ]);
-
-    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
-    let serdes_model = build_serdes_model(&catalog, &resolved).expect("model should build");
-    assert_eq!(serdes_model.spec.as_ref(), "openai:hf:zai-org/GLM-4.7");
+    temp_env::with_vars(
+        [
+            ("PRIMARY_API_KEY", Some("")),
+            ("SECONDARY_API_KEY", Some("fallback-key")),
+        ],
+        || {
+            let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+            let serdes_model = build_serdes_model(&catalog, &resolved).expect("model should build");
+            assert_eq!(serdes_model.spec.as_ref(), "openai:hf:zai-org/GLM-4.7");
+        },
+    );
 }
 
 #[test]
@@ -424,16 +389,16 @@ fn build_serdes_model_returns_clear_error_when_required_credential_missing() {
         top_p: None,
     };
     let agent = config_with_model("planner", None);
-    let _env = EnvGuard::new(&[("SYNTHETIC_API_KEY", None)]);
-
-    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
-    let err = build_serdes_model(&catalog, &resolved)
-        .err()
-        .expect("model should fail");
-    assert!(err
-        .to_string()
-        .contains("provider `synthetic` mapped to serdes `openai` requires a credential"));
-    assert!(err.to_string().contains("SYNTHETIC_API_KEY"));
+    temp_env::with_var("SYNTHETIC_API_KEY", None::<&str>, || {
+        let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+        let err = build_serdes_model(&catalog, &resolved)
+            .err()
+            .expect("model should fail");
+        assert!(err
+            .to_string()
+            .contains("provider `synthetic` mapped to serdes `openai` requires a credential"));
+        assert!(err.to_string().contains("SYNTHETIC_API_KEY"));
+    });
 }
 
 #[test]
