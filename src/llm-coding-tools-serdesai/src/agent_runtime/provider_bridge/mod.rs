@@ -3,9 +3,12 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use llm_coding_tools_agents::ResolvedModel;
-use llm_coding_tools_core::models::{ModelCatalog, ProviderType};
+use llm_coding_tools_core::{
+    CredentialLookup,
+    models::{ModelCatalog, ProviderType},
+};
 use serdes_ai_models::{BoxedModel, Model as SerdesModel, ModelError};
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 const COHERE_BASE_URL: &str = "https://api.cohere.ai/v2";
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -14,44 +17,15 @@ const OPENAI_COMPATIBLE_PROVIDER: &str = "openai";
 /// Concrete SerdesAI model prepared from catalog metadata.
 #[derive(Clone)]
 pub(super) struct ResolvedSerdesModel {
-    /// Internal constructor path used to build the SerdesAI model.
-    #[cfg(test)]
-    pub(super) flavor: SerdesModelFlavor,
     /// Concrete model instance ready for [`serdes_ai::AgentBuilder::from_arc`].
     pub(super) model: BoxedModel,
     /// Normalized `provider:model` debug spec used by tests and diagnostics.
     pub(super) spec: Box<str>,
 }
 
-/// Concrete SerdesAI constructor chosen for a provider mapping.
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SerdesModelFlavor {
-    OpenAiChat,
-    OpenAiResponses,
-    Anthropic,
-    Google,
-    Groq,
-    Mistral,
-    Ollama,
-    Bedrock,
-    Azure,
-    OpenRouter,
-    HuggingFace,
-    Cohere,
-    ChatGptOAuth,
-    ClaudeCodeOAuth,
-    Antigravity,
-}
-
 impl ResolvedSerdesModel {
     #[inline]
-    fn new<M>(
-        provider_name: &'static str,
-        model_name: &str,
-        #[cfg(test)] flavor: SerdesModelFlavor,
-        model: M,
-    ) -> Self
+    fn new<M>(provider_name: &'static str, model_name: &str, model: M) -> Self
     where
         M: SerdesModel + 'static,
     {
@@ -60,8 +34,6 @@ impl ResolvedSerdesModel {
         spec.push(':');
         spec.push_str(model_name);
         Self {
-            #[cfg(test)]
-            flavor,
             model: Arc::new(model),
             spec: spec.into_boxed_str(),
         }
@@ -72,6 +44,7 @@ impl ResolvedSerdesModel {
 pub(super) fn build_serdes_model(
     catalog: &ModelCatalog,
     resolved: &ResolvedModel,
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     let provider = catalog
         .lookup_provider(resolved.provider())
@@ -89,49 +62,111 @@ pub(super) fn build_serdes_model(
             "provider `{}` has no SerdesAI mapping because its catalog provider type is unknown",
             resolved.provider()
         ))),
-        ProviderType::OpenAiCompletions => {
-            build_openai_chat(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::OpenAiResponses => {
-            build_openai_responses(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Anthropic => {
-            build_anthropic(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Google => {
-            build_google(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Groq => build_groq(resolved.provider(), resolved.model(), api_url, env_vars),
-        ProviderType::Mistral => {
-            build_mistral(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Ollama => {
-            build_ollama(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Bedrock => {
-            build_bedrock(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Azure => {
-            build_azure(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::OpenRouter => {
-            build_openrouter(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::HuggingFace => {
-            build_huggingface(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Cohere => {
-            build_cohere(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::ChatGptOAuth => {
-            build_chatgpt_oauth(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::ClaudeCodeOAuth => {
-            build_claude_code_oauth(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
-        ProviderType::Antigravity => {
-            build_antigravity(resolved.provider(), resolved.model(), api_url, env_vars)
-        }
+        ProviderType::OpenAiCompletions => build_openai_chat(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::OpenAiResponses => build_openai_responses(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Anthropic => build_anthropic(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Google => build_google(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Groq => build_groq(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Mistral => build_mistral(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Ollama => build_ollama(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Bedrock => build_bedrock(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Azure => build_azure(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::OpenRouter => build_openrouter(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::HuggingFace => build_huggingface(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Cohere => build_cohere(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::ChatGptOAuth => build_chatgpt_oauth(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::ClaudeCodeOAuth => build_claude_code_oauth(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
+        ProviderType::Antigravity => build_antigravity(
+            resolved.provider(),
+            resolved.model(),
+            api_url,
+            env_vars,
+            credentials,
+        ),
     }
 }
 
@@ -172,7 +207,11 @@ fn is_project_id_env_var(env_var: &str) -> bool {
     env_var.ends_with("_PROJECT_ID")
 }
 
-fn first_matching_env_value<P>(env_vars: &[&str], mut predicate: P) -> Option<String>
+fn first_matching_env_value<P>(
+    credentials: &impl CredentialLookup,
+    env_vars: &[&str],
+    mut predicate: P,
+) -> Option<String>
 where
     P: FnMut(&str) -> bool,
 {
@@ -180,7 +219,7 @@ where
         if !predicate(env_var) {
             return None;
         }
-        env::var(env_var).ok().filter(|value| !value.is_empty())
+        credentials.resolve(env_var)
     })
 }
 
@@ -206,6 +245,7 @@ where
 }
 
 fn require_env_value<P>(
+    credentials: &impl CredentialLookup,
     provider_key: &str,
     provider_name: &str,
     env_vars: &[&str],
@@ -215,7 +255,7 @@ fn require_env_value<P>(
 where
     P: Copy + Fn(&str) -> bool,
 {
-    if let Some(value) = first_matching_env_value(env_vars, predicate) {
+    if let Some(value) = first_matching_env_value(credentials, env_vars, predicate) {
         return Ok(value);
     }
 
@@ -274,6 +314,7 @@ fn azure_endpoint_from_resource(resource_name: &str) -> String {
 }
 
 fn resolve_azure_endpoint(
+    credentials: &impl CredentialLookup,
     provider_key: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
@@ -282,7 +323,9 @@ fn resolve_azure_endpoint(
         return Ok(normalize_azure_endpoint(api_url));
     }
 
-    if let Some(resource_name) = first_matching_env_value(env_vars, is_resource_name_env_var) {
+    if let Some(resource_name) =
+        first_matching_env_value(credentials, env_vars, is_resource_name_env_var)
+    {
         return Ok(azure_endpoint_from_resource(&resource_name));
     }
 
@@ -297,10 +340,12 @@ fn build_openai_chat(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "openai")]
     {
         let api_key = require_env_value(
+            credentials,
             provider_key,
             OPENAI_COMPATIBLE_PROVIDER,
             env_vars,
@@ -314,8 +359,6 @@ fn build_openai_chat(
         Ok(ResolvedSerdesModel::new(
             OPENAI_COMPATIBLE_PROVIDER,
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::OpenAiChat,
             model,
         ))
     }
@@ -331,10 +374,12 @@ fn build_openai_responses(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "openai")]
     {
         let api_key = require_env_value(
+            credentials,
             provider_key,
             OPENAI_COMPATIBLE_PROVIDER,
             env_vars,
@@ -348,8 +393,6 @@ fn build_openai_responses(
         Ok(ResolvedSerdesModel::new(
             OPENAI_COMPATIBLE_PROVIDER,
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::OpenAiResponses,
             model,
         ))
     }
@@ -365,10 +408,12 @@ fn build_anthropic(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "anthropic")]
     {
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "anthropic",
             env_vars,
@@ -379,13 +424,7 @@ fn build_anthropic(
         if let Some(api_url) = api_url {
             model = model.with_base_url(api_url);
         }
-        Ok(ResolvedSerdesModel::new(
-            "anthropic",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Anthropic,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("anthropic", model_name, model))
     }
     #[cfg(not(feature = "anthropic"))]
     {
@@ -399,10 +438,12 @@ fn build_google(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(any(feature = "google", feature = "gemini"))]
     {
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "google",
             env_vars,
@@ -413,13 +454,7 @@ fn build_google(
         if let Some(api_url) = api_url {
             model = model.with_base_url(api_url);
         }
-        Ok(ResolvedSerdesModel::new(
-            "google",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Google,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("google", model_name, model))
     }
     #[cfg(not(any(feature = "google", feature = "gemini")))]
     {
@@ -433,6 +468,7 @@ fn build_groq(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "groq")]
     {
@@ -443,6 +479,7 @@ fn build_groq(
             serdes_ai_models::GroqModel::BASE_URL,
         )?;
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "groq",
             env_vars,
@@ -452,8 +489,6 @@ fn build_groq(
         Ok(ResolvedSerdesModel::new(
             "groq",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Groq,
             serdes_ai_models::GroqModel::new(model_name, api_key),
         ))
     }
@@ -469,10 +504,12 @@ fn build_mistral(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "mistral")]
     {
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "mistral",
             env_vars,
@@ -483,13 +520,7 @@ fn build_mistral(
         if let Some(api_url) = api_url {
             model = model.with_base_url(api_url);
         }
-        Ok(ResolvedSerdesModel::new(
-            "mistral",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Mistral,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("mistral", model_name, model))
     }
     #[cfg(not(feature = "mistral"))]
     {
@@ -503,49 +534,49 @@ fn build_ollama(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "ollama")]
     {
-        let _ = (provider_key, env_vars);
+        let _ = (provider_key, env_vars, credentials);
         let mut model = serdes_ai_models::OllamaModel::new(model_name);
         if let Some(api_url) = api_url {
             model = model.with_base_url(api_url);
         }
-        Ok(ResolvedSerdesModel::new(
-            "ollama",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Ollama,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("ollama", model_name, model))
     }
     #[cfg(not(feature = "ollama"))]
     {
-        let _ = (provider_key, model_name, api_url, env_vars);
+        let _ = (provider_key, model_name, api_url, env_vars, credentials);
         Err(feature_disabled_error("ollama", "ollama"))
     }
 }
 
+/// Build a Bedrock model.
+///
+/// Unlike other providers, Bedrock does not accept credentials as parameters. The AWS SDK
+/// reads them directly from environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+/// AWS_REGION) or from the standard AWS credential chain (instance profiles, credential files, etc.).
+/// The `credentials` parameter is therefore unused but kept for API consistency with other builders.
 fn build_bedrock(
     provider_key: &str,
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "bedrock")]
     {
-        let _ = (provider_key, api_url, env_vars);
+        let _ = (provider_key, api_url, env_vars, credentials);
         Ok(ResolvedSerdesModel::new(
             "bedrock",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Bedrock,
             serdes_ai_models::BedrockModel::new(model_name)?,
         ))
     }
     #[cfg(not(feature = "bedrock"))]
     {
-        let _ = (provider_key, model_name, api_url, env_vars);
+        let _ = (provider_key, model_name, api_url, env_vars, credentials);
         Err(feature_disabled_error("bedrock", "bedrock"))
     }
 }
@@ -555,11 +586,13 @@ fn build_azure(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "azure")]
     {
-        let endpoint = resolve_azure_endpoint(provider_key, api_url, env_vars)?;
+        let endpoint = resolve_azure_endpoint(credentials, provider_key, api_url, env_vars)?;
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "azure",
             env_vars,
@@ -569,8 +602,6 @@ fn build_azure(
         Ok(ResolvedSerdesModel::new(
             "azure",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Azure,
             serdes_ai_models::AzureOpenAIModel::new(
                 model_name,
                 endpoint,
@@ -591,11 +622,13 @@ fn build_openrouter(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "openrouter")]
     {
         validate_fixed_api_url(provider_key, "openrouter", api_url, OPENROUTER_BASE_URL)?;
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "openrouter",
             env_vars,
@@ -605,8 +638,6 @@ fn build_openrouter(
         Ok(ResolvedSerdesModel::new(
             "openrouter",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::OpenRouter,
             serdes_ai_models::OpenRouterModel::new(model_name, api_key),
         ))
     }
@@ -622,10 +653,12 @@ fn build_huggingface(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "huggingface")]
     {
         let token = require_env_value(
+            credentials,
             provider_key,
             "huggingface",
             env_vars,
@@ -636,13 +669,7 @@ fn build_huggingface(
         if let Some(api_url) = api_url {
             model = model.with_endpoint(api_url);
         }
-        Ok(ResolvedSerdesModel::new(
-            "huggingface",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::HuggingFace,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("huggingface", model_name, model))
     }
     #[cfg(not(feature = "huggingface"))]
     {
@@ -656,11 +683,13 @@ fn build_cohere(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "cohere")]
     {
         validate_fixed_api_url(provider_key, "cohere", api_url, COHERE_BASE_URL)?;
         let api_key = require_env_value(
+            credentials,
             provider_key,
             "cohere",
             env_vars,
@@ -670,8 +699,6 @@ fn build_cohere(
         Ok(ResolvedSerdesModel::new(
             "cohere",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Cohere,
             serdes_ai_models::CohereModel::new(model_name, api_key),
         ))
     }
@@ -687,10 +714,12 @@ fn build_chatgpt_oauth(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "chatgpt-oauth")]
     {
         let access_token = require_env_value(
+            credentials,
             provider_key,
             "chatgpt-oauth",
             env_vars,
@@ -704,16 +733,12 @@ fn build_chatgpt_oauth(
                 ..serdes_ai_models::chatgpt_oauth::ChatGptConfig::default()
             });
         }
-        if let Some(account_id) = first_matching_env_value(env_vars, is_account_id_env_var) {
+        if let Some(account_id) =
+            first_matching_env_value(credentials, env_vars, is_account_id_env_var)
+        {
             model = model.with_account_id(account_id);
         }
-        Ok(ResolvedSerdesModel::new(
-            "chatgpt-oauth",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::ChatGptOAuth,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("chatgpt-oauth", model_name, model))
     }
     #[cfg(not(feature = "chatgpt-oauth"))]
     {
@@ -727,10 +752,12 @@ fn build_claude_code_oauth(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "claude-code-oauth")]
     {
         let access_token = require_env_value(
+            credentials,
             provider_key,
             "claude-code-oauth",
             env_vars,
@@ -747,8 +774,6 @@ fn build_claude_code_oauth(
         Ok(ResolvedSerdesModel::new(
             "claude-code-oauth",
             model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::ClaudeCodeOAuth,
             model,
         ))
     }
@@ -767,17 +792,19 @@ fn build_antigravity(
     model_name: &str,
     api_url: Option<&str>,
     env_vars: &[&str],
+    credentials: &impl CredentialLookup,
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "antigravity")]
     {
         let access_token = require_env_value(
+            credentials,
             provider_key,
             "antigravity",
             env_vars,
             "an access token",
             is_credential_env_var,
         )?;
-        let project_id = first_matching_env_value(env_vars, is_project_id_env_var)
+        let project_id = first_matching_env_value(credentials, env_vars, is_project_id_env_var)
             .unwrap_or_else(|| serdes_ai_models::antigravity::DEFAULT_PROJECT_ID.to_owned());
         let mut model =
             serdes_ai_models::AntigravityModel::new(model_name, access_token, project_id);
@@ -787,13 +814,7 @@ fn build_antigravity(
                 ..serdes_ai_models::antigravity::AntigravityConfig::default()
             });
         }
-        Ok(ResolvedSerdesModel::new(
-            "antigravity",
-            model_name,
-            #[cfg(test)]
-            SerdesModelFlavor::Antigravity,
-            model,
-        ))
+        Ok(ResolvedSerdesModel::new("antigravity", model_name, model))
     }
     #[cfg(not(feature = "antigravity"))]
     {

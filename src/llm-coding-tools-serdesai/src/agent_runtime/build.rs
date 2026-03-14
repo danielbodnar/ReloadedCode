@@ -1,7 +1,9 @@
 //! Build SerdesAI agents from an [`AgentRuntime`] catalog.
 //!
-//! Use [`AgentRuntimeExt::build`] to create a runnable agent by name.
-//! The builder resolves the model, filters tools by permissions, and sets up the system prompt.
+//! Use [`AgentRuntimeExt::build`] for the default environment-backed path, or
+//! [`build_agent_with_credentials`] when you want to provide explicit credential
+//! overrides. The builder resolves the model, filters tools by permissions, and
+//! sets up the system prompt.
 
 use super::model::resolve_model;
 use super::provider_bridge::build_serdes_model;
@@ -13,8 +15,8 @@ use crate::{
 use llm_coding_tools_agents::{
     AgentRuntime, ModelResolutionError, RulesetExt, ToolCatalogEntry, ToolCatalogKind,
 };
-use llm_coding_tools_core::models::ModelCatalog;
 use llm_coding_tools_core::permissions::Ruleset;
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
 use serdes_ai_models::BoxedModel;
 
@@ -34,10 +36,32 @@ impl AgentRuntimeExt for AgentRuntime {
         name: &str,
         model_catalog: &ModelCatalog,
     ) -> Result<Agent<(), String>, AgentBuildError> {
-        let prepared = prepare_build(self, name, model_catalog)?;
+        let credentials = CredentialResolver::new();
+        let prepared = prepare_build(self, name, model_catalog, &credentials)?;
         let builder = AgentBuilder::<(), String>::from_arc(prepared.model.clone());
         Ok(finish_builder(builder, &prepared)?.build())
     }
+}
+
+/// Builds a runnable SerdesAI agent using the provided credential resolver.
+///
+/// This is useful when your application wants to provide config-file or test
+/// overrides while keeping the catalog-driven provider lookup flow.
+///
+/// # Errors
+///
+/// Returns [`AgentBuildError`] when the named agent is missing, model selection
+/// fails, the adapter cannot create one of the requested tools, or the model
+/// backend rejects the resolved credentials or provider settings.
+pub fn build_agent_with_credentials(
+    runtime: &AgentRuntime,
+    name: &str,
+    model_catalog: &ModelCatalog,
+    credentials: &impl CredentialLookup,
+) -> Result<Agent<(), String>, AgentBuildError> {
+    let prepared = prepare_build(runtime, name, model_catalog, credentials)?;
+    let builder = AgentBuilder::<(), String>::from_arc(prepared.model.clone());
+    Ok(finish_builder(builder, &prepared)?.build())
 }
 
 /// Resolved build parameters ready for agent construction.
@@ -65,13 +89,14 @@ fn prepare_build(
     runtime: &AgentRuntime,
     name: &str,
     model_catalog: &ModelCatalog,
+    credentials: &impl CredentialLookup,
 ) -> Result<PreparedBuild, AgentBuildError> {
     let agent = runtime
         .catalog()
         .by_name(name)
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
     let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
-    let serdes_model = build_serdes_model(model_catalog, &resolved)?;
+    let serdes_model = build_serdes_model(model_catalog, &resolved, credentials)?;
     Ok(PreparedBuild {
         agent_name: agent.name.clone(),
         model: serdes_model.model,
@@ -170,6 +195,7 @@ mod tests {
     use llm_coding_tools_agents::{
         AgentCatalog, AgentConfig, AgentDefaults, AgentMode, AgentRuntimeBuilder, PermissionRule,
     };
+    use llm_coding_tools_core::CredentialResolver;
     use llm_coding_tools_core::models::{
         Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
         ProviderSource, ProviderType,
@@ -179,44 +205,6 @@ mod tests {
     use serdes_ai::AgentBuilder;
     use serdes_ai_models::MockModel;
     use std::collections::HashSet;
-    use std::sync::{Mutex, MutexGuard};
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    struct EnvGuard {
-        _lock: MutexGuard<'static, ()>,
-        saved: Vec<(&'static str, Option<String>)>,
-    }
-
-    impl EnvGuard {
-        fn new(updates: &[(&'static str, Option<&'static str>)]) -> Self {
-            let lock = ENV_LOCK.lock().expect("env lock should be available");
-            let mut saved = Vec::with_capacity(updates.len());
-            for (name, value) in updates {
-                saved.push((*name, std::env::var(name).ok()));
-                unsafe {
-                    match value {
-                        Some(value) => std::env::set_var(name, value),
-                        None => std::env::remove_var(name),
-                    }
-                }
-            }
-            Self { _lock: lock, saved }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (name, value) in self.saved.drain(..).rev() {
-                unsafe {
-                    match value {
-                        Some(value) => std::env::set_var(name, value),
-                        None => std::env::remove_var(name),
-                    }
-                }
-            }
-        }
-    }
 
     /// Builds an agent using a mock model instead of a real one.
     fn build_with_mock(
@@ -307,9 +295,15 @@ mod tests {
         ModelCatalog::build(&providers, &models).expect("catalog fixture should build")
     }
 
+    fn credentials() -> CredentialResolver<false> {
+        let mut credentials = CredentialResolver::without_env();
+        credentials.set_override("OPENROUTER_API_KEY", "openrouter-key");
+        credentials
+    }
+
     #[test]
     fn build_filters_tools_by_permission() {
-        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
+        let credentials = credentials();
         let catalog = catalog();
 
         // Create runtime with two agents: one with allowed tools, one with none
@@ -330,7 +324,8 @@ mod tests {
             .build();
 
         // Agent with permissions gets only the allowed tools
-        let prepared = prepare_build(&runtime, "with-tools", &catalog).expect("should succeed");
+        let prepared =
+            prepare_build(&runtime, "with-tools", &catalog, &credentials).expect("should succeed");
         let agent = build_with_mock(&prepared, "with-tools");
         let names: HashSet<&str> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(names.contains(tool_names::READ));
@@ -338,14 +333,15 @@ mod tests {
         assert_eq!(names.len(), 2);
 
         // Agent with empty permissions gets no tools
-        let prepared = prepare_build(&runtime, "no-tools", &catalog).expect("should succeed");
+        let prepared =
+            prepare_build(&runtime, "no-tools", &catalog, &credentials).expect("should succeed");
         let agent = build_with_mock(&prepared, "no-tools");
         assert!(agent.tools().is_empty());
     }
 
     #[test]
     fn build_uses_agent_model_and_sampling_over_defaults() {
-        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
+        let credentials = credentials();
         let catalog = catalog();
 
         // Agent overrides model (gpt-4o) and sampling (0.4, 0.8) vs defaults (gpt-4.1-mini, 1.0, 0.95)
@@ -366,7 +362,8 @@ mod tests {
             .build();
 
         // Agent-level settings win over defaults
-        let prepared = prepare_build(&runtime, "planner", &catalog).expect("should succeed");
+        let prepared =
+            prepare_build(&runtime, "planner", &catalog, &credentials).expect("should succeed");
         assert_eq!(prepared.model_spec.as_ref(), "openrouter:openai/gpt-4o");
         assert!((prepared.temperature.unwrap() - 0.4).abs() < 1e-6);
         assert!((prepared.top_p.unwrap() - 0.8).abs() < 1e-6);
@@ -374,7 +371,7 @@ mod tests {
 
     #[test]
     fn build_handles_catalog_edge_cases() {
-        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
+        let credentials = credentials();
         let catalog = catalog();
 
         // Unknown agent name returns clear error
@@ -385,7 +382,7 @@ mod tests {
                 top_p: None,
             })
             .build();
-        let err = prepare_build(&runtime, "missing", &catalog)
+        let err = prepare_build(&runtime, "missing", &catalog, &credentials)
             .err()
             .expect("should fail");
         assert!(matches!(err, AgentBuildError::UnknownAgent { name } if &*name == "missing"));
@@ -412,7 +409,8 @@ mod tests {
             ]))
             .defaults(AgentDefaults::default())
             .build();
-        let prepared = prepare_build(&runtime, "dupe", &catalog).expect("should succeed");
+        let prepared =
+            prepare_build(&runtime, "dupe", &catalog, &credentials).expect("should succeed");
         assert_eq!(prepared.model_spec.as_ref(), "openrouter:openai/gpt-4o");
         let agent = build_with_mock(&prepared, "dupe");
         assert_eq!(agent.tools().len(), 1);

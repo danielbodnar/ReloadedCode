@@ -8,6 +8,7 @@ compile_error!("Features `async` and `blocking` are mutually exclusive.");
 compile_error!("Either an async runtime (e.g., `tokio`) or `blocking` feature must be enabled.");
 
 pub mod context;
+pub mod credentials;
 pub mod error;
 pub mod fs;
 pub mod models;
@@ -22,6 +23,7 @@ pub mod util;
 mod internal;
 
 pub use context::ToolContext;
+pub use credentials::{CredentialLookup, CredentialResolver};
 pub use error::{ToolError, ToolResult};
 pub use output::ToolOutput;
 pub use path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
