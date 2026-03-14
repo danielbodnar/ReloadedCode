@@ -31,13 +31,119 @@ impl ResolvedSerdesModel {
     {
         let mut spec = String::with_capacity(provider_name.len() + model_name.len() + 1);
         spec.push_str(provider_name);
-        spec.push(':');
+        spec.push_str(":");
         spec.push_str(model_name);
         Self {
             model: Arc::new(model),
             spec: spec.into_boxed_str(),
         }
     }
+}
+
+/// Normalizes an API URL from the catalog by trimming whitespace and trailing slashes.
+///
+/// Returns `None` if the result is empty, allowing callers to treat missing/empty URLs
+/// uniformly as "use the provider's default endpoint".
+#[inline]
+fn normalized_api_url(api_url: &str) -> Option<&str> {
+    let trimmed = api_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// Checks if an environment variable name represents an authentication credential.
+///
+/// Providers list environment variable names in their catalog entry. This predicate
+/// identifies which ones contain secrets like API keys or tokens, used to extract
+/// credentials for model construction.
+#[inline]
+fn is_credential_env_var(env_var: &str) -> bool {
+    env_var.ends_with("_API_KEY")
+        || env_var.ends_with("_ACCESS_TOKEN")
+        || env_var.ends_with("_TOKEN")
+}
+
+/// Finds the first environment variable matching a predicate that has a non-empty value.
+///
+/// The catalog lists possible environment variable names for a provider. This function
+/// searches through them in order and returns the resolved value of the first one that
+/// both matches the predicate and is actually set.
+fn first_matching_env_value<P>(
+    credentials: &impl CredentialLookup,
+    env_vars: &[&str],
+    mut predicate: P,
+) -> Option<String>
+where
+    P: FnMut(&str) -> bool,
+{
+    env_vars.iter().copied().find_map(|env_var| {
+        if !predicate(env_var) {
+            return None;
+        }
+        credentials.resolve(env_var)
+    })
+}
+
+/// Formats a comma-separated list of environment variable names matching a predicate.
+///
+/// Used in error messages to tell users which environment variables they can set
+/// to provide a required value (credential, endpoint, etc.).
+fn matching_env_names<P>(env_vars: &[&str], mut predicate: P) -> String
+where
+    P: FnMut(&str) -> bool,
+{
+    let mut names = String::new();
+    for env_var in env_vars
+        .iter()
+        .copied()
+        .filter(|env_var| predicate(env_var))
+    {
+        if !names.is_empty() {
+            names.push_str(", ");
+        }
+        names.push_str(env_var);
+    }
+    if names.is_empty() {
+        names.push_str("<none listed in catalog>");
+    }
+    names
+}
+
+/// Requires an environment variable matching a predicate to have a value.
+///
+/// Returns the resolved value if found, otherwise returns a configuration error
+/// that lists the available environment variable names for user guidance.
+fn require_env_value<P>(
+    credentials: &impl CredentialLookup,
+    provider_key: &str,
+    provider_name: &str,
+    env_vars: &[&str],
+    kind: &str,
+    predicate: P,
+) -> Result<String, ModelError>
+where
+    P: Copy + Fn(&str) -> bool,
+{
+    if let Some(value) = first_matching_env_value(credentials, env_vars, predicate) {
+        return Ok(value);
+    }
+
+    Err(ModelError::configuration(format!(
+        "provider `{provider_key}` mapped to serdes `{provider_name}` requires {kind}; set one of: {}",
+        matching_env_names(env_vars, predicate)
+    )))
+}
+
+/// Creates an error for a provider whose feature flag is disabled at compile time.
+#[allow(dead_code)]
+#[inline]
+fn feature_disabled_error(feature: &str, provider_name: &str) -> ModelError {
+    ModelError::configuration(format!(
+        "provider `{provider_name}` is not enabled in llm-coding-tools-serdesai; rebuild with `--features {feature}`"
+    ))
 }
 
 /// Builds the concrete SerdesAI model for a validated runtime model selection.
@@ -170,170 +276,9 @@ pub(super) fn build_serdes_model(
     }
 }
 
-#[inline]
-fn normalized_api_url(api_url: &str) -> Option<&str> {
-    let trimmed = api_url.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
-
-#[inline]
-fn is_same_url(lhs: &str, rhs: &str) -> bool {
-    lhs.trim_end_matches('/') == rhs.trim_end_matches('/')
-}
-
-#[inline]
-fn is_credential_env_var(env_var: &str) -> bool {
-    env_var.ends_with("_API_KEY")
-        || env_var.ends_with("_ACCESS_TOKEN")
-        || env_var.ends_with("_TOKEN")
-}
-
-#[inline]
-fn is_resource_name_env_var(env_var: &str) -> bool {
-    env_var.ends_with("_RESOURCE_NAME")
-}
-
-#[inline]
-fn is_account_id_env_var(env_var: &str) -> bool {
-    env_var.ends_with("_ACCOUNT_ID")
-}
-
-#[inline]
-fn is_project_id_env_var(env_var: &str) -> bool {
-    env_var.ends_with("_PROJECT_ID")
-}
-
-fn first_matching_env_value<P>(
-    credentials: &impl CredentialLookup,
-    env_vars: &[&str],
-    mut predicate: P,
-) -> Option<String>
-where
-    P: FnMut(&str) -> bool,
-{
-    env_vars.iter().copied().find_map(|env_var| {
-        if !predicate(env_var) {
-            return None;
-        }
-        credentials.resolve(env_var)
-    })
-}
-
-fn matching_env_names<P>(env_vars: &[&str], mut predicate: P) -> String
-where
-    P: FnMut(&str) -> bool,
-{
-    let mut names = String::new();
-    for env_var in env_vars
-        .iter()
-        .copied()
-        .filter(|env_var| predicate(env_var))
-    {
-        if !names.is_empty() {
-            names.push_str(", ");
-        }
-        names.push_str(env_var);
-    }
-    if names.is_empty() {
-        names.push_str("<none listed in catalog>");
-    }
-    names
-}
-
-fn require_env_value<P>(
-    credentials: &impl CredentialLookup,
-    provider_key: &str,
-    provider_name: &str,
-    env_vars: &[&str],
-    kind: &str,
-    predicate: P,
-) -> Result<String, ModelError>
-where
-    P: Copy + Fn(&str) -> bool,
-{
-    if let Some(value) = first_matching_env_value(credentials, env_vars, predicate) {
-        return Ok(value);
-    }
-
-    Err(ModelError::configuration(format!(
-        "provider `{provider_key}` mapped to serdes `{provider_name}` requires {kind}; set one of: {}",
-        matching_env_names(env_vars, predicate)
-    )))
-}
-
-#[allow(dead_code)]
-#[inline]
-fn feature_disabled_error(feature: &str, provider_name: &str) -> ModelError {
-    ModelError::configuration(format!(
-        "provider `{provider_name}` is not enabled in llm-coding-tools-serdesai; rebuild with `--features {feature}`"
-    ))
-}
-
-fn validate_fixed_api_url(
-    provider_key: &str,
-    provider_name: &str,
-    api_url: Option<&str>,
-    expected_url: &str,
-) -> Result<(), ModelError> {
-    if let Some(api_url) = api_url
-        && !is_same_url(api_url, expected_url)
-    {
-        return Err(ModelError::configuration(format!(
-            "provider `{provider_key}` mapped to serdes `{provider_name}` uses catalog api url `{api_url}`, but the SerdesAI `{provider_name}` model does not support overriding its built-in endpoint `{expected_url}`"
-        )));
-    }
-    Ok(())
-}
-
-fn normalize_azure_endpoint(endpoint: &str) -> String {
-    let trimmed = endpoint.trim().trim_end_matches('/');
-    if let Some(stripped) = trimmed.strip_suffix("/openai/v1") {
-        stripped.to_owned()
-    } else if let Some(stripped) = trimmed.strip_suffix("/openai") {
-        stripped.to_owned()
-    } else {
-        trimmed.to_owned()
-    }
-}
-
-fn azure_endpoint_from_resource(resource_name: &str) -> String {
-    let trimmed = resource_name.trim().trim_end_matches('/');
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return normalize_azure_endpoint(trimmed);
-    }
-
-    let mut endpoint = String::with_capacity(trimmed.len() + 27);
-    endpoint.push_str("https://");
-    endpoint.push_str(trimmed);
-    endpoint.push_str(".openai.azure.com");
-    endpoint
-}
-
-fn resolve_azure_endpoint(
-    credentials: &impl CredentialLookup,
-    provider_key: &str,
-    api_url: Option<&str>,
-    env_vars: &[&str],
-) -> Result<String, ModelError> {
-    if let Some(api_url) = api_url {
-        return Ok(normalize_azure_endpoint(api_url));
-    }
-
-    if let Some(resource_name) =
-        first_matching_env_value(credentials, env_vars, is_resource_name_env_var)
-    {
-        return Ok(azure_endpoint_from_resource(&resource_name));
-    }
-
-    Err(ModelError::configuration(format!(
-        "provider `{provider_key}` mapped to serdes `azure` requires an Azure endpoint or resource name; set one of: {}",
-        matching_env_names(env_vars, is_resource_name_env_var)
-    )))
-}
+// =============================================================================
+// OpenAI (Chat and Responses)
+// =============================================================================
 
 fn build_openai_chat(
     provider_key: &str,
@@ -403,6 +348,10 @@ fn build_openai_responses(
     }
 }
 
+// =============================================================================
+// Anthropic
+// =============================================================================
+
 fn build_anthropic(
     provider_key: &str,
     model_name: &str,
@@ -432,6 +381,10 @@ fn build_anthropic(
         Err(feature_disabled_error("anthropic", "anthropic"))
     }
 }
+
+// =============================================================================
+// Google
+// =============================================================================
 
 fn build_google(
     provider_key: &str,
@@ -463,6 +416,40 @@ fn build_google(
     }
 }
 
+// =============================================================================
+// Groq (fixed endpoint - no URL override allowed)
+// =============================================================================
+
+/// Compares two URLs for equality, ignoring trailing slashes.
+///
+/// URLs often include or omit trailing slashes inconsistently, but represent the same
+/// endpoint. This normalizes both sides before comparison.
+#[inline]
+fn urls_equal_ignoring_slash(lhs: &str, rhs: &str) -> bool {
+    lhs.trim_end_matches('/') == rhs.trim_end_matches('/')
+}
+
+/// Validates that a provider with a fixed endpoint isn't configured with a different URL.
+///
+/// Some providers (Groq, Cohere, OpenRouter) have hardcoded base URLs in their model
+/// implementations and don't support custom endpoints. If the catalog specifies a URL
+/// that differs from the expected one, this returns a configuration error.
+fn validate_fixed_endpoint(
+    provider_key: &str,
+    provider_name: &str,
+    api_url: Option<&str>,
+    expected_url: &str,
+) -> Result<(), ModelError> {
+    if let Some(api_url) = api_url
+        && !urls_equal_ignoring_slash(api_url, expected_url)
+    {
+        return Err(ModelError::configuration(format!(
+            "provider `{provider_key}` mapped to serdes `{provider_name}` uses catalog api url `{api_url}`, but the SerdesAI `{provider_name}` model does not support overriding its built-in endpoint `{expected_url}`"
+        )));
+    }
+    Ok(())
+}
+
 fn build_groq(
     provider_key: &str,
     model_name: &str,
@@ -472,7 +459,7 @@ fn build_groq(
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "groq")]
     {
-        validate_fixed_api_url(
+        validate_fixed_endpoint(
             provider_key,
             "groq",
             api_url,
@@ -498,6 +485,10 @@ fn build_groq(
         Err(feature_disabled_error("groq", "groq"))
     }
 }
+
+// =============================================================================
+// Mistral
+// =============================================================================
 
 fn build_mistral(
     provider_key: &str,
@@ -529,6 +520,10 @@ fn build_mistral(
     }
 }
 
+// =============================================================================
+// Ollama
+// =============================================================================
+
 fn build_ollama(
     provider_key: &str,
     model_name: &str,
@@ -551,6 +546,10 @@ fn build_ollama(
         Err(feature_disabled_error("ollama", "ollama"))
     }
 }
+
+// =============================================================================
+// Bedrock
+// =============================================================================
 
 /// Build a Bedrock model.
 ///
@@ -579,6 +578,84 @@ fn build_bedrock(
         let _ = (provider_key, model_name, api_url, env_vars, credentials);
         Err(feature_disabled_error("bedrock", "bedrock"))
     }
+}
+
+// =============================================================================
+// Azure OpenAI
+// =============================================================================
+
+/// Checks if an environment variable name represents an Azure resource name.
+///
+/// Azure OpenAI can be identified by either a full endpoint URL or just the resource
+/// name (e.g., "my-resource" becomes "https://my-resource.openai.azure.com").
+/// This identifies catalog env vars that contain resource names rather than full URLs.
+#[inline]
+fn is_azure_resource_name_env_var(env_var: &str) -> bool {
+    env_var.ends_with("_RESOURCE_NAME")
+}
+
+/// Normalizes an Azure endpoint URL by removing common redundant path suffixes.
+///
+/// Users may copy endpoints from the Azure portal that include `/openai` or `/openai/v1`
+/// suffixes, but the Azure SDK constructs the full path internally as
+/// `{endpoint}/openai/deployments/{deployment}`. This function strips those suffixes
+/// to prevent double paths like `/openai/openai/deployments/...`.
+fn normalize_azure_endpoint(endpoint: &str) -> String {
+    let trimmed = endpoint.trim().trim_end_matches('/');
+    if let Some(stripped) = trimmed.strip_suffix("/openai/v1") {
+        stripped.to_owned()
+    } else if let Some(stripped) = trimmed.strip_suffix("/openai") {
+        stripped.to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+/// Constructs a full Azure endpoint URL from a resource name.
+///
+/// If the input is already a full URL (starts with http:// or https://), it's normalized.
+/// Otherwise, the resource name is converted to the standard Azure format:
+/// `https://{resource_name}.openai.azure.com`
+fn azure_endpoint_from_resource(resource_name: &str) -> String {
+    let trimmed = resource_name.trim().trim_end_matches('/');
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return normalize_azure_endpoint(trimmed);
+    }
+
+    let mut endpoint = String::with_capacity(trimmed.len() + 27);
+    endpoint.push_str("https://");
+    endpoint.push_str(trimmed);
+    endpoint.push_str(".openai.azure.com");
+    endpoint
+}
+
+/// Resolves the Azure endpoint from catalog configuration or environment variables.
+///
+/// Priority:
+/// 1. Explicit `api_url` from catalog (normalized)
+/// 2. `*_RESOURCE_NAME` environment variable (converted to full URL)
+///
+/// Returns an error if neither is available.
+fn resolve_azure_endpoint(
+    credentials: &impl CredentialLookup,
+    provider_key: &str,
+    api_url: Option<&str>,
+    env_vars: &[&str],
+) -> Result<String, ModelError> {
+    if let Some(api_url) = api_url {
+        return Ok(normalize_azure_endpoint(api_url));
+    }
+
+    if let Some(resource_name) =
+        first_matching_env_value(credentials, env_vars, is_azure_resource_name_env_var)
+    {
+        return Ok(azure_endpoint_from_resource(&resource_name));
+    }
+
+    Err(ModelError::configuration(format!(
+        "provider `{provider_key}` mapped to serdes `azure` requires an Azure endpoint or resource name; set one of: {}",
+        matching_env_names(env_vars, is_azure_resource_name_env_var)
+    )))
 }
 
 fn build_azure(
@@ -617,6 +694,10 @@ fn build_azure(
     }
 }
 
+// =============================================================================
+// OpenRouter (fixed endpoint - no URL override allowed)
+// =============================================================================
+
 fn build_openrouter(
     provider_key: &str,
     model_name: &str,
@@ -626,7 +707,7 @@ fn build_openrouter(
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "openrouter")]
     {
-        validate_fixed_api_url(provider_key, "openrouter", api_url, OPENROUTER_BASE_URL)?;
+        validate_fixed_endpoint(provider_key, "openrouter", api_url, OPENROUTER_BASE_URL)?;
         let api_key = require_env_value(
             credentials,
             provider_key,
@@ -647,6 +728,10 @@ fn build_openrouter(
         Err(feature_disabled_error("openrouter", "openrouter"))
     }
 }
+
+// =============================================================================
+// HuggingFace
+// =============================================================================
 
 fn build_huggingface(
     provider_key: &str,
@@ -678,6 +763,10 @@ fn build_huggingface(
     }
 }
 
+// =============================================================================
+// Cohere (fixed endpoint - no URL override allowed)
+// =============================================================================
+
 fn build_cohere(
     provider_key: &str,
     model_name: &str,
@@ -687,7 +776,7 @@ fn build_cohere(
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "cohere")]
     {
-        validate_fixed_api_url(provider_key, "cohere", api_url, COHERE_BASE_URL)?;
+        validate_fixed_endpoint(provider_key, "cohere", api_url, COHERE_BASE_URL)?;
         let api_key = require_env_value(
             credentials,
             provider_key,
@@ -707,6 +796,19 @@ fn build_cohere(
         let _ = (provider_key, model_name, api_url, env_vars);
         Err(feature_disabled_error("cohere", "cohere"))
     }
+}
+
+// =============================================================================
+// ChatGPT OAuth
+// =============================================================================
+
+/// Checks if an environment variable name represents a ChatGPT OAuth account ID.
+///
+/// ChatGPT OAuth supports multiple accounts; this identifies env vars containing
+/// an account ID to associate requests with a specific account.
+#[inline]
+fn is_chatgpt_oauth_account_id_env_var(env_var: &str) -> bool {
+    env_var.ends_with("_ACCOUNT_ID")
 }
 
 fn build_chatgpt_oauth(
@@ -734,7 +836,7 @@ fn build_chatgpt_oauth(
             });
         }
         if let Some(account_id) =
-            first_matching_env_value(credentials, env_vars, is_account_id_env_var)
+            first_matching_env_value(credentials, env_vars, is_chatgpt_oauth_account_id_env_var)
         {
             model = model.with_account_id(account_id);
         }
@@ -746,6 +848,10 @@ fn build_chatgpt_oauth(
         Err(feature_disabled_error("chatgpt-oauth", "chatgpt-oauth"))
     }
 }
+
+// =============================================================================
+// Claude Code OAuth
+// =============================================================================
 
 fn build_claude_code_oauth(
     provider_key: &str,
@@ -787,6 +893,19 @@ fn build_claude_code_oauth(
     }
 }
 
+// =============================================================================
+// Antigravity
+// =============================================================================
+
+/// Checks if an environment variable name represents an Antigravity project ID.
+///
+/// Antigravity organizes resources into projects; this identifies env vars containing
+/// the project ID for scoping API requests. Falls back to a default if not provided.
+#[inline]
+fn is_antigravity_project_id_env_var(env_var: &str) -> bool {
+    env_var.ends_with("_PROJECT_ID")
+}
+
 fn build_antigravity(
     provider_key: &str,
     model_name: &str,
@@ -804,7 +923,7 @@ fn build_antigravity(
             "an access token",
             is_credential_env_var,
         )?;
-        let project_id = first_matching_env_value(credentials, env_vars, is_project_id_env_var)
+        let project_id = first_matching_env_value(credentials, env_vars, is_antigravity_project_id_env_var)
             .unwrap_or_else(|| serdes_ai_models::antigravity::DEFAULT_PROJECT_ID.to_owned());
         let mut model =
             serdes_ai_models::AntigravityModel::new(model_name, access_token, project_id);
