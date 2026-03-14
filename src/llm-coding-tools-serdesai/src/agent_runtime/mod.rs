@@ -7,6 +7,7 @@
 
 mod build;
 mod model;
+mod provider_bridge;
 
 pub use build::{AgentBuildError, AgentRuntimeExt};
 pub use llm_coding_tools_agents::{

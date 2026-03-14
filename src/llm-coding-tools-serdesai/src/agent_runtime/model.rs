@@ -1,33 +1,29 @@
-//! Resolve models for SerdesAI agents.
+//! Resolve effective runtime model selections for SerdesAI agents.
 //!
-//! Converts an agent's model selection into the `provider:model` format that SerdesAI expects.
-//! The model is validated against a provided catalog to ensure it exists.
+//! Converts an agent's model selection into a validated `provider:model` format.
+//! The model is resolved against a provided catalog to ensure it exists and is
+//! properly configured.
 
 use llm_coding_tools_agents::{
-    resolve_model_with_catalog, AgentConfig, AgentDefaults, ModelResolutionError,
+    AgentConfig, AgentDefaults, ModelResolutionError, ResolvedModel, resolve_model_with_catalog,
 };
 use llm_coding_tools_core::models::ModelCatalog;
-use serdes_ai::ModelConfig;
 
-/// Resolves the model for an agent and returns a SerdesAI-compatible config.
+/// Resolves the effective runtime model for an agent and validates it against the catalog.
 ///
-/// Returns an error if the model is missing, malformed, or not in the catalog.
-pub(super) fn resolve_model_config(
+/// Returns an error if the model is missing, malformed, or not found in the catalog.
+#[inline]
+pub(super) fn resolve_model(
     catalog: &ModelCatalog,
     defaults: &AgentDefaults,
     agent: &AgentConfig,
-) -> Result<ModelConfig, ModelResolutionError> {
-    let resolved = resolve_model_with_catalog(catalog, defaults, agent)?;
-    Ok(ModelConfig::new(format!(
-        "{}:{}",
-        resolved.provider(),
-        resolved.model()
-    )))
+) -> Result<ResolvedModel, ModelResolutionError> {
+    resolve_model_with_catalog(catalog, defaults, agent)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_model_config;
+    use super::resolve_model;
     use ahash::AHashMap;
     use indexmap::IndexMap;
     use llm_coding_tools_agents::{AgentConfig, AgentDefaults, AgentMode, ModelResolutionError};
@@ -98,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_config_converts_to_provider_colon_model_format() {
+    fn resolve_model_accepts_valid_provider_model_pairs() {
         // Catalog with one provider and model
         let catalog = build_catalog(
             vec![(
@@ -115,7 +111,6 @@ mod tests {
                 model_info(128_000, 16_384),
             )],
         );
-
         // Agent uses default model, no override
         let defaults = AgentDefaults {
             model: Some("openrouter/openai/gpt-4.1-mini".into()),
@@ -124,14 +119,14 @@ mod tests {
         };
         let agent = config_with_model("planner", None);
 
-        // Should resolve to "provider:model" format
-        let model_config =
-            resolve_model_config(&catalog, &defaults, &agent).expect("should resolve");
-        assert_eq!(model_config.spec, "openrouter:openai/gpt-4.1-mini");
+        // Should resolve to provider and model components
+        let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+        assert_eq!(resolved.provider(), "openrouter");
+        assert_eq!(resolved.model(), "openai/gpt-4.1-mini");
     }
 
     #[test]
-    fn resolve_model_config_preserves_model_resolution_errors() {
+    fn resolve_model_preserves_model_resolution_errors() {
         // Catalog with openai provider and gpt-4o model
         let catalog = build_catalog(
             vec![(
@@ -148,9 +143,9 @@ mod tests {
         // Agent requests a model that doesn't exist in catalog
         let defaults = AgentDefaults::default();
         let agent = config_with_model("planner", Some("openai/gpt-4.1-mini"));
-
         // Should return unknown model error with details
-        let err = resolve_model_config(&catalog, &defaults, &agent).expect_err("should fail");
+        let err = resolve_model(&catalog, &defaults, &agent).expect_err("should fail");
+
         match err {
             ModelResolutionError::UnknownModel {
                 location,

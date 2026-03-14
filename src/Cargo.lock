@@ -3069,7 +3069,6 @@ dependencies = [
  "futures",
  "serdes-ai-agent",
  "serdes-ai-core",
- "serdes-ai-macros",
  "serdes-ai-models",
  "serdes-ai-output",
  "serdes-ai-providers",
@@ -3163,6 +3162,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

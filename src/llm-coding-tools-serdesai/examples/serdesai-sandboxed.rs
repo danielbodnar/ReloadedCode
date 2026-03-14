@@ -14,8 +14,8 @@ use llm_coding_tools_serdesai::AllowedPathResolver;
 use llm_coding_tools_serdesai::SystemPromptBuilder;
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-use serdes_ai::models::openai::OpenAIChatModel;
 use serdes_ai::prelude::*;
+use serdes_ai_models::OpenAIChatModel;
 use std::fmt::Write;
 
 // Set your OpenAI API key here or via OPENAI_API_KEY environment variable.

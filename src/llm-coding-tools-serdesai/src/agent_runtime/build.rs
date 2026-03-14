@@ -3,7 +3,8 @@
 //! Use [`AgentRuntimeExt::build`] to create a runnable agent by name.
 //! The builder resolves the model, filters tools by permissions, and sets up the system prompt.
 
-use super::model::resolve_model_config;
+use super::model::resolve_model;
+use super::provider_bridge::build_serdes_model;
 use crate::agent_ext::AgentBuilderExt;
 use crate::{
     BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder, WebFetchTool, WriteTool,
@@ -15,6 +16,7 @@ use llm_coding_tools_agents::{
 use llm_coding_tools_core::models::ModelCatalog;
 use llm_coding_tools_core::permissions::Ruleset;
 use serdes_ai::{Agent, AgentBuilder};
+use serdes_ai_models::BoxedModel;
 
 /// SerdesAI-specific runtime extension methods.
 pub trait AgentRuntimeExt {
@@ -33,18 +35,21 @@ impl AgentRuntimeExt for AgentRuntime {
         model_catalog: &ModelCatalog,
     ) -> Result<Agent<(), String>, AgentBuildError> {
         let prepared = prepare_build(self, name, model_catalog)?;
-        let builder = AgentBuilder::<(), String>::from_config(prepared.model_config.clone())?;
+        let builder = AgentBuilder::<(), String>::from_arc(prepared.model.clone());
         Ok(finish_builder(builder, &prepared)?.build())
     }
 }
 
 /// Resolved build parameters ready for agent construction.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct PreparedBuild {
     /// Agent name for [`AgentBuilder::name`].
     agent_name: Box<str>,
-    /// Resolved `provider:model` specification.
-    model_config: serdes_ai::ModelConfig,
+    /// Concrete SerdesAI model.
+    model: BoxedModel,
+    /// Normalized SerdesAI `provider:model` specification for diagnostics.
+    #[cfg_attr(not(test), allow(dead_code))]
+    model_spec: Box<str>,
     /// Agent system prompt template.
     prompt: Box<str>,
     /// Sampling temperature, if specified at agent or defaults level.
@@ -65,10 +70,12 @@ fn prepare_build(
         .catalog()
         .by_name(name)
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
-    let model_config = resolve_model_config(model_catalog, runtime.defaults(), agent)?;
+    let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
+    let serdes_model = build_serdes_model(model_catalog, &resolved)?;
     Ok(PreparedBuild {
         agent_name: agent.name.clone(),
-        model_config,
+        model: serdes_model.model,
+        model_spec: serdes_model.spec,
         prompt: agent.prompt.clone(),
         temperature: agent
             .temperature
@@ -152,7 +159,7 @@ pub enum AgentBuildError {
     ModelResolution(#[from] ModelResolutionError),
     /// Initializing the SerdesAI model failed.
     #[error("failed to initialize model: {0}")]
-    ModelInit(#[from] serdes_ai::models::ModelError),
+    ModelInit(#[from] serdes_ai_models::ModelError),
 }
 
 #[cfg(test)]
@@ -172,6 +179,44 @@ mod tests {
     use serdes_ai::AgentBuilder;
     use serdes_ai_models::MockModel;
     use std::collections::HashSet;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(updates: &[(&'static str, Option<&'static str>)]) -> Self {
+            let lock = ENV_LOCK.lock().expect("env lock should be available");
+            let mut saved = Vec::with_capacity(updates.len());
+            for (name, value) in updates {
+                saved.push((*name, std::env::var(name).ok()));
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(name, value),
+                        None => std::env::remove_var(name),
+                    }
+                }
+            }
+            Self { _lock: lock, saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in self.saved.drain(..).rev() {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(name, value),
+                        None => std::env::remove_var(name),
+                    }
+                }
+            }
+        }
+    }
 
     /// Builds an agent using a mock model instead of a real one.
     fn build_with_mock(
@@ -254,18 +299,17 @@ mod tests {
             temperature: Some(1.0),
             top_p: Some(0.95),
         };
-        let models: Vec<ProviderModelSource<'_>> = [
-            ("openai/gpt-4.1-mini", info.clone()),
-            ("openai/gpt-4o", info),
-        ]
-        .into_iter()
-        .map(|(key, i)| ProviderModelSource::new(ProviderIdx::new(0), key, i))
-        .collect();
+        let models: Vec<ProviderModelSource<'_>> =
+            [("openai/gpt-4.1-mini", info), ("openai/gpt-4o", info)]
+                .into_iter()
+                .map(|(key, i)| ProviderModelSource::new(ProviderIdx::new(0), key, i))
+                .collect();
         ModelCatalog::build(&providers, &models).expect("catalog fixture should build")
     }
 
     #[test]
     fn build_filters_tools_by_permission() {
+        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
         let catalog = catalog();
 
         // Create runtime with two agents: one with allowed tools, one with none
@@ -301,6 +345,7 @@ mod tests {
 
     #[test]
     fn build_uses_agent_model_and_sampling_over_defaults() {
+        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
         let catalog = catalog();
 
         // Agent overrides model (gpt-4o) and sampling (0.4, 0.8) vs defaults (gpt-4.1-mini, 1.0, 0.95)
@@ -322,13 +367,14 @@ mod tests {
 
         // Agent-level settings win over defaults
         let prepared = prepare_build(&runtime, "planner", &catalog).expect("should succeed");
-        assert_eq!(prepared.model_config.spec, "openrouter:openai/gpt-4o");
+        assert_eq!(prepared.model_spec.as_ref(), "openrouter:openai/gpt-4o");
         assert!((prepared.temperature.unwrap() - 0.4).abs() < 1e-6);
         assert!((prepared.top_p.unwrap() - 0.8).abs() < 1e-6);
     }
 
     #[test]
     fn build_handles_catalog_edge_cases() {
+        let _env = EnvGuard::new(&[("OPENROUTER_API_KEY", Some("openrouter-key"))]);
         let catalog = catalog();
 
         // Unknown agent name returns clear error
@@ -339,7 +385,9 @@ mod tests {
                 top_p: None,
             })
             .build();
-        let err = prepare_build(&runtime, "missing", &catalog).expect_err("should fail");
+        let err = prepare_build(&runtime, "missing", &catalog)
+            .err()
+            .expect("should fail");
         assert!(matches!(err, AgentBuildError::UnknownAgent { name } if &*name == "missing"));
 
         // Duplicate agent names: catalog retains the last entry
@@ -365,7 +413,7 @@ mod tests {
             .defaults(AgentDefaults::default())
             .build();
         let prepared = prepare_build(&runtime, "dupe", &catalog).expect("should succeed");
-        assert_eq!(prepared.model_config.spec, "openrouter:openai/gpt-4o");
+        assert_eq!(prepared.model_spec.as_ref(), "openrouter:openai/gpt-4o");
         let agent = build_with_mock(&prepared, "dupe");
         assert_eq!(agent.tools().len(), 1);
         assert_eq!(agent.tools()[0].name(), tool_names::GLOB);

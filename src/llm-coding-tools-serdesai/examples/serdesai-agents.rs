@@ -14,23 +14,19 @@ use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeExt};
 use std::path::PathBuf;
 
 const AGENT_NAME: &str = "basic/file-reader";
-
-// Set your OpenAI API key here or via OPENAI_API_KEY environment variable.
-/// Fallback API key if env var is not set. Leave empty to require env var.
-const OPENAI_API_KEY: &str = "";
-const OPENAI_BASE_URL: &str = "https://api.synthetic.new/openai/v1";
 const MODEL_ID: &str = "synthetic/hf:zai-org/GLM-4.7";
+const PROVIDER_ENV_VAR: &str = "SYNTHETIC_API_KEY";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let examples_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
     let readme_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md");
 
-    // SAFETY: Setting env vars before async runtime operations; single-threaded startup.
-    // serdes-ai's OpenAI provider reads OPENAI_BASE_URL to override the default endpoint.
-    unsafe {
-        std::env::set_var("OPENAI_API_KEY", OPENAI_API_KEY);
-        std::env::set_var("OPENAI_BASE_URL", OPENAI_BASE_URL);
+    if std::env::var(PROVIDER_ENV_VAR).map_or(true, |value| value.is_empty()) {
+        return Err(format!(
+            "set {PROVIDER_ENV_VAR} before running this example; the runtime resolves provider credentials from the models.dev catalog"
+        )
+        .into());
     }
 
     // Load model catalog from models.dev (online-first with local cache fallback)

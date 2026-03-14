@@ -12,8 +12,8 @@ use futures::StreamExt;
 use llm_coding_tools_serdesai::absolute::{GlobTool, GrepTool, ReadTool};
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::{BashTool, SystemPromptBuilder, WebFetchTool, create_todo_tools};
-use serdes_ai::models::openai::OpenAIChatModel;
 use serdes_ai::prelude::*;
+use serdes_ai_models::OpenAIChatModel;
 use std::fmt::Write;
 
 // Set your OpenAI API key here or via OPENAI_API_KEY environment variable.

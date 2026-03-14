@@ -9,12 +9,30 @@ readme = "README.md"
 include = ["src/**/*", "examples/**/*", "README.md"]
 
 [features]
-default = ["openai"]
+default = ["full"]
+full = [
+    "openai",
+    "anthropic",
+    "azure",
+    "bedrock",
+    "chatgpt-oauth",
+    "claude-code-oauth",
+    "cohere",
+    "gemini",
+    "google",
+    "groq",
+    "huggingface",
+    "mistral",
+    "ollama",
+    "openrouter",
+    "antigravity",
+]
 # Provider features - pass through to serdes-ai-models
 openai = ["serdes-ai-models/openai"]
 anthropic = ["serdes-ai-models/anthropic"]
 azure = ["serdes-ai-models/azure"]
 bedrock = ["serdes-ai-models/bedrock"]
+antigravity = ["serdes-ai-models/antigravity"]
 chatgpt-oauth = ["serdes-ai-models/chatgpt-oauth"]
 claude-code-oauth = ["serdes-ai-models/claude-code-oauth"]
 cohere = ["serdes-ai-models/cohere"]
@@ -36,7 +54,7 @@ llm-coding-tools-core = { version = "0.2.0", path = "../llm-coding-tools-core", 
 llm-coding-tools-agents = { version = "0.1.0", path = "../llm-coding-tools-agents" }
 
 # serdes-ai provides Tool trait, ToolDefinition, RunContext
-serdes-ai = "0.2.6"
+serdes-ai = { version = "0.2.6", default-features = false }
 serdes-ai-models = { version = "0.2.6", default-features = false }
 serdes-ai-streaming = "0.2"
 futures = "0.3"
