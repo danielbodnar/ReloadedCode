@@ -187,7 +187,33 @@ pub fn resolve_model_with_catalog(
     })
 }
 
-/// Extracts provider and model parts, checking agent override first.
+/// Resolves the effective provider and model for an agent.
+///
+/// Checks sources in precedence order: agent-level override first, then runtime defaults.
+/// Returns the parsed `(provider, model)` tuple along with a string identifying which
+/// source was used (`"agent override"` or `"runtime default"`).
+///
+/// # Examples
+///
+/// ```text
+/// Agent has its own model set: "openai/gpt-4o"
+/// Defaults also has a model set: "anthropic/claude-3-5-sonnet"
+/// Result: ("openai", "gpt-4o", "agent override")
+/// The agent's model wins because it was set directly.
+/// ```
+///
+/// ```text
+/// Agent has no model set.
+/// Defaults has model set: "anthropic/claude-3-5-sonnet"
+/// Result: ("anthropic", "claude-3-5-sonnet", "runtime default")
+/// Falls back to the default since agent didn't specify one.
+/// ```
+///
+/// # Errors
+///
+/// Returns [`ModelResolutionError::MalformedModelIdentifier`] if the model string
+/// from either source cannot be parsed (missing `/` separator).
+/// Returns [`ModelResolutionError::MissingEffectiveModel`] if neither source provides a model.
 fn get_provider_model<'a>(
     defaults: &'a super::state::AgentDefaults,
     agent: &'a AgentConfig,
@@ -258,7 +284,7 @@ mod tests {
             modalities: Modality::TEXT,
             max_input,
             max_output,
-            temperature: Some(0.2),
+            temperature: Some(1.0),
             top_p: Some(0.95),
         }
     }

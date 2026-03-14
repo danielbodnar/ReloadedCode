@@ -1,0 +1,373 @@
+//! Build SerdesAI agents from an [`AgentRuntime`] catalog.
+//!
+//! Use [`AgentRuntimeExt::build`] to create a runnable agent by name.
+//! The builder resolves the model, filters tools by permissions, and sets up the system prompt.
+
+use super::model::resolve_model_config;
+use crate::agent_ext::AgentBuilderExt;
+use crate::{
+    BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder, WebFetchTool, WriteTool,
+    create_todo_tools,
+};
+use llm_coding_tools_agents::{
+    AgentRuntime, ModelResolutionError, RulesetExt, ToolCatalogEntry, ToolCatalogKind,
+};
+use llm_coding_tools_core::models::ModelCatalog;
+use llm_coding_tools_core::permissions::Ruleset;
+use serdes_ai::{Agent, AgentBuilder};
+
+/// SerdesAI-specific runtime extension methods.
+pub trait AgentRuntimeExt {
+    /// Builds a runnable SerdesAI agent for the named catalog entry.
+    fn build(
+        &self,
+        name: &str,
+        model_catalog: &ModelCatalog,
+    ) -> Result<Agent<(), String>, AgentBuildError>;
+}
+
+impl AgentRuntimeExt for AgentRuntime {
+    fn build(
+        &self,
+        name: &str,
+        model_catalog: &ModelCatalog,
+    ) -> Result<Agent<(), String>, AgentBuildError> {
+        let prepared = prepare_build(self, name, model_catalog)?;
+        let builder = AgentBuilder::<(), String>::from_config(prepared.model_config.clone())?;
+        Ok(finish_builder(builder, &prepared)?.build())
+    }
+}
+
+/// Resolved build parameters ready for agent construction.
+#[derive(Debug, Clone)]
+struct PreparedBuild {
+    /// Agent name for [`AgentBuilder::name`].
+    agent_name: Box<str>,
+    /// Resolved `provider:model` specification.
+    model_config: serdes_ai::ModelConfig,
+    /// Agent system prompt template.
+    prompt: Box<str>,
+    /// Sampling temperature, if specified at agent or defaults level.
+    temperature: Option<f64>,
+    /// Top-p sampling parameter, if specified at agent or defaults level.
+    top_p: Option<f64>,
+    /// Permission-filtered tool entries to materialize.
+    tools: Vec<ToolCatalogEntry>,
+}
+
+/// Resolves model configuration and collects build parameters for an agent.
+fn prepare_build(
+    runtime: &AgentRuntime,
+    name: &str,
+    model_catalog: &ModelCatalog,
+) -> Result<PreparedBuild, AgentBuildError> {
+    let agent = runtime
+        .catalog()
+        .by_name(name)
+        .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
+    let model_config = resolve_model_config(model_catalog, runtime.defaults(), agent)?;
+    Ok(PreparedBuild {
+        agent_name: agent.name.clone(),
+        model_config,
+        prompt: agent.prompt.clone(),
+        temperature: agent
+            .temperature
+            .or(runtime.defaults().temperature)
+            .map(f64::from),
+        top_p: agent.top_p.or(runtime.defaults().top_p).map(f64::from),
+        tools: Ruleset::from_permission_config(&agent.permission)
+            .filter_allowed_tools(runtime.tools()),
+    })
+}
+
+/// Configures an [`AgentBuilder`] with name, prompt, tools, and sampling parameters.
+///
+/// Returns [`AgentBuildError::UnsupportedToolKind`] if a tool kind cannot be materialized.
+fn finish_builder(
+    mut builder: AgentBuilder<(), String>,
+    prepared: &PreparedBuild,
+) -> Result<AgentBuilder<(), String>, AgentBuildError> {
+    let mut prompt_builder = SystemPromptBuilder::new().system_prompt(prepared.prompt.as_ref());
+    let (todo_read, todo_write, _todo_state) = create_todo_tools();
+
+    builder = builder.name(prepared.agent_name.as_ref());
+    if let Some(temperature) = prepared.temperature {
+        builder = builder.temperature(temperature);
+    }
+    if let Some(top_p) = prepared.top_p {
+        builder = builder.top_p(top_p);
+    }
+
+    for entry in &prepared.tools {
+        match entry.kind {
+            ToolCatalogKind::Read => {
+                builder = builder.tool(prompt_builder.track(ReadTool::<true>::new()))
+            }
+            ToolCatalogKind::Write => {
+                builder = builder.tool(prompt_builder.track(WriteTool::new()))
+            }
+            ToolCatalogKind::Edit => builder = builder.tool(prompt_builder.track(EditTool::new())),
+            ToolCatalogKind::Glob => builder = builder.tool(prompt_builder.track(GlobTool::new())),
+            ToolCatalogKind::Grep => {
+                builder = builder.tool(prompt_builder.track(GrepTool::<true>::new()))
+            }
+            ToolCatalogKind::Bash => builder = builder.tool(prompt_builder.track(BashTool::new())),
+            ToolCatalogKind::WebFetch => {
+                builder = builder.tool(prompt_builder.track(WebFetchTool::new()))
+            }
+            ToolCatalogKind::TodoRead => {
+                builder = builder.tool(prompt_builder.track(todo_read.clone()))
+            }
+            ToolCatalogKind::TodoWrite => {
+                builder = builder.tool(prompt_builder.track(todo_write.clone()))
+            }
+            _ => {
+                return Err(AgentBuildError::UnsupportedToolKind {
+                    name: entry.name.into(),
+                });
+            }
+        }
+    }
+
+    Ok(builder.system_prompt(prompt_builder.build()))
+}
+
+/// Error returned when a build cannot produce a SerdesAI agent.
+#[derive(Debug, thiserror::Error)]
+pub enum AgentBuildError {
+    /// The requested agent name was not found in the runtime catalog.
+    #[error("unknown agent `{name}`")]
+    UnknownAgent {
+        /// The missing agent name.
+        name: Box<str>,
+    },
+    /// The runtime contains a tool kind this adapter cannot materialize.
+    #[error("tool `{name}` is not supported")]
+    UnsupportedToolKind {
+        /// The unsupported tool name.
+        name: Box<str>,
+    },
+    /// Resolving or validating the model configuration failed.
+    #[error(transparent)]
+    ModelResolution(#[from] ModelResolutionError),
+    /// Initializing the SerdesAI model failed.
+    #[error("failed to initialize model: {0}")]
+    ModelInit(#[from] serdes_ai::models::ModelError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AgentBuildError, prepare_build};
+    use ahash::AHashMap;
+    use indexmap::IndexMap;
+    use llm_coding_tools_agents::{
+        AgentCatalog, AgentConfig, AgentDefaults, AgentMode, AgentRuntimeBuilder, PermissionRule,
+    };
+    use llm_coding_tools_core::models::{
+        Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
+        ProviderSource, ProviderType,
+    };
+    use llm_coding_tools_core::permissions::PermissionAction;
+    use llm_coding_tools_core::tool_names;
+    use serdes_ai::AgentBuilder;
+    use serdes_ai_models::MockModel;
+    use std::collections::HashSet;
+
+    /// Builds an agent using a mock model instead of a real one.
+    fn build_with_mock(
+        prepared: &super::PreparedBuild,
+        name: &str,
+    ) -> serdes_ai::Agent<(), String> {
+        super::finish_builder(
+            AgentBuilder::<(), String>::new(MockModel::new(name)),
+            prepared,
+        )
+        .expect("build should succeed")
+        .build()
+    }
+
+    /// Creates a minimal agent config with no model or sampling overrides.
+    fn agent(
+        name: &str,
+        permission: IndexMap<String, PermissionRule>,
+        prompt: &str,
+    ) -> AgentConfig {
+        AgentConfig {
+            name: name.into(),
+            mode: AgentMode::All,
+            description: format!("{name} description").into(),
+            model: None,
+            hidden: false,
+            temperature: None,
+            top_p: None,
+            permission,
+            options: AHashMap::new(),
+            prompt: prompt.into(),
+        }
+    }
+
+    /// Creates an agent config with explicit model and sampling settings.
+    fn agent_with_sampling(
+        name: &str,
+        model: &str,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        permission: IndexMap<String, PermissionRule>,
+        prompt: &str,
+    ) -> AgentConfig {
+        AgentConfig {
+            name: name.into(),
+            mode: AgentMode::All,
+            description: format!("{name} description").into(),
+            model: Some(model.into()),
+            hidden: false,
+            temperature,
+            top_p,
+            permission,
+            options: AHashMap::new(),
+            prompt: prompt.into(),
+        }
+    }
+
+    /// Creates permission rules that allow the specified tools.
+    fn allow_tools(names: &[&str]) -> IndexMap<String, PermissionRule> {
+        names
+            .iter()
+            .map(|n| ((*n).into(), PermissionRule::Action(PermissionAction::Allow)))
+            .collect()
+    }
+
+    /// Creates a model catalog with two OpenRouter models for testing.
+    fn catalog() -> ModelCatalog {
+        let providers = vec![ProviderSource::new(
+            "openrouter",
+            ProviderInfo {
+                api_url: "https://openrouter.ai/api/v1".into(),
+                env_vars: vec!["OPENROUTER_API_KEY".into()],
+                api_type: ProviderType::OpenRouter,
+            },
+        )];
+        let info = ModelInfo {
+            modalities: Modality::TEXT,
+            max_input: 128_000,
+            max_output: 16_384,
+            temperature: Some(1.0),
+            top_p: Some(0.95),
+        };
+        let models: Vec<ProviderModelSource<'_>> = [
+            ("openai/gpt-4.1-mini", info.clone()),
+            ("openai/gpt-4o", info),
+        ]
+        .into_iter()
+        .map(|(key, i)| ProviderModelSource::new(ProviderIdx::new(0), key, i))
+        .collect();
+        ModelCatalog::build(&providers, &models).expect("catalog fixture should build")
+    }
+
+    #[test]
+    fn build_filters_tools_by_permission() {
+        let catalog = catalog();
+
+        // Create runtime with two agents: one with allowed tools, one with none
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "with-tools",
+                    allow_tools(&[tool_names::READ, tool_names::BASH]),
+                    "prompt",
+                ),
+                agent("no-tools", IndexMap::new(), "prompt"),
+            ]))
+            .defaults(AgentDefaults {
+                model: Some("openrouter/openai/gpt-4.1-mini".into()),
+                temperature: None,
+                top_p: None,
+            })
+            .build();
+
+        // Agent with permissions gets only the allowed tools
+        let prepared = prepare_build(&runtime, "with-tools", &catalog).expect("should succeed");
+        let agent = build_with_mock(&prepared, "with-tools");
+        let names: HashSet<&str> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(names.contains(tool_names::READ));
+        assert!(names.contains(tool_names::BASH));
+        assert_eq!(names.len(), 2);
+
+        // Agent with empty permissions gets no tools
+        let prepared = prepare_build(&runtime, "no-tools", &catalog).expect("should succeed");
+        let agent = build_with_mock(&prepared, "no-tools");
+        assert!(agent.tools().is_empty());
+    }
+
+    #[test]
+    fn build_uses_agent_model_and_sampling_over_defaults() {
+        let catalog = catalog();
+
+        // Agent overrides model (gpt-4o) and sampling (0.4, 0.8) vs defaults (gpt-4.1-mini, 1.0, 0.95)
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([agent_with_sampling(
+                "planner",
+                "openrouter/openai/gpt-4o",
+                Some(0.4),
+                Some(0.8),
+                allow_tools(&[tool_names::READ]),
+                "prompt",
+            )]))
+            .defaults(AgentDefaults {
+                model: Some("openrouter/openai/gpt-4.1-mini".into()),
+                temperature: Some(1.0),
+                top_p: Some(0.95),
+            })
+            .build();
+
+        // Agent-level settings win over defaults
+        let prepared = prepare_build(&runtime, "planner", &catalog).expect("should succeed");
+        assert_eq!(prepared.model_config.spec, "openrouter:openai/gpt-4o");
+        assert!((prepared.temperature.unwrap() - 0.4).abs() < 1e-6);
+        assert!((prepared.top_p.unwrap() - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn build_handles_catalog_edge_cases() {
+        let catalog = catalog();
+
+        // Unknown agent name returns clear error
+        let runtime = AgentRuntimeBuilder::new()
+            .defaults(AgentDefaults {
+                model: Some("openrouter/openai/gpt-4.1-mini".into()),
+                temperature: None,
+                top_p: None,
+            })
+            .build();
+        let err = prepare_build(&runtime, "missing", &catalog).expect_err("should fail");
+        assert!(matches!(err, AgentBuildError::UnknownAgent { name } if &*name == "missing"));
+
+        // Duplicate agent names: catalog retains the last entry
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent_with_sampling(
+                    "dupe",
+                    "openrouter/openai/gpt-4.1-mini",
+                    None,
+                    None,
+                    allow_tools(&[tool_names::READ]),
+                    "old",
+                ),
+                agent_with_sampling(
+                    "dupe",
+                    "openrouter/openai/gpt-4o",
+                    None,
+                    None,
+                    allow_tools(&[tool_names::GLOB]),
+                    "new",
+                ),
+            ]))
+            .defaults(AgentDefaults::default())
+            .build();
+        let prepared = prepare_build(&runtime, "dupe", &catalog).expect("should succeed");
+        assert_eq!(prepared.model_config.spec, "openrouter:openai/gpt-4o");
+        let agent = build_with_mock(&prepared, "dupe");
+        assert_eq!(agent.tools().len(), 1);
+        assert_eq!(agent.tools()[0].name(), tool_names::GLOB);
+    }
+}

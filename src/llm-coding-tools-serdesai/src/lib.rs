@@ -3,6 +3,7 @@
 
 pub mod absolute;
 pub mod agent_ext;
+pub mod agent_runtime;
 pub mod allowed;
 pub mod bash;
 mod common;
@@ -44,7 +45,12 @@ pub use llm_coding_tools_core::{
     TodoPriority, TodoState, TodoStatus, WebFetchOutput,
 };
 
-// Re-export standalone tools
+// Re-export standalone tools and runtime helpers
+pub use agent_runtime::{AgentBuildError, AgentRuntimeExt};
 pub use bash::BashTool;
+pub use llm_coding_tools_agents::{
+    AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
+    ToolCatalogEntry, ToolCatalogKind, default_tools, resolve_model_with_catalog,
+};
 pub use todo::{TodoReadTool, TodoWriteTool, create_todo_tools};
 pub use webfetch::WebFetchTool;

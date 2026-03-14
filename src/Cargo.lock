@@ -1521,8 +1521,11 @@ dependencies = [
 name = "llm-coding-tools-serdesai"
 version = "0.2.0"
 dependencies = [
+ "ahash",
  "async-trait",
  "futures",
+ "indexmap",
+ "llm-coding-tools-agents",
  "llm-coding-tools-core",
  "reqwest 0.13.1",
  "serde",
@@ -1531,6 +1534,7 @@ dependencies = [
  "serdes-ai-models",
  "serdes-ai-streaming",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "wiremock",
 ]

@@ -86,7 +86,7 @@ mod tests {
         let catalog = AgentCatalog::from_entries([sample_config("planner", Some("openai/gpt-4o"))]);
         let defaults = AgentDefaults {
             model: Some("openai/gpt-4.1-mini".into()),
-            temperature: Some(0.2),
+            temperature: Some(1.0),
             top_p: Some(0.95),
         };
         let tools = vec![
