@@ -152,12 +152,12 @@ mod tests {
 
     /// Guard that restores the shared cache path env var on drop.
     struct CachePathGuard {
-        previous: Option<String>,
+        previous: Option<std::ffi::OsString>,
     }
 
     impl CachePathGuard {
         fn new(value: &std::ffi::OsStr) -> Self {
-            let previous = std::env::var(CACHE_PATH_ENV_VAR).ok();
+            let previous = std::env::var_os(CACHE_PATH_ENV_VAR);
             unsafe {
                 std::env::set_var(CACHE_PATH_ENV_VAR, value);
             }
@@ -169,7 +169,7 @@ mod tests {
         fn drop(&mut self) {
             super::sync::set_test_models_dev_api_url(None);
             unsafe {
-                match &self.previous {
+                match self.previous.take() {
                     Some(value) => std::env::set_var(CACHE_PATH_ENV_VAR, value),
                     None => std::env::remove_var(CACHE_PATH_ENV_VAR),
                 }
