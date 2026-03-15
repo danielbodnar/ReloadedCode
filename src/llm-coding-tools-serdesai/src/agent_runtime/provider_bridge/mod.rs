@@ -587,7 +587,7 @@ fn build_bedrock(
 /// Checks if an environment variable name represents an Azure resource name.
 ///
 /// Azure OpenAI can be identified by either a full endpoint URL or just the resource
-/// name (e.g., "my-resource" becomes "https://my-resource.openai.azure.com").
+/// name (e.g., "my-resource" becomes `https://my-resource.openai.azure.com`).
 /// This identifies catalog env vars that contain resource names rather than full URLs.
 #[inline]
 fn is_azure_resource_name_env_var(env_var: &str) -> bool {
