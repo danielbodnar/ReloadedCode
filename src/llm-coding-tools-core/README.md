@@ -209,7 +209,7 @@ assert_eq!(rules.evaluate("task", "orchestrator-review"), PermissionAction::Deny
 - [`set_override`] stores a value that takes precedence over environment variables.
 
 ```rust,no_run
-use llm_coding_tools_core::CredentialResolver;
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver};
 
 let mut resolver = CredentialResolver::new();
 resolver.set_override("OPENAI_API_KEY", "sk-override");
