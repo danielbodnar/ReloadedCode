@@ -10,6 +10,7 @@
 //!      cargo run --example serdesai-agents -p llm-coding-tools-serdesai
 
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
+use llm_coding_tools_core::CredentialResolver;
 use llm_coding_tools_models_dev::ModelsDevCatalog;
 use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeExt};
 use std::path::PathBuf;
@@ -21,10 +22,12 @@ const API_KEY_VALUE: &str = ""; // <-- Set your API key here
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    unsafe { std::env::set_var(API_KEY_NAME, API_KEY_VALUE) };
-
     let examples_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
     let readme_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md");
+    let mut credentials = CredentialResolver::without_env();
+    if !API_KEY_VALUE.is_empty() {
+        credentials.set_override(API_KEY_NAME, API_KEY_VALUE);
+    }
 
     // Load model catalog from models.dev (online-first with local cache fallback)
     let load_result = ModelsDevCatalog::load().await?;
@@ -45,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Loading named agent `{AGENT_NAME}` from {}",
         examples_root.display()
     );
-    let agent = runtime.build(AGENT_NAME, &load_result.catalog)?;
+    let agent = runtime.build(AGENT_NAME, &load_result.catalog, &credentials)?;
     println!(
         "Built `{AGENT_NAME}` on demand with {} tools.",
         agent.tools().len()

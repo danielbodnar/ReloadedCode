@@ -97,18 +97,19 @@ For catalog-based agent configuration, use `AgentRuntimeExt` to build agents fro
 ```rust,no_run
 use llm_coding_tools_serdesai::AgentRuntimeExt;
 use llm_coding_tools_agents::AgentRuntimeBuilder;
-use llm_coding_tools_core::models::ModelCatalog;
+use llm_coding_tools_core::{CredentialResolver, models::ModelCatalog};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 # fn get_catalog() -> ModelCatalog { unimplemented!() }
 let runtime = AgentRuntimeBuilder::new().build();
 let catalog = get_catalog(); // Load from models-dev, config file, etc.
-let _agent = runtime.build("planner", &catalog)?;
+let credentials = CredentialResolver::new();
+let _agent = runtime.build("planner", &catalog, &credentials)?;
 # Ok(())
 # }
 ```
 
-This requires the `llm-coding-tools-agents` crate and a `ModelCatalog` for model resolution.
+This requires the `llm-coding-tools-agents` crate, a `ModelCatalog` for model resolution, and an application-owned credential resolver.
 
 ## Examples
 

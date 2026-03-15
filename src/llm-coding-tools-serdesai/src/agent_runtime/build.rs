@@ -1,47 +1,50 @@
 //! Build SerdesAI agents from an [`AgentRuntime`] catalog.
 //!
-//! Use [`AgentRuntimeExt::build`] for the default environment-backed path, or
-//! [`build_agent_with_credentials`] when you want to provide explicit credential
-//! overrides. The builder resolves the model, filters tools by permissions, and
-//! sets up the system prompt.
+//! Use [`AgentRuntimeExt::build`] or [`build_agent_with_credentials`] with an
+//! application-provided credential resolver. The builder resolves the model,
+//! filters tools by permissions, and sets up the system prompt.
 
 use super::model::resolve_model;
 use super::provider_bridge::build_serdes_model;
 use crate::agent_ext::AgentBuilderExt;
+use crate::task::{TaskHandle, TaskTool};
 use crate::{
     BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder, WebFetchTool, WriteTool,
     create_todo_tools,
 };
-use crate::task::task_tool_definition;
 use llm_coding_tools_agents::{
-    summarize_callable_targets, AgentRuntime, ModelResolutionError, RulesetExt, TaskTargetSummary,
-    ToolCatalogEntry, ToolCatalogKind,
+    AgentRuntime, ModelResolutionError, RulesetExt, TaskTargetSummary, ToolCatalogEntry,
+    ToolCatalogKind, summarize_callable_targets,
 };
 use llm_coding_tools_core::permissions::Ruleset;
-use llm_coding_tools_core::{models::ModelCatalog, CredentialLookup, CredentialResolver};
-use serdes_ai::agent::{RunContext as AgentRunContext, ToolExecutor};
-use serdes_ai::tools::{ToolError, ToolReturn};
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
 use serdes_ai_models::BoxedModel;
 
 /// SerdesAI-specific runtime extension methods.
 pub trait AgentRuntimeExt {
     /// Builds a runnable SerdesAI agent for the named catalog entry.
-    fn build(
+    fn build<C>(
         &self,
         name: &str,
         model_catalog: &ModelCatalog,
-    ) -> Result<Agent<(), String>, AgentBuildError>;
+        credentials: &C,
+    ) -> Result<Agent<(), String>, AgentBuildError>
+    where
+        C: CredentialLookup;
 }
 
 impl AgentRuntimeExt for AgentRuntime {
-    fn build(
+    fn build<C>(
         &self,
         name: &str,
         model_catalog: &ModelCatalog,
-    ) -> Result<Agent<(), String>, AgentBuildError> {
-        let credentials = CredentialResolver::new();
-        let prepared = prepare_build(self, name, model_catalog, &credentials)?;
+        credentials: &C,
+    ) -> Result<Agent<(), String>, AgentBuildError>
+    where
+        C: CredentialLookup,
+    {
+        let prepared = prepare_build(self, name, model_catalog, credentials)?;
         let builder = AgentBuilder::<(), String>::from_arc(prepared.model.clone());
         Ok(finish_builder(builder, &prepared)?.build())
     }
@@ -57,12 +60,15 @@ impl AgentRuntimeExt for AgentRuntime {
 /// Returns [`AgentBuildError`] when the named agent is missing, model selection
 /// fails, the adapter cannot create one of the requested tools, or the model
 /// backend rejects the resolved credentials or provider settings.
-pub fn build_agent_with_credentials(
+pub fn build_agent_with_credentials<C>(
     runtime: &AgentRuntime,
     name: &str,
     model_catalog: &ModelCatalog,
-    credentials: &impl CredentialLookup,
-) -> Result<Agent<(), String>, AgentBuildError> {
+    credentials: &C,
+) -> Result<Agent<(), String>, AgentBuildError>
+where
+    C: CredentialLookup,
+{
     let prepared = prepare_build(runtime, name, model_catalog, credentials)?;
     let builder = AgentBuilder::<(), String>::from_arc(prepared.model.clone());
     Ok(finish_builder(builder, &prepared)?.build())
@@ -70,7 +76,7 @@ pub fn build_agent_with_credentials(
 
 /// Resolved build parameters ready for agent construction.
 #[derive(Clone)]
-struct PreparedBuild {
+pub(super) struct PreparedBuild {
     /// Agent name for [`AgentBuilder::name`].
     agent_name: Box<str>,
     /// Concrete SerdesAI model.
@@ -90,19 +96,40 @@ struct PreparedBuild {
     callable_target_summaries: Vec<TaskTargetSummary>,
 }
 
+impl PreparedBuild {
+    /// Returns the resolved SerdesAI model for builder construction.
+    #[inline]
+    pub(super) fn model(&self) -> &BoxedModel {
+        &self.model
+    }
+
+    /// Returns the resolved callable Task target summaries.
+    #[inline]
+    pub(super) fn callable_target_summaries(&self) -> &[TaskTargetSummary] {
+        &self.callable_target_summaries
+    }
+}
+
 /// Resolves model configuration and collects build parameters for an agent.
-fn prepare_build(
+pub(super) fn prepare_build<C>(
     runtime: &AgentRuntime,
     name: &str,
     model_catalog: &ModelCatalog,
-    credentials: &impl CredentialLookup,
-) -> Result<PreparedBuild, AgentBuildError> {
+    credentials: &C,
+) -> Result<PreparedBuild, AgentBuildError>
+where
+    C: CredentialLookup,
+{
     let agent = runtime
         .catalog()
         .by_name(name)
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
     let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
     let serdes_model = build_serdes_model(model_catalog, &resolved, credentials)?;
+    let ruleset = Ruleset::from_permission_config(&agent.permission);
+    let tools = ruleset.filter_allowed_tools(runtime.tools());
+    let callable_target_summaries = summarize_callable_targets(runtime.catalog(), name);
+
     Ok(PreparedBuild {
         agent_name: agent.name.clone(),
         model: serdes_model.model,
@@ -113,19 +140,20 @@ fn prepare_build(
             .or(runtime.defaults().temperature)
             .map(f64::from),
         top_p: agent.top_p.or(runtime.defaults().top_p).map(f64::from),
-        tools: Ruleset::from_permission_config(&agent.permission)
-            .filter_allowed_tools(runtime.tools()),
-        callable_target_summaries: summarize_callable_targets(runtime.catalog(), name),
+        tools,
+        callable_target_summaries,
     })
 }
 
-/// Configures an [`AgentBuilder`] with name, prompt, tools, and sampling parameters.
-///
-/// Returns [`AgentBuildError::UnsupportedToolKind`] if a tool kind cannot be materialized.
-fn finish_builder(
+/// Attaches the standard runtime tools and prompt contexts without finalizing the builder.
+pub(super) fn attach_standard_tools<C>(
     mut builder: AgentBuilder<(), String>,
     prepared: &PreparedBuild,
-) -> Result<AgentBuilder<(), String>, AgentBuildError> {
+    task_handle: Option<&TaskHandle<C>>,
+) -> Result<(AgentBuilder<(), String>, SystemPromptBuilder), AgentBuildError>
+where
+    C: CredentialLookup + Send + Sync + 'static,
+{
     let mut prompt_builder = SystemPromptBuilder::new().system_prompt(prepared.prompt.as_ref());
     let (todo_read, todo_write, _todo_state) = create_todo_tools();
 
@@ -161,10 +189,14 @@ fn finish_builder(
                 builder = builder.tool(prompt_builder.track(todo_write.clone()))
             }
             ToolCatalogKind::Task => {
-                if !prepared.callable_target_summaries.is_empty() {
-                    let definition =
-                        task_tool_definition(&prepared.callable_target_summaries);
-                    builder = builder.tool_with_executor(definition, StubTaskExecutor);
+                if let Some(task_handle) = task_handle
+                    && !prepared.callable_target_summaries().is_empty()
+                {
+                    builder = builder.tool(prompt_builder.track(TaskTool::new(
+                        prepared.agent_name.as_ref(),
+                        prepared.callable_target_summaries().to_vec(),
+                        (*task_handle).clone(),
+                    )));
                 }
             }
             _ => {
@@ -175,22 +207,19 @@ fn finish_builder(
         }
     }
 
-    Ok(builder.system_prompt(prompt_builder.build()))
+    Ok((builder, prompt_builder))
 }
 
-struct StubTaskExecutor;
-
-#[async_trait::async_trait]
-impl ToolExecutor<()> for StubTaskExecutor {
-    async fn execute(
-        &self,
-        _args: serde_json::Value,
-        _ctx: &AgentRunContext<()>,
-    ) -> Result<ToolReturn, ToolError> {
-        Err(ToolError::execution_failed(
-            "task tool execution is not yet implemented",
-        ))
-    }
+/// Configures an [`AgentBuilder`] with name, prompt, tools, and sampling parameters.
+///
+/// Returns [`AgentBuildError::UnsupportedToolKind`] if a tool kind cannot be materialized.
+fn finish_builder(
+    builder: AgentBuilder<(), String>,
+    prepared: &PreparedBuild,
+) -> Result<AgentBuilder<(), String>, AgentBuildError> {
+    let (builder, prompt_builder) =
+        attach_standard_tools::<CredentialResolver>(builder, prepared, None)?;
+    Ok(builder.system_prompt(prompt_builder.build()))
 }
 
 /// Error returned when a build cannot produce a SerdesAI agent.
@@ -218,19 +247,19 @@ pub enum AgentBuildError {
 
 #[cfg(test)]
 mod tests {
-    use super::{prepare_build, AgentBuildError};
+    use super::{AgentBuildError, prepare_build};
     use ahash::AHashMap;
     use indexmap::IndexMap;
     use llm_coding_tools_agents::{
         AgentCatalog, AgentConfig, AgentDefaults, AgentMode, AgentRuntimeBuilder, PermissionRule,
     };
+    use llm_coding_tools_core::CredentialResolver;
     use llm_coding_tools_core::models::{
         Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
     use llm_coding_tools_core::tool_names;
-    use llm_coding_tools_core::CredentialResolver;
     use serdes_ai::AgentBuilder;
     use serdes_ai_models::MockModel;
     use std::collections::HashSet;
@@ -450,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn build_attaches_task_tool_when_allowed_and_targets_exist() {
+    fn plain_build_omits_task_tool_without_task_handle() {
         let credentials = credentials();
         let catalog = catalog();
 
@@ -461,11 +490,7 @@ mod tests {
                     allow_tools(&[tool_names::TASK, tool_names::READ]),
                     "prompt",
                 ),
-                subagent(
-                    "sub-target",
-                    IndexMap::new(),
-                    "subagent prompt",
-                ),
+                subagent("sub-target", IndexMap::new(), "subagent prompt"),
             ]))
             .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build();
@@ -477,7 +502,7 @@ mod tests {
         let agent = build_with_mock(&prepared, "caller");
         let names: Vec<&str> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(names.contains(&tool_names::READ));
-        assert!(names.contains(&tool_names::TASK));
+        assert!(!names.contains(&tool_names::TASK));
     }
 
     #[test]
