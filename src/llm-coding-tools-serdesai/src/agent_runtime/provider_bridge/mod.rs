@@ -96,11 +96,13 @@ where
 ///
 /// Used in error messages to tell users which environment variables they can set
 /// to provide a required value (credential, endpoint, etc.).
+///
+/// Preallocates 64 bytes, enough for ~3 typical env var names (e.g., `OPENROUTER_API_KEY`).
 fn matching_env_names<P>(env_vars: &[&str], mut predicate: P) -> String
 where
     P: FnMut(&str) -> bool,
 {
-    let mut names = String::new();
+    let mut names = String::with_capacity(64);
     for env_var in env_vars
         .iter()
         .copied()
