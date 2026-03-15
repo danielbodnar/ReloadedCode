@@ -9,7 +9,7 @@
 //! - [`default_tools()`] - The standard tool set
 //!
 //! The default tools are: read, write, edit, glob, grep, bash, webfetch, todoread,
-//! todowrite. The "task" tool is excluded since it's handled separately.
+//! todowrite, task.
 
 use llm_coding_tools_core::tool_names;
 
@@ -51,9 +51,11 @@ pub enum ToolCatalogKind {
     TodoRead,
     /// Create and update todo items.
     TodoWrite,
+    /// Delegate to subagent via Task tool.
+    Task,
 }
 
-const DEFAULT_TOOLS: [ToolCatalogEntry; 9] = [
+const DEFAULT_TOOLS: [ToolCatalogEntry; 10] = [
     ToolCatalogEntry::new(tool_names::READ, ToolCatalogKind::Read),
     ToolCatalogEntry::new(tool_names::WRITE, ToolCatalogKind::Write),
     ToolCatalogEntry::new(tool_names::EDIT, ToolCatalogKind::Edit),
@@ -63,6 +65,7 @@ const DEFAULT_TOOLS: [ToolCatalogEntry; 9] = [
     ToolCatalogEntry::new(tool_names::WEBFETCH, ToolCatalogKind::WebFetch),
     ToolCatalogEntry::new(tool_names::TODO_READ, ToolCatalogKind::TodoRead),
     ToolCatalogEntry::new(tool_names::TODO_WRITE, ToolCatalogKind::TodoWrite),
+    ToolCatalogEntry::new(tool_names::TASK, ToolCatalogKind::Task),
 ];
 
 /// Returns the standard tool set.
@@ -74,7 +77,6 @@ pub fn default_tools() -> Vec<ToolCatalogEntry> {
 mod tests {
     use super::{default_tools, ToolCatalogEntry, ToolCatalogKind};
     use llm_coding_tools_core::tool_names;
-    use std::collections::BTreeSet;
 
     #[test]
     fn default_tools_match_expected_catalog() {
@@ -90,19 +92,8 @@ mod tests {
                 ToolCatalogEntry::new(tool_names::WEBFETCH, ToolCatalogKind::WebFetch),
                 ToolCatalogEntry::new(tool_names::TODO_READ, ToolCatalogKind::TodoRead),
                 ToolCatalogEntry::new(tool_names::TODO_WRITE, ToolCatalogKind::TodoWrite),
+                ToolCatalogEntry::new(tool_names::TASK, ToolCatalogKind::Task),
             ],
         );
-    }
-
-    #[test]
-    fn default_tools_exclude_task_and_keep_names_unique() {
-        let tools = default_tools();
-        assert!(tools.iter().all(|entry| entry.name != tool_names::TASK));
-
-        let unique_names = tools
-            .iter()
-            .map(|entry| entry.name)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(unique_names.len(), tools.len());
     }
 }
