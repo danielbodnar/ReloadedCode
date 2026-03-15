@@ -445,7 +445,7 @@ fn build_google(
     {
         let _ = (provider_key, model_name, api_url, env_vars);
         Err(ModelError::configuration(
-            "provider `google` is not enabled in llm-coding-tools-serdesai; rebuild with `--features google` or `--features gemini`"
+            "provider `google` is not enabled in llm-coding-tools-serdesai; rebuild with `--features google` or `--features gemini`",
         ))
     }
 }
