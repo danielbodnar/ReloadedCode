@@ -15,6 +15,11 @@
 //! - [`ToolCatalogKind`] - Which tools are available
 //! - [`default_tools()`] - The standard tool set (read, write, edit, glob, grep, bash, webfetch, todo)
 //!
+//! Task delegation:
+//! - [`callable_targets()`] - Returns the agents the active agent may delegate to
+//! - [`summarize_callable_targets()`] - Builds target summaries with names and descriptions
+//! - [`TaskTargetSummary`] - Metadata for a callable Task target
+//!
 //! Model resolution:
 //! - [`ResolvedModel`] - A model identifier that's been validated against your catalog
 //! - [`resolve_model_with_catalog()`] - Picks which model an agent will use
@@ -36,9 +41,11 @@
 mod builder;
 mod model;
 mod state;
+mod task;
 mod tool_catalog;
 
 pub use builder::AgentRuntimeBuilder;
 pub use model::{resolve_model_with_catalog, ModelResolutionError, ResolvedModel};
 pub use state::{AgentDefaults, AgentRuntime};
+pub use task::{callable_targets, summarize_callable_targets, TaskTargetSummary};
 pub use tool_catalog::{default_tools, ToolCatalogEntry, ToolCatalogKind};

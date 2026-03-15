@@ -8,6 +8,7 @@ pub mod allowed;
 pub mod bash;
 mod common;
 pub mod convert;
+pub mod task;
 pub mod todo;
 pub mod webfetch;
 

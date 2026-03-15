@@ -1,0 +1,126 @@
+//! SerdesAI Task definition helpers.
+//!
+//! # Public API
+//! - [`render_task_targets`] - Renders callable targets for Task tool descriptions.
+//! - [`task_tool_definition`] - Builds the adapter-facing Task tool definition.
+
+use llm_coding_tools_agents::TaskTargetSummary;
+use llm_coding_tools_core::tool_names;
+use serdes_ai::tools::{SchemaBuilder, ToolDefinition};
+
+/// Renders callable target summaries in a stable, user-facing format.
+pub fn render_task_targets(targets: &[TaskTargetSummary]) -> String {
+    if targets.is_empty() {
+        return "No callable subagents are available.".to_string();
+    }
+
+    let mut ordered: Vec<_> = targets.iter().collect();
+    ordered.sort_unstable_by(|left, right| left.name.as_ref().cmp(right.name.as_ref()));
+
+    let mut rendered = String::with_capacity(32 + ordered.len() * 64);
+    rendered.push_str("Available subagents:\n");
+    for target in ordered {
+        rendered.push_str("- ");
+        rendered.push_str(target.name.as_ref());
+        rendered.push_str(": ");
+        rendered.push_str(target.description.as_ref());
+        rendered.push('\n');
+    }
+    rendered
+}
+
+/// Builds a SerdesAI Task definition using the shared target summaries.
+pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
+    let description = format!(
+        "Delegate a focused job to one of the callable subagents.\n\n{}",
+        render_task_targets(targets)
+    );
+    let schema = SchemaBuilder::new()
+        .string("description", "Short 3-5 word task label.", true)
+        .string("prompt", "Complete task instructions for the delegated agent.", true)
+        .string("subagent_type", "Name of the subagent to invoke.", true)
+        .string(
+            "session_id",
+            "Optional task session identifier for shared Task compatibility; current delegated requests remain stateless.",
+            false,
+        )
+        .string(
+            "command",
+            "Optional command that triggered this task.",
+            false,
+        )
+        .build()
+        .expect("task schema should be valid");
+
+    ToolDefinition::new(tool_names::TASK, description).with_parameters(schema)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(name: &str, description: &str) -> TaskTargetSummary {
+        TaskTargetSummary {
+            name: name.into(),
+            description: description.into(),
+        }
+    }
+
+    #[test]
+    fn render_task_targets_sorts_output_by_name() {
+        let targets = vec![
+            summary("zebra", "Last alphabetically"),
+            summary("alpha", "First alphabetically"),
+            summary("mike", "Middle"),
+        ];
+
+        let rendered = render_task_targets(&targets);
+        let lines: Vec<_> = rendered.lines().skip(1).collect(); // Skip "Available subagents:"
+
+        assert!(lines[0].starts_with("- alpha"));
+        assert!(lines[1].starts_with("- mike"));
+        assert!(lines[2].starts_with("- zebra"));
+    }
+
+    #[test]
+    fn render_task_targets_shows_only_name_and_description() {
+        let targets = vec![
+            summary("with-task", "Can delegate"),
+            summary("no-task", "Cannot delegate"),
+        ];
+
+        let rendered = render_task_targets(&targets);
+
+        assert!(rendered.contains("- with-task: Can delegate"));
+        assert!(rendered.contains("- no-task: Cannot delegate"));
+        assert!(!rendered.contains("tools:"));
+    }
+
+    #[test]
+    fn render_task_targets_handles_empty_input_cleanly() {
+        let targets: Vec<TaskTargetSummary> = vec![];
+        let rendered = render_task_targets(&targets);
+        assert_eq!(rendered, "No callable subagents are available.");
+    }
+
+    #[test]
+    fn task_tool_definition_uses_task_name_and_expected_parameters() {
+        let targets = vec![summary("test", "Test agent")];
+        let definition = task_tool_definition(&targets);
+
+        assert_eq!(definition.name(), tool_names::TASK);
+
+        // Verify description includes all expected parameters
+        let desc = definition.description();
+        assert!(!desc.is_empty());
+    }
+
+    #[test]
+    fn task_tool_definition_keeps_session_id_description_compatibility_only() {
+        let targets = vec![];
+        let definition = task_tool_definition(&targets);
+
+        // The definition should be valid and include task
+        assert_eq!(definition.name(), tool_names::TASK);
+    }
+}

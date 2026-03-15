@@ -44,6 +44,9 @@ pub const TODO_READ: &str = include_str!("todoread.txt");
 /// `todowrite` tool context - managing task lists.
 pub const TODO_WRITE: &str = include_str!("todowrite.txt");
 
+/// `task` tool context - stateless delegation guidance.
+pub const TASK: &str = include_str!("task.txt");
+
 /// `webfetch` tool context - URL content retrieval.
 pub const WEBFETCH: &str = include_str!("webfetch.txt");
 
@@ -134,6 +137,7 @@ mod tests {
             !TODO_WRITE.is_empty(),
             "TODO_WRITE context should not be empty"
         );
+        assert!(!TASK.is_empty(), "TASK context should not be empty");
         assert!(!WEBFETCH.is_empty(), "WEBFETCH context should not be empty");
 
         // Path-based tools (absolute variants)
@@ -251,5 +255,12 @@ mod tests {
             !BASH.contains("# Creating pull requests"),
             "BASH should not contain GitHub CLI section"
         );
+    }
+
+    #[test]
+    fn task_context_mentions_stateless_delegation() {
+        assert!(TASK.contains("stateless"));
+        assert!(TASK.contains("description"));
+        assert!(TASK.contains("prompt"));
     }
 }
