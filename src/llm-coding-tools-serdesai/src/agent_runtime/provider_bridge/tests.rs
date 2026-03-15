@@ -88,11 +88,7 @@ fn resolve_case(case: &Case) -> ResolvedSerdesModel {
         )],
     );
     let model = format!("{}/{}", case.provider_key, case.model_name);
-    let defaults = AgentDefaults {
-        model: Some(model.into()),
-        temperature: None,
-        top_p: None,
-    };
+    let defaults = AgentDefaults::with_model(&*model);
     let agent = config_with_model("planner", None);
     let mut credentials = CredentialResolver::without_env();
     // Bedrock is special: the AWS SDK reads credentials directly from environment variables
@@ -348,11 +344,7 @@ fn build_serdes_model_skips_empty_credential_env_vars() {
             model_info(128_000, 16_384),
         )],
     );
-    let defaults = AgentDefaults {
-        model: Some("synthetic/hf:zai-org/GLM-4.7".into()),
-        temperature: None,
-        top_p: None,
-    };
+    let defaults = AgentDefaults::with_model("synthetic/hf:zai-org/GLM-4.7");
     let agent = config_with_model("planner", None);
     let mut credentials = CredentialResolver::without_env();
     credentials.set_override("PRIMARY_API_KEY", "");
@@ -381,11 +373,7 @@ fn build_serdes_model_returns_clear_error_when_required_credential_missing() {
             model_info(128_000, 16_384),
         )],
     );
-    let defaults = AgentDefaults {
-        model: Some("synthetic/hf:zai-org/GLM-4.7".into()),
-        temperature: None,
-        top_p: None,
-    };
+    let defaults = AgentDefaults::with_model("synthetic/hf:zai-org/GLM-4.7");
     let agent = config_with_model("planner", None);
     let credentials = CredentialResolver::without_env();
 
@@ -406,11 +394,7 @@ fn build_serdes_model_rejects_unknown_provider_type() {
         vec![("mystery", provider("", &[], ProviderType::Unknown))],
         vec![("mystery", "m1", model_info(1, 1))],
     );
-    let defaults = AgentDefaults {
-        model: Some("mystery/m1".into()),
-        temperature: None,
-        top_p: None,
-    };
+    let defaults = AgentDefaults::with_model("mystery/m1");
     let agent = config_with_model("planner", None);
     let credentials = CredentialResolver::without_env();
 

@@ -27,11 +27,7 @@
 //!
 //! let runtime = AgentRuntimeBuilder::new()
 //!     .catalog(AgentCatalog::new())
-//!     .defaults(AgentDefaults {
-//!         model: Some("openai/gpt-4o".into()),
-//!         temperature: Some(0.7),
-//!         top_p: Some(0.9),
-//!     })
+//!     .defaults(AgentDefaults::with_model("openai/gpt-4o"))
 //!     .build();
 //!
 //! assert!(runtime.catalog().iter().count() == 0);

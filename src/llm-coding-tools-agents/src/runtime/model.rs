@@ -327,11 +327,7 @@ mod tests {
             )],
             vec![("openai", "gpt-4.1-mini", model_info(128_000, 16_384))],
         );
-        let defaults = AgentDefaults {
-            model: Some("openai/gpt-4.1-mini".into()),
-            temperature: None,
-            top_p: None,
-        };
+        let defaults = AgentDefaults::with_model("openai/gpt-4.1-mini");
         let agent = config_with_model("planner", None);
 
         let resolved = resolve_model_with_catalog(&catalog, &defaults, &agent)
@@ -362,11 +358,7 @@ mod tests {
                 ("openrouter", "openai/gpt-4o", model_info(128_000, 16_384)),
             ],
         );
-        let defaults = AgentDefaults {
-            model: Some("openrouter/openai/gpt-4.1-mini".into()),
-            temperature: None,
-            top_p: None,
-        };
+        let defaults = AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini");
         let agent = config_with_model("planner", Some("openrouter/openai/gpt-4o"));
 
         let resolved = resolve_model_with_catalog(&catalog, &defaults, &agent)
@@ -389,11 +381,7 @@ mod tests {
             )],
             vec![("openai", "gpt-4.1-mini", model_info(128_000, 16_384))],
         );
-        let defaults = AgentDefaults {
-            model: Some("openai/gpt-4.1-mini".into()),
-            temperature: None,
-            top_p: None,
-        };
+        let defaults = AgentDefaults::with_model("openai/gpt-4.1-mini");
         let agent = config_with_model("planner", Some("openai-only"));
 
         let err = resolve_model_with_catalog(&catalog, &defaults, &agent)
@@ -514,11 +502,7 @@ mod tests {
             )],
             vec![("openai", "gpt-4o", model_info(128_000, 16_384))],
         );
-        let defaults = AgentDefaults {
-            model: Some("openai-only".into()),
-            temperature: None,
-            top_p: None,
-        };
+        let defaults = AgentDefaults::with_model("openai-only");
         let agent = config_with_model("planner", None);
 
         let err = resolve_model_with_catalog(&catalog, &defaults, &agent)

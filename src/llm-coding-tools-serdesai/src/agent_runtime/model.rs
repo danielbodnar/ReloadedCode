@@ -112,11 +112,7 @@ mod tests {
             )],
         );
         // Agent uses default model, no override
-        let defaults = AgentDefaults {
-            model: Some("openrouter/openai/gpt-4.1-mini".into()),
-            temperature: None,
-            top_p: None,
-        };
+        let defaults = AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini");
         let agent = config_with_model("planner", None);
 
         // Should resolve to provider and model components

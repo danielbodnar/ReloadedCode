@@ -316,11 +316,7 @@ mod tests {
                 ),
                 agent("no-tools", IndexMap::new(), "prompt"),
             ]))
-            .defaults(AgentDefaults {
-                model: Some("openrouter/openai/gpt-4.1-mini".into()),
-                temperature: None,
-                top_p: None,
-            })
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build();
 
         // Agent with permissions gets only the allowed tools
@@ -376,11 +372,7 @@ mod tests {
 
         // Unknown agent name returns clear error
         let runtime = AgentRuntimeBuilder::new()
-            .defaults(AgentDefaults {
-                model: Some("openrouter/openai/gpt-4.1-mini".into()),
-                temperature: None,
-                top_p: None,
-            })
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build();
         let err = prepare_build(&runtime, "missing", &catalog, &credentials)
             .err()

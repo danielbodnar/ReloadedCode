@@ -6,7 +6,8 @@
 //! The model catalog is loaded from models.dev, which provides up-to-date
 //! provider and model information from <https://models.dev/api.json>.
 //!
-//! Run: cargo run --example serdesai-agents -p llm-coding-tools-serdesai
+//! Run: Edit the API_KEY_NAME and API_KEY_VALUE constants below, then:
+//!      cargo run --example serdesai-agents -p llm-coding-tools-serdesai
 
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
 use llm_coding_tools_models_dev::ModelsDevCatalog;
@@ -15,19 +16,15 @@ use std::path::PathBuf;
 
 const AGENT_NAME: &str = "basic/file-reader";
 const MODEL_ID: &str = "synthetic/hf:zai-org/GLM-4.7";
-const PROVIDER_ENV_VAR: &str = "SYNTHETIC_API_KEY";
+const API_KEY_NAME: &str = "SYNTHETIC_API_KEY";
+const API_KEY_VALUE: &str = ""; // <-- Set your API key here
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    unsafe { std::env::set_var(API_KEY_NAME, API_KEY_VALUE) };
+
     let examples_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
     let readme_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md");
-
-    if std::env::var(PROVIDER_ENV_VAR).map_or(true, |value| value.is_empty()) {
-        return Err(format!(
-            "set {PROVIDER_ENV_VAR} before running this example; the runtime resolves provider credentials from the models.dev catalog"
-        )
-        .into());
-    }
 
     // Load model catalog from models.dev (online-first with local cache fallback)
     let load_result = ModelsDevCatalog::load().await?;
@@ -41,11 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = AgentRuntimeBuilder::new()
         .catalog(catalog)
-        .defaults(AgentDefaults {
-            model: Some(MODEL_ID.into()),
-            temperature: Some(0.2),
-            top_p: Some(0.95),
-        })
+        .defaults(AgentDefaults::with_model(MODEL_ID))
         .build();
 
     println!(

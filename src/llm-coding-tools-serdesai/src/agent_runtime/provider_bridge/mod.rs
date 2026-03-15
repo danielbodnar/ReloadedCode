@@ -923,8 +923,9 @@ fn build_antigravity(
             "an access token",
             is_credential_env_var,
         )?;
-        let project_id = first_matching_env_value(credentials, env_vars, is_antigravity_project_id_env_var)
-            .unwrap_or_else(|| serdes_ai_models::antigravity::DEFAULT_PROJECT_ID.to_owned());
+        let project_id =
+            first_matching_env_value(credentials, env_vars, is_antigravity_project_id_env_var)
+                .unwrap_or_else(|| serdes_ai_models::antigravity::DEFAULT_PROJECT_ID.to_owned());
         let mut model =
             serdes_ai_models::AntigravityModel::new(model_name, access_token, project_id);
         if let Some(api_url) = api_url {
