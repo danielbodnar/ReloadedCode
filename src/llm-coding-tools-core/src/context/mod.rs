@@ -44,7 +44,7 @@ pub const TODO_READ: &str = include_str!("todoread.txt");
 /// `todowrite` tool context - managing task lists.
 pub const TODO_WRITE: &str = include_str!("todowrite.txt");
 
-/// `task` tool context - stateless delegation guidance.
+/// `task` tool context - delegation guidance.
 pub const TASK: &str = include_str!("task.txt");
 
 /// `webfetch` tool context - URL content retrieval.
@@ -258,9 +258,9 @@ mod tests {
     }
 
     #[test]
-    fn task_context_mentions_stateless_delegation() {
-        assert!(TASK.contains("stateless"));
+    fn task_context_mentions_delegation_details() {
         assert!(TASK.contains("description"));
         assert!(TASK.contains("prompt"));
+        assert!(TASK.contains("subagent"));
     }
 }
