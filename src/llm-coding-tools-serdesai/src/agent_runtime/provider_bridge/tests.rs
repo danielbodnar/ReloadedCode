@@ -91,25 +91,45 @@ fn resolve_case(case: &Case) -> ResolvedSerdesModel {
     let defaults = AgentDefaults::with_model(&*model);
     let agent = config_with_model("planner", None);
     let mut credentials = CredentialResolver::without_env();
-    // Bedrock is special: the AWS SDK reads credentials directly from environment variables
-    // (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) rather than accepting them
-    // as function parameters. Other providers use CredentialResolver to pass credentials
-    // explicitly to their constructors. See `build_bedrock` in mod.rs for details.
-    if matches!(case.provider.api_type, ProviderType::Bedrock) {
-        temp_env::with_vars(case.credential_updates, || {
+    for (name, value) in case.credential_updates {
+        if let Some(value) = value {
+            credentials.set_override(*name, *value);
+        }
+    }
+    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+    build_serdes_model(&catalog, &resolved, &credentials).expect("model should build")
+}
+
+#[cfg(feature = "bedrock")]
+#[test]
+fn build_bedrock_ignores_process_env_when_resolver_disables_env_fallback() {
+    let catalog = build_catalog(
+        vec![("bedrock", provider("", &[], ProviderType::Bedrock))],
+        vec![(
+            "bedrock",
+            "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            model_info(128_000, 16_384),
+        )],
+    );
+    let defaults = AgentDefaults::with_model("bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0");
+    let agent = config_with_model("planner", None);
+    let credentials = CredentialResolver::without_env();
+
+    temp_env::with_vars(
+        [
+            ("AWS_ACCESS_KEY_ID", Some("ambient-access-key")),
+            ("AWS_SECRET_ACCESS_KEY", Some("ambient-secret-key")),
+            ("AWS_REGION", Some("us-east-1")),
+        ],
+        || {
             let resolved =
                 resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
-            build_serdes_model(&catalog, &resolved, &credentials).expect("model should build")
-        })
-    } else {
-        for (name, value) in case.credential_updates {
-            if let Some(value) = value {
-                credentials.set_override(*name, *value);
-            }
-        }
-        let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
-        build_serdes_model(&catalog, &resolved, &credentials).expect("model should build")
-    }
+            let err = build_serdes_model(&catalog, &resolved, &credentials)
+                .err()
+                .expect("model should fail");
+            assert!(err.to_string().contains("AWS_ACCESS_KEY_ID"));
+        },
+    );
 }
 
 #[test]

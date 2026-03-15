@@ -13,6 +13,11 @@ use std::sync::Arc;
 const COHERE_BASE_URL: &str = "https://api.cohere.ai/v2";
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 const OPENAI_COMPATIBLE_PROVIDER: &str = "openai";
+const AWS_ACCESS_KEY_ID_ENV_VAR: &str = "AWS_ACCESS_KEY_ID";
+const AWS_SECRET_ACCESS_KEY_ENV_VAR: &str = "AWS_SECRET_ACCESS_KEY";
+const AWS_SESSION_TOKEN_ENV_VAR: &str = "AWS_SESSION_TOKEN";
+const AWS_REGION_ENV_VAR: &str = "AWS_REGION";
+const AWS_DEFAULT_REGION_ENV_VAR: &str = "AWS_DEFAULT_REGION";
 
 /// Concrete SerdesAI model prepared from catalog metadata.
 #[derive(Clone)]
@@ -112,6 +117,14 @@ where
     names
 }
 
+/// Finds the first resolved value among explicit credential names.
+fn first_resolved_name(credentials: &impl CredentialLookup, names: &[&str]) -> Option<String> {
+    names
+        .iter()
+        .copied()
+        .find_map(|name| credentials.resolve(name))
+}
+
 /// Requires an environment variable matching a predicate to have a value.
 ///
 /// Returns the resolved value if found, otherwise returns a configuration error
@@ -134,6 +147,23 @@ where
     Err(ModelError::configuration(format!(
         "provider `{provider_key}` mapped to serdes `{provider_name}` requires {kind}; set one of: {}",
         matching_env_names(env_vars, predicate)
+    )))
+}
+
+/// Requires a specific named credential to have a value.
+fn require_named_value(
+    credentials: &impl CredentialLookup,
+    provider_key: &str,
+    provider_name: &str,
+    name: &str,
+    kind: &str,
+) -> Result<String, ModelError> {
+    if let Some(value) = credentials.resolve(name) {
+        return Ok(value);
+    }
+
+    Err(ModelError::configuration(format!(
+        "provider `{provider_key}` mapped to serdes `{provider_name}` requires {kind}; set `{name}`"
     )))
 }
 
@@ -553,10 +583,9 @@ fn build_ollama(
 
 /// Build a Bedrock model.
 ///
-/// Unlike other providers, Bedrock does not accept credentials as parameters. The AWS SDK
-/// reads them directly from environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-/// AWS_REGION) or from the standard AWS credential chain (instance profiles, credential files, etc.).
-/// The `credentials` parameter is therefore unused but kept for API consistency with other builders.
+/// Bedrock resolves the standard AWS credential names through [`CredentialLookup`] and passes
+/// them into the SerdesAI model constructor. Region remains optional and falls back to the model
+/// default when neither `AWS_REGION` nor `AWS_DEFAULT_REGION` is provided.
 fn build_bedrock(
     provider_key: &str,
     model_name: &str,
@@ -566,12 +595,37 @@ fn build_bedrock(
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "bedrock")]
     {
-        let _ = (provider_key, api_url, env_vars, credentials);
-        Ok(ResolvedSerdesModel::new(
+        let _ = (api_url, env_vars);
+        let access_key_id = require_named_value(
+            credentials,
+            provider_key,
             "bedrock",
-            model_name,
-            serdes_ai_models::BedrockModel::new(model_name)?,
-        ))
+            AWS_ACCESS_KEY_ID_ENV_VAR,
+            "an AWS access key ID",
+        )?;
+        let secret_access_key = require_named_value(
+            credentials,
+            provider_key,
+            "bedrock",
+            AWS_SECRET_ACCESS_KEY_ENV_VAR,
+            "an AWS secret access key",
+        )?;
+        let mut aws_credentials =
+            serdes_ai_models::bedrock::AwsCredentials::new(access_key_id, secret_access_key);
+        if let Some(session_token) = credentials.resolve(AWS_SESSION_TOKEN_ENV_VAR) {
+            aws_credentials = aws_credentials.with_session_token(session_token);
+        }
+
+        let mut model =
+            serdes_ai_models::BedrockModel::with_credentials(model_name, aws_credentials);
+        if let Some(region) = first_resolved_name(
+            credentials,
+            &[AWS_REGION_ENV_VAR, AWS_DEFAULT_REGION_ENV_VAR],
+        ) {
+            model = model.with_region(region);
+        }
+
+        Ok(ResolvedSerdesModel::new("bedrock", model_name, model))
     }
     #[cfg(not(feature = "bedrock"))]
     {
