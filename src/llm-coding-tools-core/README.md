@@ -200,6 +200,22 @@ assert_eq!(rules.evaluate("bash", "any-agent"), PermissionAction::Allow);
 assert_eq!(rules.evaluate("task", "orchestrator-review"), PermissionAction::Deny); // last-match-wins
 ```
 
+## Credentials
+
+[`CredentialResolver`] looks up named credentials (like API keys) from overrides or environment variables.
+
+- [`CredentialResolver::new()`] checks overrides first, then falls back to environment variables.
+- [`CredentialResolver::without_env()`] only uses explicit overrides.
+- [`set_override`] stores a value that takes precedence over environment variables.
+
+```rust,no_run
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver};
+
+let mut resolver = CredentialResolver::new();
+resolver.set_override("OPENAI_API_KEY", "sk-override");
+let key = resolver.resolve("OPENAI_API_KEY");
+```
+
 [`tool_names`]: crate::tool_names
 [`read`]: crate::tool_names::READ
 [`write`]: crate::tool_names::WRITE
@@ -238,3 +254,7 @@ assert_eq!(rules.evaluate("task", "orchestrator-review"), PermissionAction::Deny
 [`Rule`]: crate::permissions::Rule
 [`Ruleset`]: crate::permissions::Ruleset
 [`PermissionAction::Deny`]: crate::permissions::PermissionAction::Deny
+[`CredentialResolver`]: crate::CredentialResolver
+[`CredentialResolver::new()`]: crate::CredentialResolver::new
+[`CredentialResolver::without_env()`]: crate::CredentialResolver::without_env
+[`set_override`]: crate::CredentialResolver::set_override

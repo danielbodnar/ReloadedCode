@@ -63,11 +63,7 @@ loader.add_directory(&mut catalog, "/home/user/.opencode")?;
 
 let runtime = AgentRuntimeBuilder::new()
     .catalog(catalog)
-    .defaults(AgentDefaults {
-        model: Some("openai/gpt-4o-mini".into()),
-        temperature: Some(0.2),
-        top_p: Some(0.95),
-    })
+    .defaults(AgentDefaults::with_model("openai/gpt-4o-mini"))
     // .tools(my_custom_tools)  // optional; defaults to read/write/edit/glob/grep/bash/webfetch/todoread/todowrite
     .build();
 

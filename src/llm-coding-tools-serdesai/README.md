@@ -63,9 +63,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 See the [serdesai-basic example](examples/serdesai-basic.rs) for a complete working setup.
 
-## Usage
+## Tool Variants
 
-File tools come in `absolute::*` (unrestricted) and `allowed::*` (sandboxed) variants:
+File tools come in two variants with identical APIs:
+
+- **`absolute::*`** - Unrestricted filesystem access using absolute paths
+- **`allowed::*`** - Sandboxed to configured directories via `AllowedPathResolver`
 
 ```rust,no_run
 use llm_coding_tools_serdesai::absolute::{ReadTool, WriteTool};
@@ -73,20 +76,39 @@ use llm_coding_tools_serdesai::allowed::{ReadTool as AllowedReadTool, WriteTool 
 use llm_coding_tools_serdesai::AllowedPathResolver;
 use std::path::PathBuf;
 
-// Unrestricted access (absolute paths)
+// Unrestricted access
 let read = ReadTool::<true>::new();
 
-// Sandboxed access (paths relative to allowed directories)
+// Sandboxed access
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
 let resolver = AllowedPathResolver::new(allowed_paths).unwrap();
 let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone());
 let sandboxed_write = AllowedWriteTool::new(resolver);
 ```
 
-Other tools: `BashTool`, `WebFetchTool`, `TaskTool`, `TodoReadTool`, `TodoWriteTool`.
-Use `SystemPromptBuilder` to track tools and pass `pb.build()` to `.system_prompt()`. Set `working_directory()` so the environment section is populated.
-Use `AgentBuilderExt::tool()` to add tools that implement `Tool<Deps>` to the agent.
-Context strings are re-exported in `llm_coding_tools_serdesai::context` (e.g., `BASH`, `READ_ABSOLUTE`).
+Other tools: `BashTool`, `WebFetchTool`, `TodoReadTool`, `TodoWriteTool`.
+
+Use `SystemPromptBuilder` to track tools and generate context-aware prompts. Context strings are re-exported in `llm_coding_tools_serdesai::context` (e.g., `BASH`, `READ_ABSOLUTE`).
+
+## Agent Runtime
+
+For catalog-based agent configuration, use `AgentRuntimeExt` to build agents from an [`AgentRuntime`](https://docs.rs/llm-coding-tools-agents/latest/llm_coding_tools_agents/struct.AgentRuntime.html):
+
+```rust,no_run
+use llm_coding_tools_serdesai::AgentRuntimeExt;
+use llm_coding_tools_agents::AgentRuntimeBuilder;
+use llm_coding_tools_core::models::ModelCatalog;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn get_catalog() -> ModelCatalog { unimplemented!() }
+let runtime = AgentRuntimeBuilder::new().build();
+let catalog = get_catalog(); // Load from models-dev, config file, etc.
+let _agent = runtime.build("planner", &catalog)?;
+# Ok(())
+# }
+```
+
+This requires the `llm-coding-tools-agents` crate and a `ModelCatalog` for model resolution.
 
 ## Examples
 

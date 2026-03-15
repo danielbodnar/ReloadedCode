@@ -150,31 +150,29 @@ mod tests {
     use llm_coding_tools_core::models::ProviderType;
     use tempfile::TempDir;
 
-    /// Guard that restores environment variables on drop
-    struct EnvGuard {
-        cache_path_var: Option<String>,
+    /// Guard that restores the shared cache path env var on drop.
+    struct CachePathGuard {
+        previous: Option<std::ffi::OsString>,
     }
 
-    impl EnvGuard {
-        fn new(value: Option<&str>) -> Self {
-            let cache_path_var = std::env::var(CACHE_PATH_ENV_VAR).ok();
-            match value {
-                Some(v) => std::env::set_var(CACHE_PATH_ENV_VAR, v),
-                None => std::env::remove_var(CACHE_PATH_ENV_VAR),
+    impl CachePathGuard {
+        fn new(value: &std::ffi::OsStr) -> Self {
+            let previous = std::env::var_os(CACHE_PATH_ENV_VAR);
+            unsafe {
+                std::env::set_var(CACHE_PATH_ENV_VAR, value);
             }
-            Self { cache_path_var }
+            Self { previous }
         }
     }
 
-    impl Drop for EnvGuard {
+    impl Drop for CachePathGuard {
         fn drop(&mut self) {
-            // Clear test URL override
             super::sync::set_test_models_dev_api_url(None);
-
-            // Restore or remove cache path env var
-            match &self.cache_path_var {
-                Some(v) => std::env::set_var(CACHE_PATH_ENV_VAR, v),
-                None => std::env::remove_var(CACHE_PATH_ENV_VAR),
+            unsafe {
+                match self.previous.take() {
+                    Some(value) => std::env::set_var(CACHE_PATH_ENV_VAR, value),
+                    None => std::env::remove_var(CACHE_PATH_ENV_VAR),
+                }
             }
         }
     }
@@ -186,9 +184,8 @@ mod tests {
     async fn facade_load_uses_shared_cache_path() {
         let temp = TempDir::new().expect("tempdir");
         let cache_path = temp.path().join("facade-test.cache");
-        let _guard = EnvGuard::new(Some(cache_path.to_str().unwrap()));
+        let _guard = CachePathGuard::new(cache_path.as_os_str());
 
-        // Start mock server and set URL override
         let body = String::from_utf8_lossy(sample_api_json()).to_string();
         let (_handle, url) = start_mock_server(MockResponse::Ok {
             etag: "\"facade-test-etag\"",
@@ -196,7 +193,6 @@ mod tests {
         });
         super::sync::set_test_models_dev_api_url(Some(url));
 
-        // Call public facade
         let result = ModelsDevCatalog::load().await.expect("load should succeed");
 
         assert_eq!(result.source, CatalogLoadSource::Downloaded);

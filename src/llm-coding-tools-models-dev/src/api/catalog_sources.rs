@@ -140,6 +140,7 @@ fn model_max_input(limit: &ApiModelLimit) -> u32 {
 fn provider_type_from_models_dev_npm(npm_package: Option<&str>) -> ProviderType {
     match npm_package {
         Some("@ai-sdk/openai") => ProviderType::OpenAiCompletions,
+        Some("@ai-sdk/openai-compatible") => ProviderType::OpenAiCompletions,
         Some("@ai-sdk/openai-responses") => ProviderType::OpenAiResponses,
         Some("@ai-sdk/anthropic") => ProviderType::Anthropic,
         Some("@ai-sdk/google") => ProviderType::Google,
@@ -548,12 +549,64 @@ mod tests {
             ProviderType::OpenAiCompletions
         );
         assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/openai-compatible")),
+            ProviderType::OpenAiCompletions
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/openai-responses")),
+            ProviderType::OpenAiResponses
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/anthropic")),
+            ProviderType::Anthropic
+        );
+        assert_eq!(
             provider_type_from_models_dev_npm(Some("@ai-sdk/google")),
             ProviderType::Google
         );
         assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/openai-compatible")),
-            ProviderType::Unknown
+            provider_type_from_models_dev_npm(Some("@ai-sdk/groq")),
+            ProviderType::Groq
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/mistral")),
+            ProviderType::Mistral
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/ollama")),
+            ProviderType::Ollama
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/amazon-bedrock")),
+            ProviderType::Bedrock
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/azure")),
+            ProviderType::Azure
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@openrouter/ai-sdk-provider")),
+            ProviderType::OpenRouter
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/huggingface")),
+            ProviderType::HuggingFace
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/cohere")),
+            ProviderType::Cohere
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/chatgpt-oauth")),
+            ProviderType::ChatGptOAuth
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/claude-code-oauth")),
+            ProviderType::ClaudeCodeOAuth
+        );
+        assert_eq!(
+            provider_type_from_models_dev_npm(Some("@ai-sdk/antigravity")),
+            ProviderType::Antigravity
         );
         assert_eq!(
             provider_type_from_models_dev_npm(None),

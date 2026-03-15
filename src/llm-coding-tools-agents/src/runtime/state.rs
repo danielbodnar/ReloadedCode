@@ -19,6 +19,18 @@ pub struct AgentDefaults {
     pub top_p: Option<f32>,
 }
 
+impl AgentDefaults {
+    /// Creates defaults with only a model specified; temperature and top_p inherit provider defaults.
+    #[inline]
+    pub fn with_model(model: impl Into<Box<str>>) -> Self {
+        Self {
+            model: Some(model.into()),
+            temperature: None,
+            top_p: None,
+        }
+    }
+}
+
 /// Your loaded agents plus their default settings and available tools.
 #[derive(Debug, Clone)]
 pub struct AgentRuntime {
