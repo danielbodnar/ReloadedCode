@@ -4,9 +4,9 @@
 //! - [`AgentRuntimeTaskExt`] - Builds a runnable agent with conditional Task support.
 //! - [`build_agent_with_credentials_and_task`] - Same build path with explicit shared credentials.
 
-use super::build::{AgentBuildError, attach_standard_tools, prepare_build};
+use super::build::{attach_standard_tools, prepare_task_build, AgentBuildError};
 use llm_coding_tools_agents::AgentRuntime;
-use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
+use llm_coding_tools_core::{models::ModelCatalog, CredentialLookup, CredentialResolver};
 use serdes_ai::{Agent, AgentBuilder};
 use std::sync::Arc;
 
@@ -93,25 +93,27 @@ where
         model_catalog,
         credentials,
     });
-    build_task_enabled_agent(context, name)
+    build_task_enabled_agent(context, name, 0)
 }
 
 /// Builds one runnable agent using the shared task-enabled build context.
 pub(crate) fn build_task_enabled_agent<C>(
     context: Arc<TaskBuildContext<C>>,
     name: &str,
+    current_depth: u8,
 ) -> Result<Agent<(), String>, AgentBuildError>
 where
     C: CredentialLookup + Send + Sync + 'static,
 {
-    let prepared = prepare_build(
+    let prepared = prepare_task_build(
         &context.runtime,
         name,
         context.model_catalog.as_ref(),
         context.credentials.as_ref(),
+        current_depth,
     )?;
     let builder = AgentBuilder::<(), String>::from_arc(prepared.model().clone());
-    let task_handle = TaskHandle::new(context);
+    let task_handle = TaskHandle::new(context, current_depth);
     let (builder, prompt_builder) = attach_standard_tools(builder, &prepared, Some(&task_handle))?;
     Ok(builder.system_prompt(prompt_builder.build()).build())
 }
@@ -124,13 +126,13 @@ mod tests {
     use llm_coding_tools_agents::{
         AgentCatalog, AgentConfig, AgentDefaults, AgentMode, AgentRuntimeBuilder, PermissionRule,
     };
-    use llm_coding_tools_core::CredentialResolver;
     use llm_coding_tools_core::models::{
         Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
     use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::CredentialResolver;
 
     fn agent(
         name: &str,
@@ -213,7 +215,7 @@ mod tests {
             credentials,
         });
 
-        let agent = build_task_enabled_agent(context, "caller").expect("build should succeed");
+        let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
         let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(!tool_names.contains(&tool_names::TASK));
     }
@@ -247,7 +249,7 @@ mod tests {
             credentials,
         });
 
-        let agent = build_task_enabled_agent(context, "caller").expect("build should succeed");
+        let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
         let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&tool_names::TASK));
         assert!(tool_names.contains(&tool_names::READ));
@@ -276,5 +278,76 @@ mod tests {
             .expect("build should succeed");
         let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(!tool_names.contains(&tool_names::TASK));
+    }
+
+    #[test]
+    fn build_task_enabled_agent_omits_task_tool_at_max_depth() {
+        // Mid-chain: an already-delegated agent (depth=1) at max_task_depth=1
+        // must not receive the Task tool.
+        let credentials = credentials();
+        let model_catalog = Arc::new(catalog());
+
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::All,
+                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    "prompt",
+                ),
+                agent(
+                    "target",
+                    AgentMode::All,
+                    allow_tools(&[tool_names::WRITE]),
+                    "prompt",
+                ),
+            ]))
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
+            .max_task_depth(1)
+            .build();
+
+        let context = Arc::new(TaskBuildContext {
+            runtime,
+            model_catalog,
+            credentials,
+        });
+
+        let agent = build_task_enabled_agent(context, "caller", 1).expect("build should succeed");
+        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!tool_names.contains(&tool_names::TASK));
+        assert!(tool_names.contains(&tool_names::READ));
+    }
+
+    #[test]
+    fn build_with_task_omits_task_tool_when_max_depth_is_zero() {
+        // Root agent: max_task_depth=0 disables delegation entirely from the start.
+        let model_catalog = Arc::new(catalog());
+        let credentials = credentials();
+
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::All,
+                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    "prompt",
+                ),
+                agent(
+                    "target",
+                    AgentMode::All,
+                    allow_tools(&[tool_names::WRITE]),
+                    "prompt",
+                ),
+            ]))
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
+            .max_task_depth(0)
+            .build();
+
+        let agent = runtime
+            .build_with_task("caller", model_catalog, credentials)
+            .expect("build should succeed");
+        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!tool_names.contains(&tool_names::TASK));
+        assert!(tool_names.contains(&tool_names::READ));
     }
 }

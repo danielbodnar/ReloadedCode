@@ -133,6 +133,7 @@ AgentLoader::new().add_directory(&mut catalog, &examples_root)?;
 let runtime = AgentRuntimeBuilder::new()
     .catalog(catalog)
     .defaults(AgentDefaults::with_model("synthetic/hf:zai-org/GLM-4.7"))
+    // .max_task_depth(5) // Optional: defaults to 3 Task hops
     .build();
 
 let credentials = Arc::new(CredentialResolver::new());

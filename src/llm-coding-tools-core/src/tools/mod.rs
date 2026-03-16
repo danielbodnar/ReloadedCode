@@ -19,7 +19,7 @@ pub use edit::{edit_file, EditError};
 pub use glob::{glob_files, GlobOutput};
 pub use grep::{grep_search, GrepFileMatches, GrepLineMatch, GrepOutput, DEFAULT_MAX_LINE_LENGTH};
 pub use read::read_file;
-pub use task::{TaskInput, TaskOutput};
+pub use task::{TaskInput, TaskOutput, TaskSettings};
 pub use todo::{read_todos, write_todos, Todo, TodoPriority, TodoState, TodoStatus};
 pub use write::write_file;
 

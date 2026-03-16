@@ -3,12 +3,14 @@
 use super::state::{AgentDefaults, AgentRuntime};
 use super::tool_catalog::{default_tools, ToolCatalogEntry};
 use crate::AgentCatalog;
+use llm_coding_tools_core::TaskSettings;
 
 /// Builds an [`AgentRuntime`] step by step.
 #[derive(Debug, Clone)]
 pub struct AgentRuntimeBuilder {
     catalog: AgentCatalog,
     defaults: AgentDefaults,
+    task_settings: TaskSettings,
     tools: Vec<ToolCatalogEntry>,
 }
 
@@ -20,12 +22,13 @@ impl Default for AgentRuntimeBuilder {
 }
 
 impl AgentRuntimeBuilder {
-    /// Creates a builder with empty catalog, empty defaults, and the standard tool set.
+    /// Creates a builder with empty catalog, empty defaults, default Task settings, and the standard tool set.
     #[inline]
     pub fn new() -> Self {
         Self {
             catalog: AgentCatalog::new(),
             defaults: AgentDefaults::default(),
+            task_settings: TaskSettings::default(),
             tools: default_tools(),
         }
     }
@@ -44,6 +47,20 @@ impl AgentRuntimeBuilder {
         self
     }
 
+    /// Sets the shared Task delegation settings.
+    #[inline]
+    pub fn task_settings(mut self, task_settings: TaskSettings) -> Self {
+        self.task_settings = task_settings;
+        self
+    }
+
+    /// Sets the maximum number of Task delegation hops.
+    #[inline]
+    pub fn max_task_depth(mut self, max_depth: u8) -> Self {
+        self.task_settings = TaskSettings::with_max_depth(max_depth);
+        self
+    }
+
     /// Sets the available tools.
     #[inline]
     pub fn tools(mut self, tools: Vec<ToolCatalogEntry>) -> Self {
@@ -54,7 +71,7 @@ impl AgentRuntimeBuilder {
     /// Finishes building and returns the [`AgentRuntime`].
     #[inline]
     pub fn build(self) -> AgentRuntime {
-        AgentRuntime::from_parts(self.catalog, self.defaults, self.tools)
+        AgentRuntime::from_parts(self.catalog, self.defaults, self.task_settings, self.tools)
     }
 }
 
@@ -65,6 +82,7 @@ mod tests {
     use crate::runtime::AgentDefaults;
     use crate::{AgentCatalog, AgentConfig, AgentMode};
     use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::TaskSettings;
 
     fn sample_config(name: &str, model: Option<&str>) -> AgentConfig {
         AgentConfig {
@@ -108,7 +126,15 @@ mod tests {
             Some("openai/gpt-4o"),
         );
         assert_eq!(runtime.defaults(), &defaults);
+        assert_eq!(runtime.task_settings(), TaskSettings::default());
         assert_eq!(runtime.tools(), tools.as_slice());
+    }
+
+    #[test]
+    fn builder_overrides_task_settings() {
+        let runtime = AgentRuntimeBuilder::new().max_task_depth(5).build();
+
+        assert_eq!(runtime.task_settings(), TaskSettings::with_max_depth(5));
     }
 
     #[test]
@@ -117,6 +143,7 @@ mod tests {
 
         assert_eq!(runtime.catalog().iter().count(), 0);
         assert_eq!(runtime.defaults(), &AgentDefaults::default());
+        assert_eq!(runtime.task_settings(), TaskSettings::default());
         assert_eq!(runtime.tools(), default_tools().as_slice());
     }
 }

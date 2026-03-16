@@ -16,6 +16,7 @@ use std::sync::Arc;
 /// Shared Task executor used by the concrete SerdesAI tool.
 pub(crate) struct TaskHandle<C: CredentialLookup + Send + Sync + ?Sized = CredentialResolver> {
     context: Arc<TaskBuildContext<C>>,
+    current_depth: u8,
 }
 
 impl<C> Clone for TaskHandle<C>
@@ -25,6 +26,7 @@ where
     fn clone(&self) -> Self {
         Self {
             context: Arc::clone(&self.context),
+            current_depth: self.current_depth,
         }
     }
 }
@@ -35,8 +37,11 @@ where
 {
     /// Creates a new handle over the shared task-enabled build context.
     #[inline]
-    pub(crate) fn new(context: Arc<TaskBuildContext<C>>) -> Self {
-        Self { context }
+    pub(crate) fn new(context: Arc<TaskBuildContext<C>>, current_depth: u8) -> Self {
+        Self {
+            context,
+            current_depth,
+        }
     }
 
     /// Validates the delegation request, builds a task-scoped agent, and runs it.
@@ -55,6 +60,7 @@ where
     ///
     /// Returns [`ToolError::ValidationFailed`] when:
     /// - `session_id` is present (task sessions are unsupported).
+    /// - The caller is already at the configured maximum Task delegation depth.
     /// - The caller or target agent is missing from the catalog.
     /// - The target uses [`AgentMode::Primary`].
     /// - The caller lacks permission to delegate to the target.
@@ -74,15 +80,33 @@ where
             ));
         }
 
-        self.validate_target(caller_name, &input.subagent_type)?;
         let target_name = input.subagent_type.clone();
-        let agent = build_task_enabled_agent::<C>(self.context.clone(), target_name.as_str())
-            .map_err(|err| {
-                ToolError::execution_failed(format!(
-                    "failed to build delegated agent `{}`: {err}",
-                    target_name
-                ))
-            })?;
+        let task_settings = self.context.runtime().task_settings();
+        if !task_settings.allows_delegation(self.current_depth) {
+            return Err(ToolError::validation_error(
+                tool_names::TASK,
+                None,
+                format!(
+                    "task delegation depth {} reached runtime max_task_depth {}; cannot delegate to `{}`",
+                    self.current_depth,
+                    task_settings.max_depth(),
+                    target_name,
+                ),
+            ));
+        }
+
+        self.validate_target(caller_name, &target_name)?;
+        let agent = build_task_enabled_agent::<C>(
+            self.context.clone(),
+            target_name.as_str(),
+            self.current_depth.saturating_add(1),
+        )
+        .map_err(|err| {
+            ToolError::execution_failed(format!(
+                "failed to build delegated agent `{}`: {err}",
+                target_name
+            ))
+        })?;
         let response = agent.run(input.prompt.as_str(), ()).await.map_err(|err| {
             ToolError::execution_failed(format!("delegated agent `{}` failed: {err}", target_name))
         })?;
@@ -236,7 +260,7 @@ mod tests {
         )])
         .build();
         let context = build_test_context(runtime);
-        let handle = TaskHandle::new(context);
+        let handle = TaskHandle::new(context, 0);
 
         let input = TaskInput {
             description: "test".into(),
@@ -269,7 +293,7 @@ mod tests {
         ])
         .build();
         let context = build_test_context(runtime);
-        let handle = TaskHandle::new(context);
+        let handle = TaskHandle::new(context, 0);
 
         let input = TaskInput {
             description: "test".into(),
@@ -306,7 +330,7 @@ mod tests {
         ])
         .build();
         let context = build_test_context(runtime);
-        let handle = TaskHandle::new(context);
+        let handle = TaskHandle::new(context, 0);
 
         let input = TaskInput {
             description: "test".into(),
@@ -339,7 +363,7 @@ mod tests {
         ])
         .build();
         let context = build_test_context(runtime);
-        let handle = TaskHandle::new(context);
+        let handle = TaskHandle::new(context, 0);
 
         let input = TaskInput {
             description: "test".into(),
@@ -361,6 +385,43 @@ mod tests {
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("not supported"));
                 assert!(error_message.contains("omit"));
+            }
+            _ => panic!("Expected ValidationFailed error, got: {:?}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_rejects_calls_at_max_task_depth() {
+        // Defense-in-depth: even if the Task tool were somehow present at max depth,
+        // execute() rejects the call.
+        let runtime = runtime_with_agents(vec![
+            agent("caller", AgentMode::All, allow_tools(&[tool_names::TASK])),
+            agent("target", AgentMode::All, allow_tools(&[])),
+        ])
+        .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
+        .max_task_depth(0)
+        .build();
+        let context = build_test_context(runtime);
+        let handle = TaskHandle::new(context, 0);
+
+        let input = TaskInput {
+            description: "test".into(),
+            prompt: "test prompt".into(),
+            subagent_type: "target".into(),
+            session_id: None,
+            command: None,
+        };
+
+        let result = handle.execute("caller", input).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            ToolError::ValidationFailed { tool_name, errors } => {
+                assert_eq!(tool_name, "task");
+                assert!(!errors.is_empty());
+                let error_message = &errors[0].message;
+                assert!(error_message.contains("max_task_depth"));
+                assert!(error_message.contains("target"));
             }
             _ => panic!("Expected ValidationFailed error, got: {:?}", err),
         }

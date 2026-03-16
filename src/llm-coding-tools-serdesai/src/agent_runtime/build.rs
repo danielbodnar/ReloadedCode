@@ -145,6 +145,24 @@ where
     })
 }
 
+/// Resolves build parameters for a Task-enabled build at `current_depth`.
+pub(super) fn prepare_task_build<C>(
+    runtime: &AgentRuntime,
+    name: &str,
+    model_catalog: &ModelCatalog,
+    credentials: &C,
+    current_depth: u8,
+) -> Result<PreparedBuild, AgentBuildError>
+where
+    C: CredentialLookup,
+{
+    let mut prepared = prepare_build(runtime, name, model_catalog, credentials)?;
+    if !runtime.task_settings().allows_delegation(current_depth) {
+        prepared.callable_target_summaries.clear();
+    }
+    Ok(prepared)
+}
+
 /// Attaches the standard runtime tools and prompt contexts without finalizing the builder.
 pub(super) fn attach_standard_tools<C>(
     mut builder: AgentBuilder<(), String>,

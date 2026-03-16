@@ -45,7 +45,7 @@ Canonical tool names are defined in [`tool_names`] ([`read`], [`write`], [`edit`
 - [`webfetch`] ([`fetch_url`]) - Fetch URL content as text, markdown, or html (requires `tokio` or `blocking`).
 - [`todoread`] ([`read_todos`]) - Read shared todo state.
 - [`todowrite`] ([`write_todos`]) - Write and validate shared todo state.
-- [`task`] ([`TaskInput`], [`TaskOutput`]) - Standard task payload types used by delegation wrappers.
+- [`task`] ([`TaskInput`], [`TaskOutput`], [`TaskSettings`]) - Standard task payload types and shared delegation limits used by runtime wrappers.
 
 ### Path safety and sandboxing
 
@@ -238,6 +238,7 @@ let key = resolver.resolve("OPENAI_API_KEY");
 [`write_todos`]: crate::write_todos
 [`TaskInput`]: crate::TaskInput
 [`TaskOutput`]: crate::TaskOutput
+[`TaskSettings`]: crate::TaskSettings
 [`SystemPromptBuilder`]: crate::SystemPromptBuilder
 [`track(&mut self, tool: T)`]: crate::SystemPromptBuilder::track
 [`working_directory(self, path)`]: crate::SystemPromptBuilder::working_directory

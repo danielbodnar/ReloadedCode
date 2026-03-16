@@ -9,6 +9,7 @@
 //! - [`AgentRuntime`] - Your agents plus their default settings and tools
 //! - [`AgentRuntimeBuilder`] - Builds an [`AgentRuntime`]
 //! - [`AgentDefaults`] - Default model, temperature, and top-p when agents don't specify them
+//! - [`TaskSettings`] - Shared Task delegation limits for all integrations using the runtime
 //!
 //! Tools:
 //! - [`ToolCatalogEntry`] - One tool the runtime can provide to agents
@@ -45,6 +46,7 @@ mod task;
 mod tool_catalog;
 
 pub use builder::AgentRuntimeBuilder;
+pub use llm_coding_tools_core::TaskSettings;
 pub use model::{resolve_model_with_catalog, ModelResolutionError, ResolvedModel};
 pub use state::{AgentDefaults, AgentRuntime};
 pub use task::{callable_targets, summarize_callable_targets, TaskTargetSummary};

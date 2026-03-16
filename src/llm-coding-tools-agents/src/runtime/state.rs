@@ -1,12 +1,13 @@
-//! Holds your loaded agents, default settings, and available tools.
+//! Holds your loaded agents, default settings, Task settings, and available tools.
 //!
 //! ## Public API
 //!
-//! - [`AgentRuntime`] — Container for loaded agents, defaults, and tools.
+//! - [`AgentRuntime`] — Container for loaded agents, defaults, Task settings, and tools.
 //! - [`AgentDefaults`] — Fallback settings when an agent doesn't specify them.
 
 use super::tool_catalog::ToolCatalogEntry;
 use crate::AgentCatalog;
+use llm_coding_tools_core::TaskSettings;
 
 /// Default settings used when an agent doesn't specify them.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -31,11 +32,12 @@ impl AgentDefaults {
     }
 }
 
-/// Your loaded agents plus their default settings and available tools.
+/// Your loaded agents plus their default settings, Task settings, and available tools.
 #[derive(Debug, Clone)]
 pub struct AgentRuntime {
     catalog: AgentCatalog,
     defaults: AgentDefaults,
+    task_settings: TaskSettings,
     tools: Vec<ToolCatalogEntry>,
 }
 
@@ -44,11 +46,13 @@ impl AgentRuntime {
     pub(super) fn from_parts(
         catalog: AgentCatalog,
         defaults: AgentDefaults,
+        task_settings: TaskSettings,
         tools: Vec<ToolCatalogEntry>,
     ) -> Self {
         Self {
             catalog,
             defaults,
+            task_settings,
             tools,
         }
     }
@@ -63,6 +67,12 @@ impl AgentRuntime {
     #[inline]
     pub fn defaults(&self) -> &AgentDefaults {
         &self.defaults
+    }
+
+    /// Returns the shared Task delegation settings.
+    #[inline]
+    pub fn task_settings(&self) -> TaskSettings {
+        self.task_settings
     }
 
     /// Returns the tools available to agents.

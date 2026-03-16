@@ -54,7 +54,7 @@ pub use agent_runtime::{
 pub use bash::BashTool;
 pub use llm_coding_tools_agents::{
     AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
-    ToolCatalogEntry, ToolCatalogKind, default_tools, resolve_model_with_catalog,
+    TaskSettings, ToolCatalogEntry, ToolCatalogKind, default_tools, resolve_model_with_catalog,
 };
 pub use todo::{TodoReadTool, TodoWriteTool, create_todo_tools};
 pub use webfetch::WebFetchTool;

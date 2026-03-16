@@ -14,7 +14,7 @@ pub use parser::AgentParseError;
 pub use runtime::{
     callable_targets, default_tools, resolve_model_with_catalog, summarize_callable_targets,
     AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
-    TaskTargetSummary, ToolCatalogEntry, ToolCatalogKind,
+    TaskSettings, TaskTargetSummary, ToolCatalogEntry, ToolCatalogKind,
 };
 pub use types::{
     parse_model_parts, AgentConfig, AgentLoadError, AgentLoadResult, AgentMode, PermissionRule,
