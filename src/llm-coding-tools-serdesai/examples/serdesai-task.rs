@@ -1,6 +1,6 @@
 //! Stateless Task delegation example using the models.dev catalog.
 //!
-//! Loads markdown agents from `examples/agents/`, builds the primary
+//! Loads markdown agents from `examples/agents/task-demo/`, builds the primary
 //! orchestrator through [`AgentRuntimeTaskExt::build_with_task`], and runs one
 //! prompt that should delegate exactly once to `reader`.
 //!
@@ -20,7 +20,10 @@ const API_KEY_VALUE: &str = ""; // <-- Set your API key here
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let examples_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
+    let agents_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("agents")
+        .join("task-demo");
     let readme_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md");
     let mut credentials = CredentialResolver::without_env();
     if !API_KEY_VALUE.is_empty() {
@@ -34,7 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let mut catalog = AgentCatalog::new();
-    AgentLoader::new().add_directory(&mut catalog, &examples_root)?;
+    let loader = AgentLoader::new();
+    loader.add_file(&mut catalog, agents_dir.join("orchestrator.md"))?;
+    loader.add_file(&mut catalog, agents_dir.join("reader.md"))?;
 
     let runtime = AgentRuntimeBuilder::new()
         .catalog(catalog)
@@ -43,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "Loading named agent `{AGENT_NAME}` from {}",
-        examples_root.display()
+        agents_dir.display()
     );
     let agent = runtime.build_with_task(
         AGENT_NAME,
@@ -56,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let prompt = format!(
-        "Use a single delegated read-only task to inspect {}. Then explain in three bullets how the task-enabled build flow works, why it lives in SerdesAI, and what v1 Task does not support.",
+        "Ask `reader` to give a short summary of {}.",
         readme_path.display(),
     );
     let response = agent.run(prompt.as_str(), ()).await?;
