@@ -80,6 +80,9 @@ approval flows).
 To avoid false expectations, settings that require interaction are rejected,
 while settings with no runtime effect are accepted and ignored:
 
+- Unspecified permissions default to `deny` for normal tools. `permission.task`
+  is special: if omitted, Task still allows delegation to callable
+  `mode: all` / `mode: subagent` targets for OpenCode compatibility.
 - [`permission.task`](https://opencode.ai/docs/agents#task-permissions):
   `ask` is rejected with a schema validation error (`allow`/`deny` only),
   because `ask` is an interactive approval mode in OpenCode

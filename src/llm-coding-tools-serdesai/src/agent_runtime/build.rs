@@ -13,10 +13,9 @@ use crate::{
     create_todo_tools,
 };
 use llm_coding_tools_agents::{
-    AgentRuntime, ModelResolutionError, RulesetExt, TaskTargetSummary, ToolCatalogEntry,
-    ToolCatalogKind, summarize_callable_targets,
+    AgentRuntime, ModelResolutionError, TaskTargetSummary, ToolCatalogEntry, ToolCatalogKind,
+    summarize_callable_targets,
 };
-use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
 use serdes_ai_models::BoxedModel;
@@ -126,8 +125,7 @@ where
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
     let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
     let serdes_model = build_serdes_model(model_catalog, &resolved, credentials)?;
-    let ruleset = Ruleset::from_permission_config(&agent.permission);
-    let tools = ruleset.filter_allowed_tools(runtime.tools());
+    let tools = runtime.allowed_tools(name);
     let callable_target_summaries = summarize_callable_targets(runtime.catalog(), name);
 
     Ok(PreparedBuild {

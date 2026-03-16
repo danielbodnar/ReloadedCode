@@ -11,6 +11,7 @@ use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
 use llm_coding_tools_core::CredentialResolver;
 use llm_coding_tools_models_dev::ModelsDevCatalog;
 use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeTaskExt};
+use serdes_ai::{ModelRequestPart, UserContent};
 use std::{path::PathBuf, sync::Arc};
 
 const AGENT_NAME: &str = "orchestrator";
@@ -64,8 +65,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Ask `reader` to give a short summary of {}.",
         readme_path.display(),
     );
-    let response = agent.run(prompt.as_str(), ()).await?;
+    let response = agent.run(UserContent::text(prompt), ()).await?;
     println!("{}", response.output());
+    println!(
+        "Root agent usage: {} model requests, {} tool calls",
+        response.usage.request_count, response.usage.tool_call_count
+    );
+
+    let tool_calls = response
+        .messages
+        .iter()
+        .flat_map(|request| request.parts.iter())
+        .filter(|part| matches!(part, ModelRequestPart::ToolReturn(_)))
+        .count();
+    println!("Task/tool returns observed in history: {tool_calls}");
 
     Ok(())
 }

@@ -1,10 +1,12 @@
 //! Task delegation helpers backed by [`AgentCatalog`].
 //!
 //! # Public API
+//! - [`summarize_callable_targets`] - Builds summary rows with stable names and descriptions.
 //! - [`callable_targets`] - Returns the agents an active agent may delegate to via Task.
 //! - [`TaskTargetSummary`] - Stable Task UI metadata for a callable target.
-//! - [`summarize_callable_targets`] - Builds summary rows with stable names and descriptions.
 
+use super::state::AgentRuntime;
+use super::tool_catalog::{ToolCatalogEntry, ToolCatalogKind};
 use crate::{AgentCatalog, AgentConfig, AgentMode, RulesetExt};
 use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_names;
@@ -16,6 +18,34 @@ pub struct TaskTargetSummary {
     pub name: Box<str>,
     /// Human-readable target description.
     pub description: Box<str>,
+}
+
+/// For each agent `caller_name` can delegate to, returns its name and description.
+/// Results are in consistent alphabetical order.
+///
+/// # Params
+/// - `catalog` - All registered agents.
+/// - `caller_name` - Name of the agent that wants to delegate.
+///
+/// # Returns
+/// One [`TaskTargetSummary`] per callable target, sorted by name. Empty if
+/// `caller_name` is not in the catalog or no non-primary targets are available.
+pub fn summarize_callable_targets(
+    catalog: &AgentCatalog,
+    caller_name: &str,
+) -> Vec<TaskTargetSummary> {
+    let callable = callable_targets(catalog, caller_name);
+    let mut summaries = Vec::with_capacity(callable.len());
+
+    // Copy stable Task metadata into owned summaries.
+    for target in callable {
+        summaries.push(TaskTargetSummary {
+            name: target.name.clone(),
+            description: target.description.clone(),
+        });
+    }
+
+    summaries
 }
 
 /// Returns the agents that `caller_name` (the currently running agent) may delegate to via Task.
@@ -38,34 +68,18 @@ pub fn callable_targets<'a>(catalog: &'a AgentCatalog, caller_name: &str) -> Vec
     };
 
     let agents = sorted_agents(catalog);
-    collect_callable_targets(&agents, caller)
-}
+    let task_rules = Ruleset::from_permission_config(&caller.permission);
+    let has_explicit_task_permission = caller.permission.contains_key(tool_names::TASK);
+    let mut targets = Vec::with_capacity(agents.len());
 
-/// For each agent `caller_name` can delegate to, returns its name and description.
-/// Results are in consistent alphabetical order.
-///
-/// # Params
-/// - `catalog` - All registered agents.
-/// - `caller_name` - Name of the agent that wants to delegate.
-///
-/// # Returns
-/// One [`TaskTargetSummary`] per callable target, sorted by name. Empty if
-/// `caller_name` is not in the catalog or no non-primary targets are available.
-pub fn summarize_callable_targets(
-    catalog: &AgentCatalog,
-    caller_name: &str,
-) -> Vec<TaskTargetSummary> {
-    let callable = callable_targets(catalog, caller_name);
-    let mut summaries = Vec::with_capacity(callable.len());
-
-    for target in callable {
-        summaries.push(TaskTargetSummary {
-            name: target.name.clone(),
-            description: target.description.clone(),
-        });
+    // Keep only non-primary targets that survive `permission.task` filtering.
+    for target in agents {
+        if target_is_callable(target, &task_rules, has_explicit_task_permission) {
+            targets.push(target);
+        }
     }
 
-    summaries
+    targets
 }
 
 fn sorted_agents(catalog: &AgentCatalog) -> Vec<&AgentConfig> {
@@ -74,32 +88,67 @@ fn sorted_agents(catalog: &AgentCatalog) -> Vec<&AgentConfig> {
     agents
 }
 
-fn collect_callable_targets<'a>(
-    agents: &[&'a AgentConfig],
-    caller: &AgentConfig,
-) -> Vec<&'a AgentConfig> {
+fn target_is_callable(
+    target: &AgentConfig,
+    task_rules: &Ruleset,
+    has_explicit_task_permission: bool,
+) -> bool {
+    matches!(target.mode, AgentMode::All | AgentMode::Subagent)
+        && (!has_explicit_task_permission
+            || task_rules.is_allowed(tool_names::TASK, target.name.as_ref()))
+}
+
+pub(super) fn resolve_allowed_tools(
+    runtime: &AgentRuntime,
+    caller_name: &str,
+) -> Vec<ToolCatalogEntry> {
+    let Some(caller) = runtime.catalog().by_name(caller_name) else {
+        return Vec::new();
+    };
+
+    let agents = sorted_agents(runtime.catalog());
     let task_rules = Ruleset::from_permission_config(&caller.permission);
     let has_explicit_task_permission = caller.permission.contains_key(tool_names::TASK);
-    let mut targets = Vec::with_capacity(agents.len());
-    for target in agents {
-        if !matches!(target.mode, AgentMode::All | AgentMode::Subagent) {
-            continue;
-        }
+    let mut task_is_callable = false;
 
-        if !has_explicit_task_permission
-            || task_rules.is_allowed(tool_names::TASK, target.name.as_ref())
-        {
-            targets.push(*target);
+    // Expose `task` only when at least one delegated target remains callable.
+    for target in agents {
+        if target_is_callable(target, &task_rules, has_explicit_task_permission) {
+            task_is_callable = true;
+            break;
         }
     }
-    targets
+
+    collect_allowed_tools(runtime.tools(), &task_rules, task_is_callable)
+}
+
+fn collect_allowed_tools(
+    tools: &[ToolCatalogEntry],
+    task_rules: &Ruleset,
+    task_is_callable: bool,
+) -> Vec<ToolCatalogEntry> {
+    let mut allowed = Vec::with_capacity(tools.len());
+
+    for entry in tools {
+        let is_allowed = match entry.kind {
+            // Task is target-scoped, so wildcard tool filtering alone is not enough.
+            ToolCatalogKind::Task => task_is_callable,
+            _ => task_rules.is_allowed(entry.name, "*"),
+        };
+
+        if is_allowed {
+            allowed.push(*entry);
+        }
+    }
+
+    allowed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::PermissionRule;
-    use crate::{AgentConfig, AgentMode};
+    use crate::{AgentConfig, AgentMode, AgentRuntimeBuilder};
     use ahash::AHashMap;
     use indexmap::IndexMap;
     use llm_coding_tools_core::permissions::PermissionAction;
@@ -411,5 +460,61 @@ mod tests {
 
         let summaries = summarize_callable_targets(&catalog, "caller");
         assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn allowed_tools_keeps_task_when_a_target_is_callable() {
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::Primary,
+                    "Caller",
+                    pattern_task(&[
+                        ("*", PermissionAction::Deny),
+                        ("reader", PermissionAction::Allow),
+                    ]),
+                ),
+                agent("reader", AgentMode::Subagent, "Reader", IndexMap::new()),
+                agent("writer", AgentMode::Subagent, "Writer", IndexMap::new()),
+            ]))
+            .build();
+
+        let tool_names: Vec<_> = runtime
+            .allowed_tools("caller")
+            .iter()
+            .map(|t| t.name)
+            .collect();
+
+        assert_eq!(tool_names, vec![tool_names::TASK]);
+    }
+
+    #[test]
+    fn allowed_tools_omits_task_when_no_targets_are_callable() {
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::Primary,
+                    "Caller",
+                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                ),
+                agent(
+                    "primary-target",
+                    AgentMode::Primary,
+                    "Primary",
+                    IndexMap::new(),
+                ),
+            ]))
+            .build();
+
+        let tool_names: Vec<_> = runtime
+            .allowed_tools("caller")
+            .iter()
+            .map(|t| t.name)
+            .collect();
+
+        assert!(tool_names.contains(&tool_names::READ));
+        assert!(!tool_names.contains(&tool_names::TASK));
     }
 }

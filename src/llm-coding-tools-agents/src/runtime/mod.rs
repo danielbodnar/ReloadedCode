@@ -17,8 +17,8 @@
 //! - [`default_tools()`] - The standard tool set (read, write, edit, glob, grep, bash, webfetch, todo)
 //!
 //! Task delegation:
-//! - [`callable_targets()`] - Returns the agents the active agent may delegate to
 //! - [`summarize_callable_targets()`] - Builds target summaries with names and descriptions
+//! - [`callable_targets()`] - Returns the agents the active agent may delegate to
 //! - [`TaskTargetSummary`] - Metadata for a callable Task target
 //!
 //! Model resolution:

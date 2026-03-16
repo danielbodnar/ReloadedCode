@@ -161,6 +161,14 @@ mod tests {
             .collect()
     }
 
+    fn pattern_task(patterns: &[(&str, PermissionAction)]) -> IndexMap<String, PermissionRule> {
+        let mut map = IndexMap::new();
+        for (pattern, action) in patterns {
+            map.insert(pattern.to_string(), *action);
+        }
+        IndexMap::from([(tool_names::TASK.into(), PermissionRule::Pattern(map))])
+    }
+
     fn catalog() -> ModelCatalog {
         let providers = vec![ProviderSource::new(
             "openrouter",
@@ -200,11 +208,11 @@ mod tests {
             .catalog(AgentCatalog::from_entries([
                 agent(
                     "caller",
-                    AgentMode::All,
+                    AgentMode::Primary,
                     allow_tools(&[tool_names::READ]),
                     "prompt",
                 ),
-                agent("other", AgentMode::All, allow_tools(&[]), "prompt"),
+                agent("other", AgentMode::Primary, allow_tools(&[]), "prompt"),
             ]))
             .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build();
@@ -256,6 +264,70 @@ mod tests {
     }
 
     #[test]
+    fn build_task_enabled_agent_attaches_task_when_task_permission_is_target_scoped() {
+        let credentials = credentials();
+        let model_catalog = Arc::new(catalog());
+
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::Primary,
+                    pattern_task(&[
+                        ("*", PermissionAction::Deny),
+                        ("reader", PermissionAction::Allow),
+                    ]),
+                    "prompt",
+                ),
+                agent("reader", AgentMode::Subagent, allow_tools(&[]), "prompt"),
+            ]))
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
+            .build();
+
+        let context = Arc::new(TaskBuildContext {
+            runtime,
+            model_catalog,
+            credentials,
+        });
+
+        let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
+        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert_eq!(tool_names, vec![tool_names::TASK]);
+    }
+
+    #[test]
+    fn build_task_enabled_agent_attaches_task_when_permission_task_is_absent() {
+        let credentials = credentials();
+        let model_catalog = Arc::new(catalog());
+
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([
+                agent(
+                    "caller",
+                    AgentMode::Primary,
+                    allow_tools(&[tool_names::READ]),
+                    "prompt",
+                ),
+                agent("reader", AgentMode::Subagent, allow_tools(&[]), "prompt"),
+            ]))
+            .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
+            .build();
+
+        let context = Arc::new(TaskBuildContext {
+            runtime,
+            model_catalog,
+            credentials,
+        });
+
+        // OpenCode-compatible default: omitting `permission.task` still exposes Task.
+        // Any non-primary callable target keeps delegation available to the caller.
+        let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
+        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&tool_names::READ));
+        assert!(tool_names.contains(&tool_names::TASK));
+    }
+
+    #[test]
     fn build_with_task_omits_task_tool_when_no_targets_are_callable() {
         let model_catalog = Arc::new(catalog());
         let credentials = credentials();
@@ -264,11 +336,11 @@ mod tests {
             .catalog(AgentCatalog::from_entries([
                 agent(
                     "caller",
-                    AgentMode::All,
+                    AgentMode::Primary,
                     allow_tools(&[tool_names::READ]),
                     "prompt",
                 ),
-                agent("other", AgentMode::All, allow_tools(&[]), "prompt"),
+                agent("other", AgentMode::Primary, allow_tools(&[]), "prompt"),
             ]))
             .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build();

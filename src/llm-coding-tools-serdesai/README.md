@@ -146,7 +146,13 @@ let agent = runtime.build_with_task(
 # }
 ```
 
-Each Task call builds and runs the subagent once; `session_id` is rejected. Use [`build_agent_with_credentials_and_task`] for the lower-level helper. See [examples/serdesai-task.rs](examples/serdesai-task.rs).
+Each Task call builds and runs the subagent once, and rejects `session_id`.
+
+Normal tools default to `deny` when omitted, but omitted `permission.task`
+is auto-enabled if any task is callable for OpenCode compatibility.
+
+Use [`build_agent_with_credentials_and_task`] for the lower-level helper.
+See [examples/serdesai-task.rs](examples/serdesai-task.rs).
 
 ## Examples
 

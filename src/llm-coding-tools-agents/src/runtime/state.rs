@@ -5,6 +5,7 @@
 //! - [`AgentRuntime`] — Container for loaded agents, defaults, Task settings, and tools.
 //! - [`AgentDefaults`] — Fallback settings when an agent doesn't specify them.
 
+use super::task::resolve_allowed_tools;
 use super::tool_catalog::ToolCatalogEntry;
 use crate::AgentCatalog;
 use llm_coding_tools_core::TaskSettings;
@@ -79,5 +80,15 @@ impl AgentRuntime {
     #[inline]
     pub fn tools(&self) -> &[ToolCatalogEntry] {
         &self.tools
+    }
+
+    /// Returns the tool entries exposed to the named caller.
+    ///
+    /// Most tools use the standard wildcard permission check (`permission -> "*"`).
+    /// `task` is only included when at least one `mode: all` or `mode: subagent`
+    /// target remains callable after applying `permission.task`.
+    #[inline]
+    pub fn allowed_tools(&self, caller_name: &str) -> Vec<ToolCatalogEntry> {
+        resolve_allowed_tools(self, caller_name)
     }
 }
