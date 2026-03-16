@@ -4,9 +4,9 @@
 //! - [`AgentRuntimeTaskExt`] - Builds a runnable agent with conditional Task support.
 //! - [`build_agent_with_credentials_and_task`] - Same build path with explicit shared credentials.
 
-use super::build::{attach_standard_tools, prepare_task_build, AgentBuildError};
+use super::build::{AgentBuildError, attach_standard_tools, prepare_task_build};
 use llm_coding_tools_agents::AgentRuntime;
-use llm_coding_tools_core::{models::ModelCatalog, CredentialLookup, CredentialResolver};
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
 use std::sync::Arc;
 
@@ -126,13 +126,13 @@ mod tests {
     use llm_coding_tools_agents::{
         AgentCatalog, AgentConfig, AgentDefaults, AgentMode, AgentRuntimeBuilder, PermissionRule,
     };
+    use llm_coding_tools_core::CredentialResolver;
     use llm_coding_tools_core::models::{
         Modality, ModelCatalog, ModelInfo, ProviderIdx, ProviderInfo, ProviderModelSource,
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
     use llm_coding_tools_core::tool_names;
-    use llm_coding_tools_core::CredentialResolver;
 
     fn agent(
         name: &str,
