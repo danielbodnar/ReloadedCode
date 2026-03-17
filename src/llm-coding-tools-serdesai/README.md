@@ -146,6 +146,8 @@ let agent = runtime.build_with_task(
 # }
 ```
 
+This requires the `llm-coding-tools-models-dev` crate; the example uses `ModelsDevCatalog::load()` to obtain a `ModelCatalog` for model resolution.
+
 Each Task call builds and runs the subagent once, and rejects `session_id`.
 
 Normal tools default to `deny` when omitted, but omitted `permission.task`
