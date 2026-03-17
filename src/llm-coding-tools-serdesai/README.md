@@ -22,7 +22,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llm-coding-tools-serdesai = "0.1"
+llm-coding-tools-serdesai = "0.2"
 ```
 
 ## Quick Start
