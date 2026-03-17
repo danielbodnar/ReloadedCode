@@ -92,7 +92,7 @@ tokio = { version = "1.50", features = ["fs", "io-util", "process", "time"], opt
 process-wrap = { version = "9.1", default-features = false }
 
 [dev-dependencies]
-tempfile = "3.25"
+tempfile = "3.27"
 # For async tests (when async feature enabled)
 tokio = { version = "1.50", features = ["rt", "macros"] }
 wiremock = "0.6"
