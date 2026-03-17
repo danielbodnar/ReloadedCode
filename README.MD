@@ -66,6 +66,12 @@ cargo run --example serdesai-basic -p llm-coding-tools-serdesai
 
 # serdesAI framework - Sandboxed file access
 cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
+
+# serdesAI framework - Agent catalog loading
+cargo run --example serdesai-agents -p llm-coding-tools-serdesai
+
+# serdesAI framework - Task delegation
+cargo run --example serdesai-task -p llm-coding-tools-serdesai
 ```
 
 ## Documentation

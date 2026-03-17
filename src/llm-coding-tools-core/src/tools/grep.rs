@@ -15,8 +15,8 @@ use std::time::SystemTime;
 /// Default maximum line length (in bytes) for formatted grep output.
 pub const DEFAULT_MAX_LINE_LENGTH: usize = 2000;
 
-/// Above average length of a file path.
-const ESTIMATED_CHARS_PER_LINE: usize = 128;
+/// Estimated characters per grep match for buffer pre-allocation.
+const ESTIMATED_CHARS_PER_MATCH: usize = 128;
 
 /// A single line match within a file.
 #[derive(Debug, Clone, Serialize)]
@@ -67,7 +67,7 @@ impl GrepOutput {
     /// * `limit` - The original match limit (used in truncation message)
     /// * `max_line_len` - Truncate lines exceeding this byte length at UTF-8 boundary
     pub fn format<const LINE_NUMBERS: bool>(&self, limit: usize, max_line_len: usize) -> String {
-        let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_LINE;
+        let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_MATCH;
         let mut output = String::with_capacity(estimated_capacity);
 
         let _ = writeln!(&mut output, "Found {} matches", self.match_count);

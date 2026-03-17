@@ -19,7 +19,6 @@ The `async` and `blocking` features are mutually exclusive - enabling both cause
 - `llm-coding-tools-serdesai/` - serdesAI framework Tool implementations
   - `src/absolute/` - Unrestricted file system tools
   - `src/allowed/` - Sandboxed file system tools
-  - `src/schema.rs` - Schema building utilities
   - `src/convert.rs` - Type conversions between core and serdesAI
 
 # Code & Performance Guidelines
