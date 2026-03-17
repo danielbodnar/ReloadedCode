@@ -205,29 +205,6 @@ impl Ruleset {
         self.evaluate(permission, subject) == PermissionAction::Allow
     }
 
-    /// Returns only the tool names that are allowed by this ruleset.
-    ///
-    /// Each tool is checked with `is_allowed(tool_name, "*")` - the tool name
-    /// as the permission key and `"*"` as the subject.
-    ///
-    /// **Note:** Because this uses `"*"` as the subject, tools with only
-    /// pattern-specific allow rules (e.g., `Rule::new("bash", "specific-*", Allow)`)
-    /// won't be included unless there's also a `"*"` pattern allow rule for that tool.
-    ///
-    /// # Arguments
-    ///
-    /// * `tool_names` - Iterator of tool names to filter
-    pub fn allowed_tools<'a, I>(&self, tool_names: I) -> Vec<String>
-    where
-        I: IntoIterator<Item = &'a str>,
-    {
-        tool_names
-            .into_iter()
-            .filter(|name| self.is_allowed(name, "*"))
-            .map(|s| s.to_string())
-            .collect()
-    }
-
     /// Merges another ruleset into this one.
     ///
     /// Rules from `other` are appended in order, giving them higher priority
@@ -509,30 +486,6 @@ mod tests {
     }
 
     #[test]
-    fn ruleset_allowed_tools_filters_correctly() {
-        let mut rules = Ruleset::new();
-        rules.push(Rule::new("bash", "*", PermissionAction::Allow));
-        rules.push(Rule::new("read", "*", PermissionAction::Allow));
-        rules.push(Rule::new("write", "*", PermissionAction::Deny));
-
-        let tools = ["bash", "read", "write", "edit"];
-        let allowed = rules.allowed_tools(tools.iter().copied());
-
-        assert_eq!(allowed.len(), 2);
-        assert!(allowed.contains(&"bash".to_string()));
-        assert!(allowed.contains(&"read".to_string()));
-    }
-
-    #[test]
-    fn ruleset_allowed_tools_default_deny() {
-        let rules = Ruleset::new();
-        let tools = ["bash", "read"];
-        let allowed = rules.allowed_tools(tools.iter().copied());
-
-        assert!(allowed.is_empty());
-    }
-
-    #[test]
     fn ruleset_merge() {
         let mut base = Ruleset::new();
         base.push(Rule::new("bash", "*", PermissionAction::Deny));
@@ -556,22 +509,6 @@ mod tests {
 
         let combined = Ruleset::merged([&r1, &r2]);
         assert_eq!(combined.evaluate("a", "x"), PermissionAction::Allow);
-    }
-
-    #[test]
-    fn allowed_tools_preserves_original_casing() {
-        let mut rules = Ruleset::new();
-        rules.push(Rule::new("Bash", "*", PermissionAction::Allow));
-        rules.push(Rule::new("READ", "*", PermissionAction::Allow));
-
-        // Input with mixed case
-        let tools = ["Bash", "READ", "Write"];
-        let allowed = rules.allowed_tools(tools.iter().copied());
-
-        // Output should preserve original casing
-        assert_eq!(allowed.len(), 2);
-        assert!(allowed.contains(&"Bash".to_string()));
-        assert!(allowed.contains(&"READ".to_string()));
     }
 
     #[test]

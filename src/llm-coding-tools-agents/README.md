@@ -64,7 +64,8 @@ loader.add_directory(&mut catalog, "/home/user/.opencode")?;
 let runtime = AgentRuntimeBuilder::new()
     .catalog(catalog)
     .defaults(AgentDefaults::with_model("openai/gpt-4o-mini"))
-    // .tools(my_custom_tools)  // optional; defaults to read/write/edit/glob/grep/bash/webfetch/todoread/todowrite
+    // .max_task_depth(5)  // optional; defaults to 3 Task hops
+    // .tools(my_custom_tools)  // optional; defaults to read/write/edit/glob/grep/bash/webfetch/todoread/todowrite/task
     .build();
 
 // Pass `runtime` to your framework adapter to build agents by name
@@ -79,6 +80,9 @@ approval flows).
 To avoid false expectations, settings that require interaction are rejected,
 while settings with no runtime effect are accepted and ignored:
 
+- Unspecified permissions default to `deny` for normal tools. `permission.task`
+  is special: if omitted, Task still allows delegation to callable
+  `mode: all` / `mode: subagent` targets for OpenCode compatibility.
 - [`permission.task`](https://opencode.ai/docs/agents#task-permissions):
   `ask` is rejected with a schema validation error (`allow`/`deny` only),
   because `ask` is an interactive approval mode in OpenCode

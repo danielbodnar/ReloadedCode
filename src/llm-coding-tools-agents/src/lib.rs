@@ -12,8 +12,9 @@ pub use extensions::RulesetExt;
 pub use loader::AgentLoader;
 pub use parser::AgentParseError;
 pub use runtime::{
-    default_tools, resolve_model_with_catalog, AgentDefaults, AgentRuntime, AgentRuntimeBuilder,
-    ModelResolutionError, ResolvedModel, ToolCatalogEntry, ToolCatalogKind,
+    callable_targets, default_tools, resolve_model_with_catalog, summarize_callable_targets,
+    AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
+    TaskSettings, TaskTargetSummary, ToolCatalogEntry, ToolCatalogKind,
 };
 pub use types::{
     parse_model_parts, AgentConfig, AgentLoadError, AgentLoadResult, AgentMode, PermissionRule,

@@ -33,7 +33,7 @@ pub use system_prompt::SystemPromptBuilder;
 pub use tools::{
     edit_file, execute_command, glob_files, grep_search, read_file, read_todos, write_file,
     write_todos, BashOutput, EditError, GlobOutput, GrepFileMatches, GrepLineMatch, GrepOutput,
-    TaskInput, TaskOutput, Todo, TodoPriority, TodoState, TodoStatus,
+    TaskInput, TaskOutput, TaskSettings, Todo, TodoPriority, TodoState, TodoStatus,
 };
 
 // Re-export webfetch tools (requires tokio or blocking feature)

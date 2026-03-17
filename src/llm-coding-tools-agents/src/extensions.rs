@@ -3,12 +3,10 @@
 //! Helpers for converting agent permission config into runtime [`Ruleset`] values.
 //!
 //! ## What This Module Provides
-//! - [`RulesetExt`] trait for building a [`Ruleset`] from frontmatter data and
-//!   filtering tool entries by permission.
+//! - [`RulesetExt`] trait for building a [`Ruleset`] from frontmatter data.
 //! - Support for scalar (`allow`/`deny`) and pattern-map permission rules.
 //! - Iteration-order preservation via [`IndexMap`] (important for precedence).
 
-use crate::runtime::ToolCatalogEntry;
 use crate::types::PermissionRule;
 use indexmap::IndexMap;
 use llm_coding_tools_core::permissions::{Rule, Ruleset};
@@ -40,37 +38,6 @@ pub trait RulesetExt: Sized {
     /// assert!(ruleset.is_allowed("bash", "*"));
     /// ```
     fn from_permission_config(config: &IndexMap<String, PermissionRule>) -> Self;
-
-    /// Filters tool entries to those allowed by this ruleset.
-    ///
-    /// Returns only entries whose `name` passes `is_allowed(name, "*")`.
-    ///
-    /// # Arguments
-    ///
-    /// * `tools` - Slice of tool entries to filter.
-    ///
-    /// # Returns
-    ///
-    /// A vector containing only the tool entries allowed by this ruleset,
-    /// preserving the original order.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use llm_coding_tools_agents::{
-    ///     default_tools, PermissionRule, RulesetExt,
-    /// };
-    /// use llm_coding_tools_core::permissions::{PermissionAction, Ruleset};
-    /// use indexmap::IndexMap;
-    ///
-    /// let mut config = IndexMap::new();
-    /// config.insert("read".to_string(), PermissionRule::Action(PermissionAction::Allow));
-    ///
-    /// let ruleset = Ruleset::from_permission_config(&config);
-    /// let allowed = ruleset.filter_allowed_tools(&default_tools());
-    /// assert!(allowed.iter().any(|t| t.name == "read"));
-    /// ```
-    fn filter_allowed_tools(&self, tools: &[ToolCatalogEntry]) -> Vec<ToolCatalogEntry>;
 }
 
 impl RulesetExt for Ruleset {
@@ -92,20 +59,11 @@ impl RulesetExt for Ruleset {
 
         ruleset
     }
-
-    fn filter_allowed_tools(&self, tools: &[ToolCatalogEntry]) -> Vec<ToolCatalogEntry> {
-        tools
-            .iter()
-            .copied()
-            .filter(|entry| self.is_allowed(entry.name, "*"))
-            .collect()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::default_tools;
     use llm_coding_tools_core::permissions::PermissionAction;
 
     #[test]
@@ -143,25 +101,5 @@ mod tests {
             ruleset.evaluate("task", "other-agent"),
             PermissionAction::Deny
         );
-    }
-
-    #[test]
-    fn filter_allowed_tools_returns_allowed_entries() {
-        let mut config = IndexMap::new();
-        config.insert(
-            "read".to_string(),
-            PermissionRule::Action(PermissionAction::Allow),
-        );
-        config.insert(
-            "glob".to_string(),
-            PermissionRule::Action(PermissionAction::Allow),
-        );
-
-        let ruleset = Ruleset::from_permission_config(&config);
-        let allowed = ruleset.filter_allowed_tools(&default_tools());
-
-        assert!(allowed.iter().any(|t| t.name == "read"));
-        assert!(allowed.iter().any(|t| t.name == "glob"));
-        assert!(!allowed.iter().any(|t| t.name == "bash"));
     }
 }
