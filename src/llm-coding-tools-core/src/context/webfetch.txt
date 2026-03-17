@@ -11,7 +11,7 @@ Fetches content from a specified URL and processes it for analysis.
 - `url`: The URL to fetch content from (required)
    - Must be a fully-formed valid URL
    - Prefer HTTPS URLs for security
-- `timeout_ms`: Optional timeout in milliseconds (default varies by implementation)
+- `timeout_ms`: Optional timeout in milliseconds (default: 30000)
 
 ### Usage Notes
 
