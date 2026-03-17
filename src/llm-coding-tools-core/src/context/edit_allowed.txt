@@ -1,7 +1,7 @@
 Performs exact string replacements in files within allowed directories.
 
 Usage:
-- You must use your `read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.
+- You should use your `read` tool at least once in the conversation before editing to ensure you have the latest file contents.
 - Paths can be relative to configured allowed directories, or absolute paths within allowed directories
 - Paths outside allowed directories will be rejected
 - When editing text from `read` tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is "L{n}: ". Everything after that prefix is the actual file content to match. Never include any part of the line number prefix in `old_string` or `new_string`.
