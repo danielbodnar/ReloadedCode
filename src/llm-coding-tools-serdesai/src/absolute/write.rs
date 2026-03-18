@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::path::AbsolutePathResolver;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::write as write_meta;
 use llm_coding_tools_core::tools::write_file;
 use llm_coding_tools_core::{ToolContext, ToolOutput};
 use serde::Deserialize;
@@ -37,32 +37,37 @@ impl WriteTool {
 impl<Deps: Send + Sync> Tool<Deps> for WriteTool {
     fn definition(&self) -> ToolDefinition {
         let schema = SchemaBuilder::new()
-            .string("file_path", "Absolute path to the file", true)
-            .string("content", "Content to write to the file", true)
+            .string(
+                write_meta::param::FILE_PATH_ABSOLUTE.name,
+                write_meta::param::FILE_PATH_ABSOLUTE.description,
+                write_meta::param::FILE_PATH_ABSOLUTE.required,
+            )
+            .string(
+                write_meta::param::CONTENT.name,
+                write_meta::param::CONTENT.description,
+                write_meta::param::CONTENT.required,
+            )
             .build()
             .expect("schema build should not fail");
 
-        ToolDefinition::new(
-            tool_names::WRITE,
-            "Write content to a file, creating parent directories if needed. Overwrites existing files.",
-        )
-        .with_parameters(schema)
+        ToolDefinition::new(write_meta::NAME, write_meta::description::ABSOLUTE)
+            .with_parameters(schema)
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: WriteArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::WRITE, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(write_meta::NAME, None, e.to_string()))?;
 
         let resolver = AbsolutePathResolver;
         let result = write_file(&resolver, &args.file_path, &args.content).await;
 
         // Convert String result to ToolOutput for consistent error handling
-        to_serdes_result(tool_names::WRITE, result.map(ToolOutput::new))
+        to_serdes_result(write_meta::NAME, result.map(ToolOutput::new))
     }
 }
 
 impl ToolContext for WriteTool {
-    const NAME: &'static str = tool_names::WRITE;
+    const NAME: &'static str = write_meta::NAME;
 
     fn context(&self) -> &'static str {
         llm_coding_tools_core::context::WRITE_ABSOLUTE

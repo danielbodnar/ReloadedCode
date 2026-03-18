@@ -275,7 +275,9 @@ mod tests {
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
-    use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::tool_metadata::{
+        bash as bash_meta, glob as glob_meta, read as read_meta, task as task_meta,
+    };
     use serdes_ai::AgentBuilder;
     use serdes_ai_models::MockModel;
     use std::collections::HashSet;
@@ -385,7 +387,7 @@ mod tests {
             .catalog(AgentCatalog::from_entries([
                 agent(
                     "with-tools",
-                    allow_tools(&[tool_names::READ, tool_names::BASH]),
+                    allow_tools(&[read_meta::NAME, bash_meta::NAME]),
                     "prompt",
                 ),
                 agent("no-tools", IndexMap::new(), "prompt"),
@@ -398,8 +400,8 @@ mod tests {
             prepare_build(&runtime, "with-tools", &catalog, &credentials).expect("should succeed");
         let agent = build_with_mock(&prepared, "with-tools");
         let names: HashSet<&str> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(names.contains(tool_names::READ));
-        assert!(names.contains(tool_names::BASH));
+        assert!(names.contains(read_meta::NAME));
+        assert!(names.contains(bash_meta::NAME));
         assert_eq!(names.len(), 2);
 
         // Agent with empty permissions gets no tools
@@ -421,7 +423,7 @@ mod tests {
                 "openrouter/openai/gpt-4o",
                 Some(0.4),
                 Some(0.8),
-                allow_tools(&[tool_names::READ]),
+                allow_tools(&[read_meta::NAME]),
                 "prompt",
             )]))
             .defaults(AgentDefaults {
@@ -461,7 +463,7 @@ mod tests {
                     "openrouter/openai/gpt-4.1-mini",
                     None,
                     None,
-                    allow_tools(&[tool_names::READ]),
+                    allow_tools(&[read_meta::NAME]),
                     "old",
                 ),
                 agent_with_sampling(
@@ -469,7 +471,7 @@ mod tests {
                     "openrouter/openai/gpt-4o",
                     None,
                     None,
-                    allow_tools(&[tool_names::GLOB]),
+                    allow_tools(&[glob_meta::NAME]),
                     "new",
                 ),
             ]))
@@ -480,7 +482,7 @@ mod tests {
         assert_eq!(prepared.model_spec.as_ref(), "openrouter:openai/gpt-4o");
         let agent = build_with_mock(&prepared, "dupe");
         assert_eq!(agent.tools().len(), 1);
-        assert_eq!(agent.tools()[0].name(), tool_names::GLOB);
+        assert_eq!(agent.tools()[0].name(), glob_meta::NAME);
     }
 
     /// Creates a subagent config with no model or sampling overrides.
@@ -503,7 +505,7 @@ mod tests {
             .catalog(AgentCatalog::from_entries([
                 agent(
                     "caller",
-                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    allow_tools(&[task_meta::NAME, read_meta::NAME]),
                     "prompt",
                 ),
                 subagent("sub-target", IndexMap::new(), "subagent prompt"),
@@ -517,8 +519,8 @@ mod tests {
 
         let agent = build_with_mock(&prepared, "caller");
         let names: Vec<&str> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(names.contains(&tool_names::READ));
-        assert!(!names.contains(&tool_names::TASK));
+        assert!(names.contains(&read_meta::NAME));
+        assert!(!names.contains(&task_meta::NAME));
     }
 
     #[test]
@@ -529,7 +531,7 @@ mod tests {
         let runtime = AgentRuntimeBuilder::new()
             .catalog(AgentCatalog::from_entries([agent(
                 "solo",
-                allow_tools(&[tool_names::TASK]),
+                allow_tools(&[task_meta::NAME]),
                 "prompt",
             )]))
             .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
@@ -541,6 +543,6 @@ mod tests {
 
         let agent = build_with_mock(&prepared, "solo");
         let names: Vec<&str> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(!names.contains(&tool_names::TASK));
+        assert!(!names.contains(&task_meta::NAME));
     }
 }

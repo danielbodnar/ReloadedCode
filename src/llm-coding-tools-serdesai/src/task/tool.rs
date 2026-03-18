@@ -14,7 +14,8 @@ use crate::task::{TaskHandle, task_tool_definition};
 use async_trait::async_trait;
 use llm_coding_tools_agents::TaskTargetSummary;
 use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput, tool_names};
+use llm_coding_tools_core::tool_metadata::task as task_meta;
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput};
 use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn};
 
 /// One-shot Task tool wired into the SerdesAI runtime.
@@ -67,7 +68,7 @@ where
     /// [`ToolError::ValidationFailed`]: serdes_ai::tools::ToolError
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let input: TaskInput = serde_json::from_value(args)
-            .map_err(|err| ToolError::validation_error(tool_names::TASK, None, err.to_string()))?;
+            .map_err(|err| ToolError::validation_error(task_meta::NAME, None, err.to_string()))?;
         let output = self
             .handle
             .execute(self.caller_name.as_ref(), input)
@@ -82,7 +83,7 @@ impl<C> ToolContext for TaskTool<C>
 where
     C: CredentialLookup + Send + Sync + 'static,
 {
-    const NAME: &'static str = tool_names::TASK;
+    const NAME: &'static str = task_meta::NAME;
 
     fn context(&self) -> &'static str {
         llm_coding_tools_core::context::TASK
@@ -91,8 +92,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use llm_coding_tools_core::tool_names;
+    use super::{task_meta, *};
 
     fn summary(name: &str, description: &str) -> TaskTargetSummary {
         TaskTargetSummary {
@@ -109,7 +109,7 @@ mod tests {
         ];
 
         let definition = task_tool_definition(&targets);
-        assert_eq!(definition.name(), tool_names::TASK);
+        assert_eq!(definition.name(), task_meta::NAME);
         assert!(!definition.description().is_empty());
         assert!(definition.description().contains("alpha"));
         assert!(definition.description().contains("beta"));
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn task_tool_name_and_context_match() {
-        assert_eq!(TaskTool::<CredentialResolver>::NAME, tool_names::TASK);
+        assert_eq!(TaskTool::<CredentialResolver>::NAME, task_meta::NAME);
         assert!(!llm_coding_tools_core::context::TASK.is_empty());
     }
 }

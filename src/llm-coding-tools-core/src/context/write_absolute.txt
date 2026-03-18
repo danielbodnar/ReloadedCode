@@ -1,48 +1,6 @@
-Writes a file to the local filesystem. Creates parent directories if they don't exist.
-
-Usage:
-- This tool will overwrite the existing file if there is one at the provided path.
-- If this is an existing file, you SHOULD use the `read` tool first to read the file's contents. 
-- ALWAYS prefer editing existing files in the codebase using the `edit` tool. NEVER write new files unless explicitly required.
-- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
-- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
-
-### Parameters
-
-- `file_path`: Absolute path for the file to write (required)
-- `content`: Content to write to the file (required)
-
-### When to Use This Tool
-
-- Creating new files that don't exist yet
-- Completely rewriting a file when most content changes
-- Writing generated output (build artifacts, reports, etc.)
-- Creating new source files when explicitly requested
-
-### When NOT to Use This Tool
-
-- Modifying existing files - use the `edit` tool instead (more precise, less error-prone)
-- Creating documentation unless explicitly requested
-- Writing files you haven't read first (if they exist)
-
-### Examples
-
-Creating a new file:
-```
-file_path: "/home/user/project/src/new_module.rs"
-content: "//! New module\n\npub fn hello() {\n    println!(\"Hello!\");\n}\n"
-```
-
-### Best Practices
-
-1. ALWAYS read existing files with the `read` tool before overwriting them
-2. Prefer the `edit` tool for making changes to existing files - it's safer and more precise
-3. When creating new files, ensure the content is complete and correct
-4. Don't create files proactively - wait for explicit user requests
-5. Use absolute paths only - relative paths will be rejected
-
-### Error Handling
-
-- Always read existing files before overwriting them to avoid accidental data loss
-- Permission errors will be returned if you can't write to the location
-- Parent directories are created automatically if they don't exist
+Writes a file to the local filesystem and creates parent directories if needed.
+- `file_path` must be an absolute path. `content` is required.
+- Existing files are overwritten.
+- Prefer `edit` for targeted changes.
+- If the file already exists, read it first before overwriting.
+- Use this for new files or full rewrites, not small edits.

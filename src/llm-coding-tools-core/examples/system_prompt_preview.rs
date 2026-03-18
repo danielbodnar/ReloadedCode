@@ -9,11 +9,12 @@
 //! Run: cargo run --example system_prompt_preview -p llm-coding-tools-core
 
 use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::{context, AllowedPathResolver, SystemPromptBuilder};
+use llm_coding_tools_core::{context, tool_metadata, AllowedPathResolver, SystemPromptBuilder};
 
 fn main() {
     // Use from_canonical to avoid filesystem requirements for the example.
-    // In real usage, AllowedPathResolver::new() canonicalizes and validates paths.
+    // In real usage, AllowedPathResolver::new() canonicalizes and
+    // validates paths.
     let resolver = AllowedPathResolver::from_canonical(["/home/user/project", "/tmp"]);
 
     // Build system prompt with all features demonstrated
@@ -55,11 +56,12 @@ fn main() {
 }
 
 // Mock tools implementing ToolContext for demonstration.
-// In real usage, these would be actual tool structs from llm-coding-tools-serdesai.
+// In real usage, these would be actual tool structs from
+// llm-coding-tools-serdesai.
 
 struct MockReadTool;
 impl ToolContext for MockReadTool {
-    const NAME: &'static str = "read";
+    const NAME: &'static str = tool_metadata::read::NAME;
     fn context(&self) -> &'static str {
         context::READ_ALLOWED
     }
@@ -67,7 +69,7 @@ impl ToolContext for MockReadTool {
 
 struct MockWriteTool;
 impl ToolContext for MockWriteTool {
-    const NAME: &'static str = "write";
+    const NAME: &'static str = tool_metadata::write::NAME;
     fn context(&self) -> &'static str {
         context::WRITE_ALLOWED
     }
@@ -75,7 +77,7 @@ impl ToolContext for MockWriteTool {
 
 struct MockEditTool;
 impl ToolContext for MockEditTool {
-    const NAME: &'static str = "edit";
+    const NAME: &'static str = tool_metadata::edit::NAME;
     fn context(&self) -> &'static str {
         context::EDIT_ALLOWED
     }
@@ -83,7 +85,7 @@ impl ToolContext for MockEditTool {
 
 struct MockBashTool;
 impl ToolContext for MockBashTool {
-    const NAME: &'static str = "bash";
+    const NAME: &'static str = tool_metadata::bash::NAME;
     fn context(&self) -> &'static str {
         context::BASH
     }
@@ -91,7 +93,7 @@ impl ToolContext for MockBashTool {
 
 struct MockGlobTool;
 impl ToolContext for MockGlobTool {
-    const NAME: &'static str = "glob";
+    const NAME: &'static str = tool_metadata::glob::NAME;
     fn context(&self) -> &'static str {
         context::GLOB_ALLOWED
     }
@@ -99,7 +101,7 @@ impl ToolContext for MockGlobTool {
 
 struct MockGrepTool;
 impl ToolContext for MockGrepTool {
-    const NAME: &'static str = "grep";
+    const NAME: &'static str = tool_metadata::grep::NAME;
     fn context(&self) -> &'static str {
         context::GREP_ALLOWED
     }
@@ -107,7 +109,7 @@ impl ToolContext for MockGrepTool {
 
 struct MockWebFetchTool;
 impl ToolContext for MockWebFetchTool {
-    const NAME: &'static str = "webfetch";
+    const NAME: &'static str = tool_metadata::webfetch::NAME;
     fn context(&self) -> &'static str {
         context::WEBFETCH
     }
@@ -115,7 +117,7 @@ impl ToolContext for MockWebFetchTool {
 
 struct MockTodoWriteTool;
 impl ToolContext for MockTodoWriteTool {
-    const NAME: &'static str = "todowrite";
+    const NAME: &'static str = tool_metadata::todo_write::NAME;
     fn context(&self) -> &'static str {
         context::TODO_WRITE
     }
@@ -123,7 +125,7 @@ impl ToolContext for MockTodoWriteTool {
 
 struct MockTodoReadTool;
 impl ToolContext for MockTodoReadTool {
-    const NAME: &'static str = "todoread";
+    const NAME: &'static str = tool_metadata::todo_read::NAME;
     fn context(&self) -> &'static str {
         context::TODO_READ
     }

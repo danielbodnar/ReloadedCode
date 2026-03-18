@@ -9,7 +9,7 @@ use super::state::AgentRuntime;
 use super::tool_catalog::{ToolCatalogEntry, ToolCatalogKind};
 use crate::{AgentCatalog, AgentConfig, AgentMode, RulesetExt};
 use llm_coding_tools_core::permissions::Ruleset;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::task as task_meta;
 
 /// Compact metadata used to describe one callable Task target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,7 +69,7 @@ pub fn callable_targets<'a>(catalog: &'a AgentCatalog, caller_name: &str) -> Vec
 
     let agents = sorted_agents(catalog);
     let task_rules = Ruleset::from_permission_config(&caller.permission);
-    let has_explicit_task_permission = caller.permission.contains_key(tool_names::TASK);
+    let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
     let mut targets = Vec::with_capacity(agents.len());
 
     // Keep only non-primary targets that survive `permission.task` filtering.
@@ -95,7 +95,7 @@ fn target_is_callable(
 ) -> bool {
     matches!(target.mode, AgentMode::All | AgentMode::Subagent)
         && (!has_explicit_task_permission
-            || task_rules.is_allowed(tool_names::TASK, target.name.as_ref()))
+            || task_rules.is_allowed(task_meta::NAME, target.name.as_ref()))
 }
 
 pub(super) fn resolve_allowed_tools(
@@ -108,7 +108,7 @@ pub(super) fn resolve_allowed_tools(
 
     let agents = sorted_agents(runtime.catalog());
     let task_rules = Ruleset::from_permission_config(&caller.permission);
-    let has_explicit_task_permission = caller.permission.contains_key(tool_names::TASK);
+    let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
     let mut task_is_callable = false;
 
     // Expose `task` only when at least one delegated target remains callable.
@@ -152,6 +152,9 @@ mod tests {
     use ahash::AHashMap;
     use indexmap::IndexMap;
     use llm_coding_tools_core::permissions::PermissionAction;
+    use llm_coding_tools_core::tool_metadata::{
+        bash as bash_meta, read as read_meta, task as task_meta, write as write_meta,
+    };
 
     fn agent(
         name: &str,
@@ -185,12 +188,12 @@ mod tests {
         for (pattern, action) in patterns {
             map.insert(pattern.to_string(), *action);
         }
-        IndexMap::from([("task".into(), PermissionRule::Pattern(map))])
+        IndexMap::from([(task_meta::NAME.into(), PermissionRule::Pattern(map))])
     }
 
     fn deny_task() -> IndexMap<String, PermissionRule> {
         IndexMap::from([(
-            "task".into(),
+            task_meta::NAME.into(),
             PermissionRule::Action(PermissionAction::Deny),
         )])
     }
@@ -202,7 +205,7 @@ mod tests {
             "agent-a",
             AgentMode::All,
             "Agent A",
-            allow_tools(&[tool_names::TASK]),
+            allow_tools(&[task_meta::NAME]),
         )]);
 
         let targets = callable_targets(&catalog, "nonexistent");
@@ -217,7 +220,7 @@ mod tests {
                 "caller",
                 AgentMode::All,
                 "Caller",
-                allow_tools(&[tool_names::TASK]),
+                allow_tools(&[task_meta::NAME]),
             ),
             agent("all-target", AgentMode::All, "All Target", IndexMap::new()),
             agent(
@@ -249,7 +252,7 @@ mod tests {
             "self-agent",
             AgentMode::All,
             "Self Agent",
-            allow_tools(&[tool_names::TASK]),
+            allow_tools(&[task_meta::NAME]),
         )]);
 
         let targets = callable_targets(&catalog, "self-agent");
@@ -264,7 +267,7 @@ mod tests {
                 "caller",
                 AgentMode::Primary,
                 "Caller",
-                allow_tools(&[tool_names::READ]),
+                allow_tools(&[read_meta::NAME]),
             ),
             agent("all-target", AgentMode::All, "All Target", IndexMap::new()),
             agent(
@@ -416,19 +419,19 @@ mod tests {
                 "zebra",
                 AgentMode::All,
                 "Zebra description",
-                allow_tools(&[tool_names::READ, tool_names::BASH]),
+                allow_tools(&[read_meta::NAME, bash_meta::NAME]),
             ),
             agent(
                 "alpha",
                 AgentMode::All,
                 "Alpha description",
-                allow_tools(&[tool_names::WRITE]),
+                allow_tools(&[write_meta::NAME]),
             ),
             agent(
                 "caller",
                 AgentMode::All,
                 "Caller",
-                allow_tools(&[tool_names::TASK]),
+                allow_tools(&[task_meta::NAME]),
             ),
         ]);
 
@@ -480,13 +483,13 @@ mod tests {
             ]))
             .build();
 
-        let tool_names: Vec<_> = runtime
+        let names: Vec<_> = runtime
             .allowed_tools("caller")
             .iter()
             .map(|t| t.name)
             .collect();
 
-        assert_eq!(tool_names, vec![tool_names::TASK]);
+        assert_eq!(names, vec![task_meta::NAME]);
     }
 
     #[test]
@@ -497,7 +500,7 @@ mod tests {
                     "caller",
                     AgentMode::Primary,
                     "Caller",
-                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    allow_tools(&[task_meta::NAME, read_meta::NAME]),
                 ),
                 agent(
                     "primary-target",
@@ -508,13 +511,13 @@ mod tests {
             ]))
             .build();
 
-        let tool_names: Vec<_> = runtime
+        let names: Vec<_> = runtime
             .allowed_tools("caller")
             .iter()
             .map(|t| t.name)
             .collect();
 
-        assert!(tool_names.contains(&tool_names::READ));
-        assert!(!tool_names.contains(&tool_names::TASK));
+        assert!(names.contains(&read_meta::NAME));
+        assert!(!names.contains(&task_meta::NAME));
     }
 }

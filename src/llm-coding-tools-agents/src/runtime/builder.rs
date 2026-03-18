@@ -81,7 +81,7 @@ mod tests {
     use crate::runtime::tool_catalog::{default_tools, ToolCatalogEntry, ToolCatalogKind};
     use crate::runtime::AgentDefaults;
     use crate::{AgentCatalog, AgentConfig, AgentMode};
-    use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::tool_metadata::{glob as glob_meta, read as read_meta};
     use llm_coding_tools_core::TaskSettings;
 
     fn sample_config(name: &str, model: Option<&str>) -> AgentConfig {
@@ -108,8 +108,8 @@ mod tests {
             top_p: Some(0.95),
         };
         let tools = vec![
-            ToolCatalogEntry::new(tool_names::READ, ToolCatalogKind::Read),
-            ToolCatalogEntry::new(tool_names::GLOB, ToolCatalogKind::Glob),
+            ToolCatalogEntry::new(read_meta::NAME, ToolCatalogKind::Read),
+            ToolCatalogEntry::new(glob_meta::NAME, ToolCatalogKind::Glob),
         ];
 
         let runtime = AgentRuntimeBuilder::new()
