@@ -1,8 +1,6 @@
 Search file contents with a regex within allowed directories.
-- `pattern` and `path` are required. `path` can be relative to the allowed directories or an absolute path inside the allowed directories.
-- Optional: `include` to filter file names, and `limit` (default `100`, max `2000`).
 - `pattern` must not be empty. Search is single-line only; there is no multiline matching.
-- Returns matching files sorted by modification time (newest first), with matching lines and line numbers.
+- Returns matches grouped by file.
 - Paths outside the allowed directories are rejected.
 - Use this instead of shell `grep`/`rg`.
 - Use `glob` for file-name search and `read` for full-file inspection.

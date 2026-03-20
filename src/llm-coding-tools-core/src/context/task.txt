@@ -1,6 +1,4 @@
 Delegate a focused job to another agent.
-- Required: `description` (short label), `prompt` (full instructions), and `subagent_type` (one of the listed subagents).
-- Optional: `command` for the triggering command.
 - This runtime is stateless. Do not pass `session_id`.
 - Use it for real delegation, custom slash commands, or independent sub-work you can run in parallel.
 - Do not use it when `read`, `glob`, or `grep` on one or a few files is enough.

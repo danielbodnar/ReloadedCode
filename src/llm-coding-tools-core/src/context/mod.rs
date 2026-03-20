@@ -259,8 +259,8 @@ mod tests {
 
     #[test]
     fn task_context_mentions_delegation_details() {
-        assert!(TASK.contains("description"));
-        assert!(TASK.contains("prompt"));
-        assert!(TASK.contains("subagent"));
+        assert!(TASK.contains("stateless"));
+        assert!(TASK.contains("delegation"));
+        assert!(TASK.contains("summarize"));
     }
 }

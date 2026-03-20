@@ -1,7 +1,4 @@
 Fetches one URL.
-- `url` is required. Use a fully formed URL.
-- `timeout_ms` is optional and defaults to `30000`.
-- HTML is converted to markdown, JSON is pretty-printed, and other content is returned as text.
 - Output starts with `[content-type - bytes]`.
 - Maximum response size is `5 MiB`.
 - Use this for known URLs, not web search. Prefer a more specialized web tool when one exists.

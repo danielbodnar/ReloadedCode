@@ -1,6 +1,4 @@
-Performs exact string replacement in a file.
-- `file_path` must be an absolute path.
-- Required: `old_string` and `new_string`. Optional: `replace_all` (default `false`).
+Performs exact string replacement in a file at an absolute path.
 - Read the file first, then copy exact text from the `read` output. Do not include `L{n}: ` prefixes.
 - Without `replace_all`, the edit fails if `old_string` is missing or appears more than once.
 - The edit also fails if `old_string` is empty or equal to `new_string`.

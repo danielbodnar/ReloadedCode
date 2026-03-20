@@ -1,5 +1,4 @@
-Writes a file to the local filesystem and creates parent directories if needed.
-- `file_path` must be an absolute path. `content` is required.
+Writes a file to an absolute path on the local filesystem and creates parent directories if needed.
 - Existing files are overwritten.
 - Prefer `edit` for targeted changes.
 - If the file already exists, read it first before overwriting.

@@ -1,4 +1,3 @@
 Reads the current todo list.
-- Call it with an empty object: `{}`.
 - Output is plain text: either `No tasks.` or one line per task with status icon, priority, id, and content.
 - Use it before starting or resuming complex work when you need the current task list.

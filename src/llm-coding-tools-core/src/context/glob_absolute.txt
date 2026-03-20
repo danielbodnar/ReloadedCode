@@ -1,6 +1,5 @@
-Find files by glob pattern.
-- `pattern` and `path` are required. `path` must be an absolute directory path.
+Find files by glob pattern from an absolute directory path.
 - Supports `*`, `**`, `?`, `[abc]`, and `{a,b}`.
-- Returns matching file paths relative to `path`, sorted by modification time (newest first), and respects `.gitignore`.
+- Returns matching file paths relative to `path`.
 - Results are capped at `1000`; large result sets are returned with `truncated: true`.
 - Use `grep` for content search, not file-name search.

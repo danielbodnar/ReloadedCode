@@ -1,8 +1,5 @@
 Replaces the session todo list.
 - Use it for multi-step or non-trivial work, or when the user asks for task tracking. Skip it for a single small task.
 - Send the full desired list each time; this tool replaces the whole list.
-- Each todo needs `id`, `content`, `status`, and `priority`.
-- `status`: `pending`, `in_progress`, `completed`, or `cancelled`.
-- `priority`: `high`, `medium`, or `low`.
 - `id` and `content` must not be empty.
 - Keep task text short and imperative. Update statuses as you work; keep one `in_progress` task when practical.

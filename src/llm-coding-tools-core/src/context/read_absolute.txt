@@ -1,6 +1,4 @@
-Reads a file from the local filesystem.
-- `file_path` must be an absolute path.
-- Optional: `offset` (1-indexed, default `1`) and `limit` (default `2000`); both must be >= `1`.
+Reads a file from an absolute path on the local filesystem.
 - Output is text with line numbers as `L{n}: ...`. Lines longer than `2000` chars are truncated.
 - This tool reads files, not directories. Use `glob` to find files or `bash` only when you specifically need a directory listing.
 - Missing files return an error. Non-text files are returned as text bytes; there is no special image rendering.
