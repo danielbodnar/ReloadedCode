@@ -400,6 +400,7 @@ impl SystemPromptBuilder {
 mod tests {
     use super::*;
     use crate::context::PathMode;
+    use crate::tool_metadata::{bash, edit, glob, grep, read, task, write};
     use indoc::indoc;
 
     struct MockTool {
@@ -431,7 +432,7 @@ mod tests {
     }
 
     macro_rules! built_in_path_tool_with_line_numbers {
-        ($tool:ident, $name:literal, $variant:ident) => {
+        ($tool:ident, $name:expr, $variant:ident) => {
             struct $tool<const ALLOWED: bool, const LINE_NUMBERS: bool>;
 
             impl<const ALLOWED: bool, const LINE_NUMBERS: bool> ToolContext
@@ -450,7 +451,7 @@ mod tests {
     }
 
     macro_rules! built_in_path_tool {
-        ($tool:ident, $name:literal, $variant:ident) => {
+        ($tool:ident, $name:expr, $variant:ident) => {
             struct $tool<const ALLOWED: bool>;
 
             impl<const ALLOWED: bool> ToolContext for $tool<ALLOWED> {
@@ -466,7 +467,7 @@ mod tests {
     }
 
     macro_rules! built_in_tool {
-        ($tool:ident, $name:literal, $prompt:expr) => {
+        ($tool:ident, $name:expr, $prompt:expr) => {
             struct $tool;
 
             impl ToolContext for $tool {
@@ -479,13 +480,13 @@ mod tests {
         };
     }
 
-    built_in_path_tool_with_line_numbers!(BuiltInReadTool, "read", Read);
-    built_in_path_tool!(BuiltInWriteTool, "write", Write);
-    built_in_path_tool!(BuiltInEditTool, "edit", Edit);
-    built_in_path_tool!(BuiltInGlobTool, "glob", Glob);
-    built_in_path_tool_with_line_numbers!(BuiltInGrepTool, "grep", Grep);
-    built_in_tool!(BuiltInBashTool, "bash", ToolPrompt::Bash);
-    built_in_tool!(BuiltInTaskTool, "task", ToolPrompt::Task);
+    built_in_path_tool_with_line_numbers!(BuiltInReadTool, read::NAME, Read);
+    built_in_path_tool!(BuiltInWriteTool, write::NAME, Write);
+    built_in_path_tool!(BuiltInEditTool, edit::NAME, Edit);
+    built_in_path_tool!(BuiltInGlobTool, glob::NAME, Glob);
+    built_in_path_tool_with_line_numbers!(BuiltInGrepTool, grep::NAME, Grep);
+    built_in_tool!(BuiltInBashTool, bash::NAME, ToolPrompt::Bash);
+    built_in_tool!(BuiltInTaskTool, task::NAME, ToolPrompt::Task);
 
     #[test]
     fn empty_builder_returns_empty_string() {
