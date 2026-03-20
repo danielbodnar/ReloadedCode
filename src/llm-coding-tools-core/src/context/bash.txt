@@ -1,6 +1,0 @@
-Runs one shell command in a fresh shell process.
-- Use it for terminal work (`git`, package managers, test runners, docker`) and for shell-native search/filter jobs such as custom pipelines, mass replace, or filters the specialized tools do not handle well.
-- Output includes stdout, stderr under `[stderr]`, and non-zero exit codes as `[exit code: N]`.
-- For independent commands, make parallel `bash` calls. For dependent commands, use one call with `&&`.
-- Prefer `glob`, `grep`, `read`, `edit`, and `write` for ordinary file operations.
-- Quote paths that contain spaces.

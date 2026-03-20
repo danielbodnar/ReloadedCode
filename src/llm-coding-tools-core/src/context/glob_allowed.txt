@@ -1,6 +1,0 @@
-Find files by glob pattern within allowed directories.
-- Supports `*`, `**`, `?`, `[abc]`, and `{a,b}`.
-- Returns matching file paths relative to `path`.
-- Paths outside the allowed directories are rejected.
-- Results are capped at `1000`; large result sets are returned with `truncated: true`.
-- Use `grep` for content search, not file-name search.

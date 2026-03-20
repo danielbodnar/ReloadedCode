@@ -1,0 +1,170 @@
+//! Writes the shared `Common Rules` section for built-in tools.
+//!
+//! These helpers add rules that apply to more than one tool. Each rule is only
+//! included when the matching tools are present.
+
+use super::{push_line, write_tool_list, ToolPromptFacts};
+
+/// Writes the shared rules for the current built-in tools.
+pub(super) fn write_common_rules(facts: ToolPromptFacts, output: &mut String) {
+    append_allowed_path_rule(facts, output);
+    append_bash_rule(facts, output);
+    append_search_rule(facts, output);
+    append_write_rule(facts, output);
+    append_read_before_edit_rule(facts, output);
+}
+
+/// Adds the allowed-path rule when any tool is limited to allowed directories.
+fn append_allowed_path_rule(facts: ToolPromptFacts, output: &mut String) {
+    if facts.has_allowed_path_tool {
+        push_line(
+            output,
+            "- Only listed allowed directories may be accessed; other paths are rejected.",
+        );
+    }
+}
+
+/// Adds the rule that prefers file tools over `bash`.
+fn append_bash_rule(facts: ToolPromptFacts, output: &mut String) {
+    use crate::tool_metadata::{edit, glob, grep, read, write};
+
+    if !facts.has_bash {
+        return;
+    }
+
+    let mut tools = [""; 5];
+    let mut len = 0;
+    if facts.has_glob {
+        tools[len] = glob::NAME;
+        len += 1;
+    }
+    if facts.has_grep {
+        tools[len] = grep::NAME;
+        len += 1;
+    }
+    if facts.has_read {
+        tools[len] = read::NAME;
+        len += 1;
+    }
+    if facts.has_edit {
+        tools[len] = edit::NAME;
+        len += 1;
+    }
+    if facts.has_write {
+        tools[len] = write::NAME;
+        len += 1;
+    }
+    if len == 0 {
+        return;
+    }
+
+    output.push_str("- Prefer ");
+    write_tool_list(output, &tools[..len]);
+    push_line(output, " over `bash` for ordinary file work.");
+}
+
+/// Adds the rule that separates file search, content search, and full reads.
+fn append_search_rule(facts: ToolPromptFacts, output: &mut String) {
+    match (facts.has_glob, facts.has_grep, facts.has_read) {
+        (true, true, true) => push_line(
+            output,
+            "- Use `glob` for file-name search, `grep` for content search, and `read` for full-file inspection.",
+        ),
+        (true, true, false) => push_line(
+            output,
+            "- Use `glob` for file-name search and `grep` for content search.",
+        ),
+        (true, false, true) => push_line(
+            output,
+            "- Use `glob` to find files and `read` for full-file inspection.",
+        ),
+        (false, true, true) => push_line(
+            output,
+            "- Use `grep` for content search and `read` for full-file inspection.",
+        ),
+        _ => {}
+    }
+}
+
+/// Adds the rule that points small changes to `edit` and rewrites to `write`.
+fn append_write_rule(facts: ToolPromptFacts, output: &mut String) {
+    if facts.has_edit && facts.has_write {
+        push_line(
+            output,
+            "- Prefer `edit` for targeted changes and `write` for new files or full rewrites.",
+        );
+    }
+}
+
+/// Adds the rule to read a file before editing or overwriting it.
+fn append_read_before_edit_rule(facts: ToolPromptFacts, output: &mut String) {
+    match (facts.has_read, facts.has_edit, facts.has_write, facts.read_line_numbers) {
+        (true, true, true, true) => push_line(
+            output,
+            "- Read a file before `edit` or overwriting it with `write`; for `edit`, copy exact text from `read` and omit any `L{n}: ` prefixes.",
+        ),
+        (true, true, true, false) => push_line(
+            output,
+            "- Read a file before `edit` or overwriting it with `write`; for `edit`, copy exact text from `read`.",
+        ),
+        (true, true, false, true) => push_line(
+            output,
+            "- Read a file before `edit`, then copy exact text from `read` and omit any `L{n}: ` prefixes.",
+        ),
+        (true, true, false, false) => push_line(
+            output,
+            "- Read a file before `edit`, then copy exact text from `read`.",
+        ),
+        (true, false, true, _) => {
+            push_line(output, "- Read a file before overwriting it with `write`.")
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::{COMMON_RULES_HEADER, COMMON_RULES_SECTION_MAX_SIZE};
+
+    #[test]
+    fn common_rules_max_size_matches_all_rendered_variants() {
+        let mut max_len = 0;
+
+        for has_allowed_path_tool in [false, true] {
+            for has_bash in [false, true] {
+                for has_read in [false, true] {
+                    for read_line_numbers in [false, true] {
+                        for has_write in [false, true] {
+                            for has_edit in [false, true] {
+                                for has_glob in [false, true] {
+                                    for has_grep in [false, true] {
+                                        let facts = ToolPromptFacts {
+                                            has_allowed_path_tool,
+                                            has_bash,
+                                            has_read,
+                                            read_line_numbers,
+                                            has_write,
+                                            has_edit,
+                                            has_glob,
+                                            has_grep,
+                                        };
+                                        if !facts.has_common_rules() {
+                                            continue;
+                                        }
+
+                                        let mut rendered = String::from(COMMON_RULES_HEADER);
+                                        write_common_rules(facts, &mut rendered);
+                                        max_len = max_len.max(rendered.len());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(max_len, COMMON_RULES_SECTION_MAX_SIZE);
+    }
+}

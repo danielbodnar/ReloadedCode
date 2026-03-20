@@ -1,6 +1,0 @@
-Performs exact string replacement in files within allowed directories.
-- Read the file first, then copy exact text from the `read` output. Do not include `L{n}: ` prefixes.
-- Paths outside the allowed directories are rejected.
-- Without `replace_all`, the edit fails if `old_string` is missing or appears more than once.
-- The edit also fails if `old_string` is empty or equal to `new_string`.
-- Use `write` instead when most of the file needs to change.

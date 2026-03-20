@@ -1,6 +1,0 @@
-Search file contents with a regex within allowed directories.
-- `pattern` must not be empty. Search is single-line only; there is no multiline matching.
-- Returns matches grouped by file.
-- Paths outside the allowed directories are rejected.
-- Use this instead of shell `grep`/`rg`.
-- Use `glob` for file-name search and `read` for full-file inspection.

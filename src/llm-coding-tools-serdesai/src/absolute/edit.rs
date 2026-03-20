@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use llm_coding_tools_core::tool_metadata::edit as edit_meta;
 use llm_coding_tools_core::tools::edit_file;
@@ -90,8 +91,10 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
 impl ToolContext for EditTool {
     const NAME: &'static str = edit_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::EDIT_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Edit {
+            path_mode: PathMode::Absolute,
+        }
     }
 }
 

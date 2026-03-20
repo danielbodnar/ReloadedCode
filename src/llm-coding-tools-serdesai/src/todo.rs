@@ -5,7 +5,7 @@
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
-use llm_coding_tools_core::context::ToolContext;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::{
     todo_read as todo_read_meta, todo_write as todo_write_meta,
 };
@@ -99,8 +99,8 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
 impl ToolContext for TodoWriteTool {
     const NAME: &'static str = todo_write_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::TODO_WRITE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::TodoWrite
     }
 }
 
@@ -139,8 +139,8 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
 impl ToolContext for TodoReadTool {
     const NAME: &'static str = todo_read_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::TODO_READ
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::TodoRead
     }
 }
 

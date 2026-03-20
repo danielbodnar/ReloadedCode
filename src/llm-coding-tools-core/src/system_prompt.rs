@@ -3,13 +3,15 @@
 //! Provides [`SystemPromptBuilder`] for tracking tools and generating formatted
 //! system prompts containing tool usage context.
 
-use crate::context::ToolContext;
+use crate::context::{
+    ToolContext, ToolPrompt, ToolPromptFacts, COMMON_RULES_HEADER, COMMON_RULES_SECTION_MAX_SIZE,
+};
 use crate::path::AllowedPathResolver;
 
-/// Entry storing tool name and context string.
+/// Entry storing a tool name and prompt renderer.
 struct ContextEntry {
     name: &'static str,
-    context: &'static str,
+    prompt: ToolPrompt,
 }
 
 /// Builder that tracks tools and generates formatted system prompts.
@@ -19,7 +21,7 @@ struct ContextEntry {
 /// # Example
 ///
 /// ```no_run
-/// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+/// use llm_coding_tools_core::context::{PathMode, ToolContext, ToolPrompt};
 /// use llm_coding_tools_core::SystemPromptBuilder;
 ///
 /// struct ReadTool;
@@ -27,8 +29,11 @@ struct ContextEntry {
 /// impl ToolContext for ReadTool {
 ///     const NAME: &'static str = "read";
 ///
-///     fn context(&self) -> &'static str {
-///         READ_ABSOLUTE
+///     fn context(&self) -> ToolPrompt {
+///         ToolPrompt::Read {
+///             path_mode: PathMode::Absolute,
+///             line_numbers: true,
+///         }
 ///     }
 /// }
 ///
@@ -76,7 +81,7 @@ impl SystemPromptBuilder {
     ///
     /// Use this to wrap tools before registering them with your tool collection:
     /// ```no_run
-    /// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+    /// use llm_coding_tools_core::context::{PathMode, ToolContext, ToolPrompt};
     /// use llm_coding_tools_core::SystemPromptBuilder;
     ///
     /// struct MyTool;
@@ -84,8 +89,11 @@ impl SystemPromptBuilder {
     /// impl ToolContext for MyTool {
     ///     const NAME: &'static str = "read";
     ///
-    ///     fn context(&self) -> &'static str {
-    ///         READ_ABSOLUTE
+    ///     fn context(&self) -> ToolPrompt {
+    ///         ToolPrompt::Read {
+    ///             path_mode: PathMode::Absolute,
+    ///             line_numbers: true,
+    ///         }
     ///     }
     /// }
     ///
@@ -106,7 +114,7 @@ impl SystemPromptBuilder {
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
         self.entries.push(ContextEntry {
             name: T::NAME,
-            context: tool.context(),
+            prompt: tool.context(),
         });
         tool
     }
@@ -280,11 +288,13 @@ impl SystemPromptBuilder {
             paths.iter().map(|p| p.len() + ALLOWED_DIR_PER_ITEM).sum()
         });
 
-        let tools_size: usize = self
-            .entries
-            .iter()
-            .map(|e| e.context.len() + e.name.len() + 20)
-            .sum();
+        let facts = ToolPromptFacts::from_prompts(self.entries.iter().map(|entry| entry.prompt));
+        let common_rules_size = if facts.has_common_rules() {
+            COMMON_RULES_SECTION_MAX_SIZE
+        } else {
+            0
+        };
+        let tools_size = self.entries.len() * 320 + common_rules_size;
 
         let supplemental_size: usize = self
             .supplemental
@@ -344,6 +354,11 @@ impl SystemPromptBuilder {
         if has_tools {
             output.push_str("# Tool Usage Guidelines\n\n");
 
+            if facts.has_common_rules() {
+                output.push_str(COMMON_RULES_HEADER);
+                facts.write_common_rules(&mut output);
+            }
+
             for entry in self.entries {
                 output.push_str("## `");
                 let mut chars = entry.name.chars();
@@ -354,8 +369,8 @@ impl SystemPromptBuilder {
                     output.push_str(entry.name);
                 }
                 output.push_str("` Tool\n");
-                output.push_str(entry.context);
-                if !entry.context.ends_with('\n') {
+                entry.prompt.render(&mut output, facts);
+                if !output.ends_with('\n') {
                     output.push('\n');
                 }
             }
@@ -384,6 +399,7 @@ impl SystemPromptBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::PathMode;
     use indoc::indoc;
 
     struct MockTool {
@@ -392,8 +408,8 @@ mod tests {
 
     impl ToolContext for MockTool {
         const NAME: &'static str = "mock";
-        fn context(&self) -> &'static str {
-            "Mock tool context."
+        fn context(&self) -> ToolPrompt {
+            ToolPrompt::Static("Mock tool context.")
         }
     }
 
@@ -401,10 +417,75 @@ mod tests {
 
     impl ToolContext for OtherTool {
         const NAME: &'static str = "other";
-        fn context(&self) -> &'static str {
-            "Other context."
+        fn context(&self) -> ToolPrompt {
+            ToolPrompt::Static("Other context.")
         }
     }
+
+    const fn built_in_path_mode<const ALLOWED: bool>() -> PathMode {
+        if ALLOWED {
+            PathMode::Allowed
+        } else {
+            PathMode::Absolute
+        }
+    }
+
+    macro_rules! built_in_path_tool_with_line_numbers {
+        ($tool:ident, $name:literal, $variant:ident) => {
+            struct $tool<const ALLOWED: bool, const LINE_NUMBERS: bool>;
+
+            impl<const ALLOWED: bool, const LINE_NUMBERS: bool> ToolContext
+                for $tool<ALLOWED, LINE_NUMBERS>
+            {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    ToolPrompt::$variant {
+                        path_mode: built_in_path_mode::<ALLOWED>(),
+                        line_numbers: LINE_NUMBERS,
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! built_in_path_tool {
+        ($tool:ident, $name:literal, $variant:ident) => {
+            struct $tool<const ALLOWED: bool>;
+
+            impl<const ALLOWED: bool> ToolContext for $tool<ALLOWED> {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    ToolPrompt::$variant {
+                        path_mode: built_in_path_mode::<ALLOWED>(),
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! built_in_tool {
+        ($tool:ident, $name:literal, $prompt:expr) => {
+            struct $tool;
+
+            impl ToolContext for $tool {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    $prompt
+                }
+            }
+        };
+    }
+
+    built_in_path_tool_with_line_numbers!(BuiltInReadTool, "read", Read);
+    built_in_path_tool!(BuiltInWriteTool, "write", Write);
+    built_in_path_tool!(BuiltInEditTool, "edit", Edit);
+    built_in_path_tool!(BuiltInGlobTool, "glob", Glob);
+    built_in_path_tool_with_line_numbers!(BuiltInGrepTool, "grep", Grep);
+    built_in_tool!(BuiltInBashTool, "bash", ToolPrompt::Bash);
+    built_in_tool!(BuiltInTaskTool, "task", ToolPrompt::Task);
 
     #[test]
     fn empty_builder_returns_empty_string() {
@@ -1194,5 +1275,62 @@ mod tests {
             "Missing project path"
         );
         assert!(preamble.contains("- /tmp"), "Missing tmp path");
+    }
+
+    #[test]
+    fn built_in_tools_emit_common_rules_once() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<true, true>);
+        let _ = pb.track(BuiltInWriteTool::<true>);
+        let _ = pb.track(BuiltInEditTool::<true>);
+        let _ = pb.track(BuiltInBashTool);
+        let _ = pb.track(BuiltInGlobTool::<true>);
+        let _ = pb.track(BuiltInGrepTool::<true, true>);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Common Rules"));
+        assert_eq!(
+            preamble
+                .matches("Only listed allowed directories may be accessed")
+                .count(),
+            1
+        );
+        assert!(preamble.contains("Prefer `glob`, `grep`, `read`, `edit`, and `write` over `bash`"));
+        assert!(preamble.contains(
+            "Prefer `edit` for targeted changes and `write` for new files or full rewrites."
+        ));
+        assert!(preamble.contains("copy exact text from `read` and omit any `L{n}: ` prefixes"));
+    }
+
+    #[test]
+    fn built_in_tools_omit_unavailable_tool_references() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<false, false>);
+        let _ = pb.track(BuiltInEditTool::<false>);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Common Rules"));
+        assert!(preamble.contains("Read a file before `edit`, then copy exact text from `read`."));
+        assert!(preamble.contains("- Returns raw text. Lines over `2000` chars are truncated."));
+        assert!(preamble.contains("- Reads files, not directories."));
+        assert!(!preamble.contains("`glob`"));
+        assert!(!preamble.contains("`bash`"));
+        assert!(!preamble.contains("`write`"));
+        assert!(!preamble.contains("L{n}: "));
+    }
+
+    #[test]
+    fn task_rule_lists_only_available_local_tools() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<false, true>);
+        let _ = pb.track(BuiltInTaskTool);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("Do not use it when `read` on one or a few files is enough."));
+        assert!(!preamble.contains("`glob` on one or a few files is enough"));
+        assert!(!preamble.contains("`grep` on one or a few files is enough"));
     }
 }

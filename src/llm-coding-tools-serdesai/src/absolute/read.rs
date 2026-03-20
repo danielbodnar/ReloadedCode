@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use llm_coding_tools_core::tool_metadata::read as read_meta;
 use llm_coding_tools_core::tools::read_file;
@@ -87,8 +88,11 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_N
 impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
     const NAME: &'static str = read_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::READ_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Read {
+            path_mode: PathMode::Absolute,
+            line_numbers: LINE_NUMBERS,
+        }
     }
 }
 

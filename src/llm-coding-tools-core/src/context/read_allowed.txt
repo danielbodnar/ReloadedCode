@@ -1,6 +1,0 @@
-Reads a file within allowed directories.
-- Output is text with line numbers as `L{n}: ...`. Lines longer than `2000` chars are truncated.
-- This tool reads files, not directories. Use `glob` to find files or `bash` only when you specifically need a directory listing.
-- Paths outside the allowed directories are rejected.
-- Missing files return an error. Non-text files are returned as text bytes; there is no special image rendering.
-- Read the file before editing it. Read multiple related files in parallel when useful.

@@ -1,4 +1,0 @@
-Fetches one URL.
-- Output starts with `[content-type - bytes]`.
-- Maximum response size is `5 MiB`.
-- Use this for known URLs, not web search. Prefer a more specialized web tool when one exists.

@@ -1,6 +1,7 @@
 //! Write file tool using [`AbsolutePathResolver`].
 
 use async_trait::async_trait;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use llm_coding_tools_core::tool_metadata::write as write_meta;
 use llm_coding_tools_core::tools::write_file;
@@ -69,8 +70,10 @@ impl<Deps: Send + Sync> Tool<Deps> for WriteTool {
 impl ToolContext for WriteTool {
     const NAME: &'static str = write_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::WRITE_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Write {
+            path_mode: PathMode::Absolute,
+        }
     }
 }
 

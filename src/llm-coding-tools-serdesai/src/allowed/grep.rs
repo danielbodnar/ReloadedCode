@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AllowedPathResolver;
 use llm_coding_tools_core::tool_metadata::grep as grep_meta;
 use llm_coding_tools_core::tools::{DEFAULT_MAX_LINE_LENGTH, grep_search};
@@ -129,8 +130,11 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
 impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
     const NAME: &'static str = grep_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::GREP_ALLOWED
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Grep {
+            path_mode: PathMode::Allowed,
+            line_numbers: LINE_NUMBERS,
+        }
     }
 }
 

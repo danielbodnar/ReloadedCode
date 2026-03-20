@@ -13,7 +13,7 @@
 use crate::task::{TaskHandle, task_tool_definition};
 use async_trait::async_trait;
 use llm_coding_tools_agents::TaskTargetSummary;
-use llm_coding_tools_core::context::ToolContext;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::task as task_meta;
 use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput};
 use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn};
@@ -85,8 +85,8 @@ where
 {
     const NAME: &'static str = task_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::TASK
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Task
     }
 }
 
@@ -116,8 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn task_tool_name_and_context_match() {
+    fn task_tool_name_matches_metadata() {
         assert_eq!(TaskTool::<CredentialResolver>::NAME, task_meta::NAME);
-        assert!(!llm_coding_tools_core::context::TASK.is_empty());
     }
 }

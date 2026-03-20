@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
 use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::glob_files;
@@ -72,8 +73,10 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
 impl ToolContext for GlobTool {
     const NAME: &'static str = glob_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::GLOB_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Glob {
+            path_mode: PathMode::Absolute,
+        }
     }
 }
 

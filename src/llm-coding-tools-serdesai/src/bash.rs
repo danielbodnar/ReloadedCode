@@ -4,7 +4,7 @@
 
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
-use llm_coding_tools_core::context::ToolContext;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::bash as bash_meta;
 use llm_coding_tools_core::tools::execute_command;
 use serde::Deserialize;
@@ -115,8 +115,8 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
 impl ToolContext for BashTool {
     const NAME: &'static str = bash_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::BASH
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Bash
     }
 }
 

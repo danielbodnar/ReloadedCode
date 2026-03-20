@@ -1,5 +1,0 @@
-Delegate a focused job to another agent.
-- This runtime is stateless. Do not pass `session_id`.
-- Use it for real delegation, custom slash commands, or independent sub-work you can run in parallel.
-- Do not use it when `read`, `glob`, or `grep` on one or a few files is enough.
-- The delegated result is returned only to you, so summarize it for the user.

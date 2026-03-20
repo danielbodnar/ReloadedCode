@@ -5,7 +5,7 @@
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
-use llm_coding_tools_core::context::ToolContext;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::webfetch as webfetch_meta;
 use llm_coding_tools_core::tools::fetch_url;
 use serde::Deserialize;
@@ -91,8 +91,8 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
 impl ToolContext for WebFetchTool {
     const NAME: &'static str = webfetch_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::WEBFETCH
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::WebFetch
     }
 }
 

@@ -1,5 +1,0 @@
-Writes a file to an absolute path on the local filesystem and creates parent directories if needed.
-- Existing files are overwritten.
-- Prefer `edit` for targeted changes.
-- If the file already exists, read it first before overwriting.
-- Use this for new files or full rewrites, not small edits.

@@ -85,7 +85,8 @@ Wrappers usually bind a tool's canonical name and guidance through
 Any-path read tool:
 
 ```rust,no_run
-use llm_coding_tools_core::{ToolContext, context, tool_metadata};
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
+use llm_coding_tools_core::{ToolContext, tool_metadata};
 
 struct ReadTool;
 
@@ -98,8 +99,11 @@ impl ReadTool {
 impl ToolContext for ReadTool {
     const NAME: &'static str = tool_metadata::read::NAME;
 
-    fn context(&self) -> &'static str {
-        context::READ_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Read {
+            path_mode: PathMode::Absolute,
+            line_numbers: true,
+        }
     }
 }
 
@@ -110,8 +114,9 @@ Sandboxed read tool:
 
 ```rust,no_run
 use llm_coding_tools_core::{
-    AllowedPathResolver, ToolContext, context, tool_metadata,
+    AllowedPathResolver, ToolContext, tool_metadata,
 };
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 
 struct ReadTool {
     _resolver: AllowedPathResolver,
@@ -128,8 +133,11 @@ impl ReadTool {
 impl ToolContext for ReadTool {
     const NAME: &'static str = tool_metadata::read::NAME;
 
-    fn context(&self) -> &'static str {
-        context::READ_ALLOWED
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Read {
+            path_mode: PathMode::Allowed,
+            line_numbers: true,
+        }
     }
 }
 
