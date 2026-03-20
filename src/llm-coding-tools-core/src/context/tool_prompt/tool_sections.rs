@@ -4,6 +4,7 @@
 //! top-level renderer small and easy to follow.
 
 use super::{push_block, push_line, write_tool_list, PathMode, ToolPrompt, ToolPromptFacts};
+use crate::tool_metadata::{glob, grep, read};
 
 pub(super) fn render_tool(prompt: ToolPrompt, output: &mut String, facts: ToolPromptFacts) {
     match prompt {
@@ -212,8 +213,6 @@ fn write_todo_write_section(output: &mut String) {
 }
 
 fn write_task_section(output: &mut String, facts: ToolPromptFacts) {
-    use crate::tool_metadata::{glob, grep, read};
-
     push_block(
         output,
         "Delegate a focused job to another agent.\n\
