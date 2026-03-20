@@ -6,8 +6,8 @@ mod system_prompt;
 
 use llm_coding_tools_core::context::PathMode;
 use system_prompt::{
-    build_case, print_footprint, print_ranked_sizes, section_sizes, GrepConfig, PromptCase,
-    ReadConfig,
+    build_case, print_footprint, print_ranked_sizes, print_tool_definitions, section_sizes,
+    GrepConfig, PromptCase, ReadConfig,
 };
 
 fn main() {
@@ -19,6 +19,7 @@ fn main() {
     print_footprint("Static request footprint", &readonly);
     print_ranked_sizes("Largest guideline sections:", &section_sizes(&readonly));
     print_ranked_sizes("Largest tool definitions:", &readonly.definition_sizes());
+    print_tool_definitions(&readonly);
 }
 
 const SYSTEM_PROMPT: &str = "# System Instructions\n\nYou are a helpful coding assistant. Gather relevant information and report concise findings.";

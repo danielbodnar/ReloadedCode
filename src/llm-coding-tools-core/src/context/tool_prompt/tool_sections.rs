@@ -5,7 +5,7 @@
 
 use const_format::formatcp;
 
-use super::{push_block, push_line, write_tool_list, PathMode, ToolPrompt, ToolPromptFacts};
+use super::{push_block, push_line, write_tool_list, ToolPrompt, ToolPromptFacts};
 use crate::tool_metadata::{bash, edit, glob, grep, read, webfetch};
 
 pub(super) fn render_tool(prompt: ToolPrompt, output: &mut String, facts: ToolPromptFacts) {
@@ -13,16 +13,16 @@ pub(super) fn render_tool(prompt: ToolPrompt, output: &mut String, facts: ToolPr
         ToolPrompt::Static(text) => output.push_str(text),
         ToolPrompt::Bash => write_bash_section(output),
         ToolPrompt::Read {
-            path_mode,
+            path_mode: _,
             line_numbers,
-        } => write_read_section(output, facts, path_mode, line_numbers),
-        ToolPrompt::Write { path_mode } => write_write_section(output, facts, path_mode),
-        ToolPrompt::Edit { path_mode } => write_edit_section(output, facts, path_mode),
-        ToolPrompt::Glob { path_mode } => write_glob_section(output, facts, path_mode),
+        } => write_read_section(output, facts, line_numbers),
+        ToolPrompt::Write { path_mode: _ } => write_write_section(output, facts),
+        ToolPrompt::Edit { path_mode: _ } => write_edit_section(output, facts),
+        ToolPrompt::Glob { path_mode: _ } => write_glob_section(output, facts),
         ToolPrompt::Grep {
-            path_mode,
+            path_mode: _,
             line_numbers: _,
-        } => write_grep_section(output, facts, path_mode),
+        } => write_grep_section(output, facts),
         ToolPrompt::WebFetch => write_webfetch_section(output),
         ToolPrompt::TodoRead => write_todo_read_section(output),
         ToolPrompt::TodoWrite => write_todo_write_section(output),
@@ -34,8 +34,7 @@ fn write_bash_section(output: &mut String) {
     push_block(
         output,
         formatcp!(
-            "Runs one shell command in a fresh shell process.\n\
-            - Use it for terminal work (git, package managers, test runners, docker) and shell-native search/filter jobs the specialized tools do not handle well.\n\
+            "- Use it for terminal work (git, package managers, test runners, docker) and shell-native search/filter jobs the specialized tools do not handle well.\n\
             - Output includes stdout, stderr under `[stderr]`, and non-zero exit codes as `[exit code: N]`.\n\
             - For independent commands, make parallel `{}` calls. For dependent commands, use one call with `&&`.\n\
             - Quote paths that contain spaces.\n",
@@ -44,20 +43,7 @@ fn write_bash_section(output: &mut String) {
     );
 }
 
-fn write_read_section(
-    output: &mut String,
-    facts: ToolPromptFacts,
-    path_mode: PathMode,
-    line_numbers: bool,
-) {
-    match path_mode {
-        PathMode::Absolute => push_line(
-            output,
-            "Reads a file from an absolute path on the local filesystem.",
-        ),
-        PathMode::Allowed => push_line(output, "Reads a file in allowed directories."),
-    }
-
+fn write_read_section(output: &mut String, facts: ToolPromptFacts, line_numbers: bool) {
     if line_numbers {
         push_line(
             output,
@@ -108,18 +94,7 @@ fn write_read_section(
     );
 }
 
-fn write_write_section(output: &mut String, facts: ToolPromptFacts, path_mode: PathMode) {
-    match path_mode {
-        PathMode::Absolute => push_line(
-            output,
-            "Writes a file to an absolute path and creates parent directories if needed.",
-        ),
-        PathMode::Allowed => push_line(
-            output,
-            "Writes a file in allowed directories and creates parent directories if needed.",
-        ),
-    }
-
+fn write_write_section(output: &mut String, facts: ToolPromptFacts) {
     push_line(output, "- Existing files are overwritten.");
     if !facts.has_edit {
         push_line(
@@ -129,18 +104,7 @@ fn write_write_section(output: &mut String, facts: ToolPromptFacts, path_mode: P
     }
 }
 
-fn write_edit_section(output: &mut String, facts: ToolPromptFacts, path_mode: PathMode) {
-    match path_mode {
-        PathMode::Absolute => push_line(
-            output,
-            "Performs exact string replacement in a file at an absolute path.",
-        ),
-        PathMode::Allowed => push_line(
-            output,
-            "Performs exact string replacement in a file in allowed directories.",
-        ),
-    }
-
+fn write_edit_section(output: &mut String, facts: ToolPromptFacts) {
     if !facts.has_read {
         push_line(
             output,
@@ -163,17 +127,7 @@ fn write_edit_section(output: &mut String, facts: ToolPromptFacts, path_mode: Pa
     );
 }
 
-fn write_glob_section(output: &mut String, facts: ToolPromptFacts, path_mode: PathMode) {
-    match path_mode {
-        PathMode::Absolute => push_line(
-            output,
-            "Find files by glob pattern from an absolute directory path.",
-        ),
-        PathMode::Allowed => {
-            push_line(output, "Find files by glob pattern in allowed directories.")
-        }
-    }
-
+fn write_glob_section(output: &mut String, facts: ToolPromptFacts) {
     push_block(
         output,
         formatcp!(
@@ -189,18 +143,7 @@ fn write_glob_section(output: &mut String, facts: ToolPromptFacts, path_mode: Pa
     }
 }
 
-fn write_grep_section(output: &mut String, facts: ToolPromptFacts, path_mode: PathMode) {
-    match path_mode {
-        PathMode::Absolute => push_line(
-            output,
-            "Search file contents with a regex from an absolute directory path.",
-        ),
-        PathMode::Allowed => push_line(
-            output,
-            "Search file contents with a regex in allowed directories.",
-        ),
-    }
-
+fn write_grep_section(output: &mut String, facts: ToolPromptFacts) {
     push_block(
         output,
         formatcp!(
@@ -224,8 +167,7 @@ fn write_webfetch_section(output: &mut String) {
     push_block(
         output,
         formatcp!(
-            "Fetches one URL.\n\
-            - Output starts with `[content-type - bytes]`.\n\
+            "- Output starts with `[content-type - bytes]`.\n\
             - Maximum response size is `{}` MiB.\n\
             - Use this for known URLs, not web search. Prefer a more specialized web tool when one exists.\n",
             webfetch::MAX_RESPONSE_SIZE_MIB,
@@ -236,8 +178,7 @@ fn write_webfetch_section(output: &mut String) {
 fn write_todo_read_section(output: &mut String) {
     push_block(
         output,
-        "Reads the current todo list.\n\
-- Output is plain text: either `No tasks.` or one line per task with status icon, priority, id, and content.\n\
+        "- Output is plain text: either `No tasks.` or one line per task with status icon, priority, id, and content.\n\
 - Use it before starting or resuming complex work when you need the current task list.\n",
     );
 }
@@ -246,8 +187,7 @@ fn write_todo_write_section(output: &mut String) {
     push_block(
         output,
         formatcp!(
-            "Replaces the session todo list.\n\
-            - Use it for multi-step or non-trivial work, or when the user asks for task tracking. Skip it for a single small task.\n\
+            "- Use it for multi-step or non-trivial work, or when the user asks for task tracking. Skip it for a single small task.\n\
             - Send the full desired list each time; this tool replaces the whole list.\n\
             - `{}` and `{}` must not be empty.\n\
             - Keep task text short and imperative. Update statuses as you work; keep one `in_progress` task when practical.\n",
@@ -261,8 +201,7 @@ fn write_task_section(output: &mut String, facts: ToolPromptFacts) {
     push_block(
         output,
         formatcp!(
-            "Delegate a focused job to another agent.\n\
-            - This runtime is stateless. Do not pass `{}`.\n\
+            "- This runtime is stateless. Do not pass `{}`.\n\
             - Use it for real delegation, custom slash commands, or independent sub-work you can run in parallel.\n",
             crate::tool_metadata::task::param::SESSION_ID.name,
         ),

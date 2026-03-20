@@ -23,7 +23,9 @@ mod report;
 mod types;
 
 pub use build::build_case;
-pub use report::{estimate_tokens, print_footprint, print_ranked_sizes, section_sizes};
+pub use report::{
+    estimate_tokens, print_footprint, print_ranked_sizes, print_tool_definitions, section_sizes,
+};
 pub use types::{GrepConfig, PromptArtifacts, PromptCase, ReadConfig, TaskTarget};
 
 fn sort_sizes_desc(sizes: &mut [(String, usize)]) {

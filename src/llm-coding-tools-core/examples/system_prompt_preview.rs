@@ -6,8 +6,8 @@ mod system_prompt;
 
 use llm_coding_tools_core::context::PathMode;
 use system_prompt::{
-    build_case, print_footprint, print_ranked_sizes, section_sizes, GrepConfig, PromptCase,
-    ReadConfig, TaskTarget,
+    build_case, print_footprint, print_ranked_sizes, print_tool_definitions, section_sizes,
+    GrepConfig, PromptCase, ReadConfig, TaskTarget,
 };
 
 fn main() {
@@ -23,6 +23,7 @@ fn main() {
     );
     print_ranked_sizes("Largest guideline sections:", &section_sizes(&full));
     print_ranked_sizes("Largest tool definitions:", &full.definition_sizes());
+    print_tool_definitions(&full);
 
     println!("\nWithout supplemental workflow:");
     print_footprint("  Static request footprint", &without_supplemental);

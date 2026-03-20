@@ -45,6 +45,16 @@ pub fn section_sizes(artifacts: &PromptArtifacts) -> Vec<(String, usize)> {
     sections
 }
 
+pub fn print_tool_definitions(artifacts: &super::PromptArtifacts) {
+    println!("\n{}", "=".repeat(60));
+    println!("Tool Definitions:");
+    for tool in &artifacts.tool_definitions {
+        let name = tool["name"].as_str().unwrap_or("unknown");
+        println!("\n--- {name} ---");
+        println!("{}", serde_json::to_string_pretty(tool).unwrap());
+    }
+}
+
 pub(super) fn collect_guideline_sections(prompt: &str) -> Vec<(String, usize)> {
     let mut in_guidelines = false;
     let mut current_name: Option<String> = None;
