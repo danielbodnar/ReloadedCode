@@ -10,7 +10,6 @@ use llm_coding_tools_core::tool_metadata::webfetch as webfetch_meta;
 use llm_coding_tools_core::tools::fetch_url;
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::time::Duration;
 
 fn default_timeout_ms() -> u64 {
     webfetch_meta::DEFAULT_TIMEOUT_MS
@@ -81,8 +80,8 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: WebFetchArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(webfetch_meta::NAME, None, e.to_string()))?;
-        let timeout = Duration::from_millis(args.timeout_ms);
-        let result = fetch_url(&self.client, &args.url, timeout).await;
+
+        let result = fetch_url(&self.client, &args.url, args.timeout_ms).await;
 
         to_serdes_result(webfetch_meta::NAME, result.map(ToolOutput::from))
     }

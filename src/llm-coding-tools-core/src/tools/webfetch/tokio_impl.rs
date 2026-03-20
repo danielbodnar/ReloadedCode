@@ -2,6 +2,7 @@
 
 use super::{categorize_reqwest_error, check_size, process_content, WebFetchOutput};
 use crate::error::{ToolError, ToolResult};
+use crate::tool_metadata::webfetch::MAX_TIMEOUT_MS;
 use std::time::Duration;
 
 /// Fetches content from a URL and returns processed content.
@@ -12,8 +13,16 @@ use std::time::Duration;
 pub async fn fetch_url(
     client: &reqwest::Client,
     url: &str,
-    timeout: Duration,
+    timeout_ms: u64,
 ) -> ToolResult<WebFetchOutput> {
+    if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
+        return Err(ToolError::Validation(format!(
+            "timeout_ms must be between 1 and {}",
+            MAX_TIMEOUT_MS
+        )));
+    }
+
+    let timeout = Duration::from_millis(timeout_ms);
     let mut response = client
         .get(url)
         .timeout(timeout)
@@ -105,7 +114,7 @@ mod tests {
         let result = fetch_url(
             &client,
             &format!("{}/text", server.uri()),
-            Duration::from_secs(5),
+            5_000,
         )
         .await
         .unwrap();
@@ -131,7 +140,7 @@ mod tests {
         let result = fetch_url(
             &client,
             &format!("{}/html", server.uri()),
-            Duration::from_secs(5),
+            5_000,
         )
         .await
         .unwrap();
@@ -155,7 +164,7 @@ mod tests {
         let result = fetch_url(
             &client,
             &format!("{}/json", server.uri()),
-            Duration::from_secs(5),
+            5_000,
         )
         .await
         .unwrap();
@@ -176,7 +185,7 @@ mod tests {
         let result = fetch_url(
             &client,
             &format!("{}/notfound", server.uri()),
-            Duration::from_secs(5),
+            5_000,
         )
         .await;
 

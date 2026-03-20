@@ -2,6 +2,7 @@
 
 use super::{categorize_reqwest_error, check_size, process_content, WebFetchOutput};
 use crate::error::{ToolError, ToolResult};
+use crate::tool_metadata::webfetch::MAX_TIMEOUT_MS;
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
@@ -13,8 +14,16 @@ use std::time::Duration;
 pub fn fetch_url(
     client: &reqwest::blocking::Client,
     url: &str,
-    timeout: Duration,
+    timeout_ms: u64,
 ) -> ToolResult<WebFetchOutput> {
+    if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
+        return Err(ToolError::Validation(format!(
+            "timeout_ms must be between 1 and {}",
+            MAX_TIMEOUT_MS
+        )));
+    }
+
+    let timeout = Duration::from_millis(timeout_ms);
     let response = client
         .get(url)
         .timeout(timeout)
@@ -98,11 +107,7 @@ mod tests {
     fn fetches_plain_text() {
         // Use httpbin.org for blocking tests since wiremock is async-only
         let client = test_client();
-        let result = fetch_url(
-            &client,
-            "https://httpbin.org/robots.txt",
-            Duration::from_secs(10),
-        );
+        let result = fetch_url(&client, "https://httpbin.org/robots.txt", 10_000);
 
         // This test requires network access, so we just check it doesn't panic
         // In CI, this might fail due to network restrictions
@@ -115,11 +120,7 @@ mod tests {
     #[test]
     fn handles_404() {
         let client = test_client();
-        let result = fetch_url(
-            &client,
-            "https://httpbin.org/status/404",
-            Duration::from_secs(10),
-        );
+        let result = fetch_url(&client, "https://httpbin.org/status/404", 10_000);
 
         // In case of network issues, just verify we get some result
         if let Err(e) = result {
