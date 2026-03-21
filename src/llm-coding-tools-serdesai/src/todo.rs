@@ -5,8 +5,10 @@
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
-use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
+use llm_coding_tools_core::tool_metadata::{
+    todo_read as todo_read_meta, todo_write as todo_write_meta,
+};
 use llm_coding_tools_core::tools::{read_todos, write_todos};
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
@@ -45,36 +47,41 @@ impl TodoWriteTool {
 impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
-            tool_names::TODO_WRITE,
-            "Replace the todo list with new items.",
+            todo_write_meta::NAME,
+            todo_write_meta::DESCRIPTION,
         )
         .with_parameters(
             SchemaBuilder::new()
                 .raw(
-                    "todos",
+                    todo_write_meta::param::TODOS.name,
                     serde_json::json!({
                         "type": "array",
-                        "description": "The complete list of todos to set",
+                        "description": todo_write_meta::param::TODOS.description,
                         "items": {
                             "type": "object",
-                            "required": ["id", "content", "status", "priority"],
+                            "required": [
+                                todo_write_meta::param::ID.name,
+                                todo_write_meta::param::CONTENT.name,
+                                todo_write_meta::param::STATUS.name,
+                                todo_write_meta::param::PRIORITY.name
+                            ],
                             "properties": {
-                                "id": { "type": "string", "description": "Unique identifier" },
-                                "content": { "type": "string", "description": "Task description" },
+                                "id": { "type": "string", "description": todo_write_meta::param::ID.description },
+                                "content": { "type": "string", "description": todo_write_meta::param::CONTENT.description },
                                 "status": {
                                     "type": "string",
                                     "enum": ["pending", "in_progress", "completed", "cancelled"],
-                                    "description": "Current status"
+                                    "description": todo_write_meta::param::STATUS.description
                                 },
                                 "priority": {
                                     "type": "string",
                                     "enum": ["high", "medium", "low"],
-                                    "description": "Priority level"
+                                    "description": todo_write_meta::param::PRIORITY.description
                                 }
                             }
                         }
                     }),
-                    true,
+                    todo_write_meta::param::TODOS.required,
                 )
                 .build()
                 .expect("schema serialization should never fail"),
@@ -82,19 +89,18 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: TodoWriteArgs = serde_json::from_value(args).map_err(|e| {
-            ToolError::validation_error(tool_names::TODO_WRITE, None, e.to_string())
-        })?;
+        let args: TodoWriteArgs = serde_json::from_value(args)
+            .map_err(|e| ToolError::validation_error(todo_write_meta::NAME, None, e.to_string()))?;
         let result = write_todos(&self.state, args.todos);
-        to_serdes_result(tool_names::TODO_WRITE, result.map(ToolOutput::new))
+        to_serdes_result(todo_write_meta::NAME, result.map(ToolOutput::new))
     }
 }
 
 impl ToolContext for TodoWriteTool {
-    const NAME: &'static str = tool_names::TODO_WRITE;
+    const NAME: &'static str = todo_write_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::TODO_WRITE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::TodoWrite
     }
 }
 
@@ -114,7 +120,7 @@ impl TodoReadTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(tool_names::TODO_READ, "Read the current todo list.").with_parameters(
+        ToolDefinition::new(todo_read_meta::NAME, todo_read_meta::DESCRIPTION).with_parameters(
             SchemaBuilder::new()
                 .build()
                 .expect("schema serialization should never fail"),
@@ -124,17 +130,17 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         // Validate JSON is a proper object (empty struct validates this)
         let _args: TodoReadArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::TODO_READ, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(todo_read_meta::NAME, None, e.to_string()))?;
         let content = read_todos(&self.state);
         Ok(crate::convert::output_to_return(ToolOutput::new(content)))
     }
 }
 
 impl ToolContext for TodoReadTool {
-    const NAME: &'static str = tool_names::TODO_READ;
+    const NAME: &'static str = todo_read_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::TODO_READ
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::TodoRead
     }
 }
 

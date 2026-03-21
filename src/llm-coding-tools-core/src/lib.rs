@@ -16,7 +16,7 @@ pub mod output;
 pub mod path;
 pub mod permissions;
 pub mod system_prompt;
-pub mod tool_names;
+pub mod tool_metadata;
 pub mod tools;
 pub mod util;
 

@@ -5,7 +5,7 @@
 //! - [`task_tool_definition`] - Builds the adapter-facing Task tool definition.
 
 use llm_coding_tools_agents::TaskTargetSummary;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::task as task_meta;
 use serdes_ai::tools::{SchemaBuilder, ToolDefinition};
 
 /// Renders callable target summaries in a stable, user-facing format.
@@ -32,32 +32,45 @@ pub fn render_task_targets(targets: &[TaskTargetSummary]) -> String {
 /// Builds a SerdesAI Task definition using the shared target summaries.
 pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
     let description = format!(
-        "Delegate a focused job to one of the callable subagents.\n\n{}",
+        "{}\n\n{}",
+        task_meta::DESCRIPTION_PREFIX,
         render_task_targets(targets)
     );
     let schema = SchemaBuilder::new()
-        .string("description", "Short 3-5 word task label.", true)
-        .string("prompt", "Complete task instructions for the delegated agent.", true)
-        .string("subagent_type", "Name of the subagent to invoke.", true)
         .string(
-            "session_id",
-            "Optional task session identifier for shared Task compatibility; current delegated requests remain stateless.",
-            false,
+            task_meta::param::DESCRIPTION.name,
+            task_meta::param::DESCRIPTION.description,
+            task_meta::param::DESCRIPTION.required,
         )
         .string(
-            "command",
-            "Optional command that triggered this task.",
-            false,
+            task_meta::param::PROMPT.name,
+            task_meta::param::PROMPT.description,
+            task_meta::param::PROMPT.required,
+        )
+        .string(
+            task_meta::param::SUBAGENT_TYPE.name,
+            task_meta::param::SUBAGENT_TYPE.description,
+            task_meta::param::SUBAGENT_TYPE.required,
+        )
+        .string(
+            task_meta::param::SESSION_ID.name,
+            task_meta::param::SESSION_ID.description,
+            task_meta::param::SESSION_ID.required,
+        )
+        .string(
+            task_meta::param::COMMAND.name,
+            task_meta::param::COMMAND.description,
+            task_meta::param::COMMAND.required,
         )
         .build()
         .expect("task schema should be valid");
 
-    ToolDefinition::new(tool_names::TASK, description).with_parameters(schema)
+    ToolDefinition::new(task_meta::NAME, description).with_parameters(schema)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{task_meta, *};
 
     fn summary(name: &str, description: &str) -> TaskTargetSummary {
         TaskTargetSummary {
@@ -108,7 +121,7 @@ mod tests {
         let targets = vec![summary("test", "Test agent")];
         let definition = task_tool_definition(&targets);
 
-        assert_eq!(definition.name(), tool_names::TASK);
+        assert_eq!(definition.name(), task_meta::NAME);
 
         // Verify description includes all expected parameters
         let desc = definition.description();
@@ -121,6 +134,6 @@ mod tests {
         let definition = task_tool_definition(&targets);
 
         // The definition should be valid and include task
-        assert_eq!(definition.name(), tool_names::TASK);
+        assert_eq!(definition.name(), task_meta::NAME);
     }
 }

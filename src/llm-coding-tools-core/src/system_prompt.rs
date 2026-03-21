@@ -3,13 +3,15 @@
 //! Provides [`SystemPromptBuilder`] for tracking tools and generating formatted
 //! system prompts containing tool usage context.
 
-use crate::context::ToolContext;
+use crate::context::{
+    ToolContext, ToolPrompt, ToolPromptFacts, COMMON_RULES_HEADER, COMMON_RULES_SECTION_MAX_SIZE,
+};
 use crate::path::AllowedPathResolver;
 
-/// Entry storing tool name and context string.
+/// Entry storing a tool name and prompt renderer.
 struct ContextEntry {
     name: &'static str,
-    context: &'static str,
+    prompt: ToolPrompt,
 }
 
 /// Builder that tracks tools and generates formatted system prompts.
@@ -19,7 +21,7 @@ struct ContextEntry {
 /// # Example
 ///
 /// ```no_run
-/// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+/// use llm_coding_tools_core::context::{PathMode, ToolContext, ToolPrompt};
 /// use llm_coding_tools_core::SystemPromptBuilder;
 ///
 /// struct ReadTool;
@@ -27,8 +29,11 @@ struct ContextEntry {
 /// impl ToolContext for ReadTool {
 ///     const NAME: &'static str = "read";
 ///
-///     fn context(&self) -> &'static str {
-///         READ_ABSOLUTE
+///     fn context(&self) -> ToolPrompt {
+///         ToolPrompt::Read {
+///             path_mode: PathMode::Absolute,
+///             line_numbers: true,
+///         }
 ///     }
 /// }
 ///
@@ -76,7 +81,7 @@ impl SystemPromptBuilder {
     ///
     /// Use this to wrap tools before registering them with your tool collection:
     /// ```no_run
-    /// use llm_coding_tools_core::context::{ToolContext, READ_ABSOLUTE};
+    /// use llm_coding_tools_core::context::{PathMode, ToolContext, ToolPrompt};
     /// use llm_coding_tools_core::SystemPromptBuilder;
     ///
     /// struct MyTool;
@@ -84,8 +89,11 @@ impl SystemPromptBuilder {
     /// impl ToolContext for MyTool {
     ///     const NAME: &'static str = "read";
     ///
-    ///     fn context(&self) -> &'static str {
-    ///         READ_ABSOLUTE
+    ///     fn context(&self) -> ToolPrompt {
+    ///         ToolPrompt::Read {
+    ///             path_mode: PathMode::Absolute,
+    ///             line_numbers: true,
+    ///         }
     ///     }
     /// }
     ///
@@ -106,7 +114,7 @@ impl SystemPromptBuilder {
     pub fn track<T: ToolContext>(&mut self, tool: T) -> T {
         self.entries.push(ContextEntry {
             name: T::NAME,
-            context: tool.context(),
+            prompt: tool.context(),
         });
         tool
     }
@@ -239,26 +247,11 @@ impl SystemPromptBuilder {
     }
 }
 
-/// Returns the separator needed to ensure exactly `\n\n` between content and next section.
-///
-/// Given a string, determines how many newlines to append so that the result
-/// ends with exactly `\n\n` (one blank line). Does not modify the user's content.
-#[inline]
-fn section_separator(s: &str) -> &'static str {
-    if s.ends_with("\n\n") {
-        ""
-    } else if s.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    }
-}
-
 impl SystemPromptBuilder {
     /// Generates the system prompt string with environment section.
     pub fn build(self) -> String {
         // Environment section size: ~50 bytes header + path length
-        // "# Environment\n\nWorking directory: \n\n" = ~38 bytes
+        // "# Environment\nWorking directory: \n\n" = ~37 bytes
         const ENV_HEADER_SIZE: usize = 50;
         // "Allowed directories:\n- " per path + path length
         const ALLOWED_DIR_PER_ITEM: usize = 25;
@@ -280,11 +273,13 @@ impl SystemPromptBuilder {
             paths.iter().map(|p| p.len() + ALLOWED_DIR_PER_ITEM).sum()
         });
 
-        let tools_size: usize = self
-            .entries
-            .iter()
-            .map(|e| e.context.len() + e.name.len() + 20)
-            .sum();
+        let facts = ToolPromptFacts::from_prompts(self.entries.iter().map(|entry| entry.prompt));
+        let common_rules_size = if facts.has_common_rules() {
+            COMMON_RULES_SECTION_MAX_SIZE
+        } else {
+            0
+        };
+        let tools_size = self.entries.len() * 320 + common_rules_size;
 
         let supplemental_size: usize = self
             .supplemental
@@ -309,13 +304,15 @@ impl SystemPromptBuilder {
         // System prompt (first)
         if let Some(ref prompt) = self.system_prompt {
             output.push_str(prompt);
-            // Smart separator: ensure exactly one blank line before next section
-            output.push_str(section_separator(prompt));
+            // Ensure single newline before next section
+            if !prompt.ends_with('\n') {
+                output.push('\n');
+            }
         }
 
         // Environment section
         if has_env_content || has_system_prompt || has_tools || has_supplemental {
-            output.push_str("# Environment\n\n");
+            output.push_str("# Environment\n");
 
             if let Some(ref dir) = self.working_directory {
                 output.push_str("Working directory: ");
@@ -331,18 +328,16 @@ impl SystemPromptBuilder {
                     output.push('\n');
                 }
             }
-
-            if (has_tools || has_supplemental) && has_env_content {
-                if !output.ends_with('\n') {
-                    output.push('\n');
-                }
-                output.push('\n');
-            }
         }
 
         // Tool section
         if has_tools {
-            output.push_str("# Tool Usage Guidelines\n\n");
+            output.push_str("# Tool Usage Guidelines\n");
+
+            if facts.has_common_rules() {
+                output.push_str(COMMON_RULES_HEADER);
+                facts.write_common_rules(&mut output);
+            }
 
             for entry in self.entries {
                 output.push_str("## `");
@@ -354,8 +349,8 @@ impl SystemPromptBuilder {
                     output.push_str(entry.name);
                 }
                 output.push_str("` Tool\n");
-                output.push_str(entry.context);
-                if !entry.context.ends_with('\n') {
+                entry.prompt.render(&mut output, facts);
+                if !output.ends_with('\n') {
                     output.push('\n');
                 }
             }
@@ -363,7 +358,7 @@ impl SystemPromptBuilder {
 
         // Supplemental context section
         if has_supplemental {
-            output.push_str("\n# Supplemental Context\n");
+            output.push_str("# Supplemental Context\n");
 
             for (name, context) in self.supplemental {
                 output.push_str("## ");
@@ -384,6 +379,8 @@ impl SystemPromptBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::PathMode;
+    use crate::tool_metadata::{bash, edit, glob, grep, read, task, write};
     use indoc::indoc;
 
     struct MockTool {
@@ -392,8 +389,8 @@ mod tests {
 
     impl ToolContext for MockTool {
         const NAME: &'static str = "mock";
-        fn context(&self) -> &'static str {
-            "Mock tool context."
+        fn context(&self) -> ToolPrompt {
+            ToolPrompt::Static("Mock tool context.")
         }
     }
 
@@ -401,9 +398,89 @@ mod tests {
 
     impl ToolContext for OtherTool {
         const NAME: &'static str = "other";
-        fn context(&self) -> &'static str {
-            "Other context."
+        fn context(&self) -> ToolPrompt {
+            ToolPrompt::Static("Other context.")
         }
+    }
+
+    const fn built_in_path_mode<const ALLOWED: bool>() -> PathMode {
+        if ALLOWED {
+            PathMode::Allowed
+        } else {
+            PathMode::Absolute
+        }
+    }
+
+    macro_rules! built_in_path_tool_with_line_numbers {
+        ($tool:ident, $name:expr, $variant:ident) => {
+            struct $tool<const ALLOWED: bool, const LINE_NUMBERS: bool>;
+
+            impl<const ALLOWED: bool, const LINE_NUMBERS: bool> ToolContext
+                for $tool<ALLOWED, LINE_NUMBERS>
+            {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    ToolPrompt::$variant {
+                        path_mode: built_in_path_mode::<ALLOWED>(),
+                        line_numbers: LINE_NUMBERS,
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! built_in_path_tool {
+        ($tool:ident, $name:expr, $variant:ident) => {
+            struct $tool<const ALLOWED: bool>;
+
+            impl<const ALLOWED: bool> ToolContext for $tool<ALLOWED> {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    ToolPrompt::$variant {
+                        path_mode: built_in_path_mode::<ALLOWED>(),
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! built_in_tool {
+        ($tool:ident, $name:expr, $prompt:expr) => {
+            struct $tool;
+
+            impl ToolContext for $tool {
+                const NAME: &'static str = $name;
+
+                fn context(&self) -> ToolPrompt {
+                    $prompt
+                }
+            }
+        };
+    }
+
+    built_in_path_tool_with_line_numbers!(BuiltInReadTool, read::NAME, Read);
+    built_in_path_tool!(BuiltInWriteTool, write::NAME, Write);
+    built_in_path_tool!(BuiltInEditTool, edit::NAME, Edit);
+    built_in_path_tool!(BuiltInGlobTool, glob::NAME, Glob);
+    built_in_path_tool_with_line_numbers!(BuiltInGrepTool, grep::NAME, Grep);
+    built_in_tool!(BuiltInBashTool, bash::NAME, ToolPrompt::Bash);
+    built_in_tool!(BuiltInTaskTool, task::NAME, ToolPrompt::Task);
+
+    fn assert_no_triple_newlines(preamble: &str) {
+        assert!(
+            !preamble.contains("\n\n\n"),
+            "Found triple newline in preamble.\nGot:\n{preamble}"
+        );
+    }
+
+    fn assert_no_trailing_whitespace(preamble: &str) {
+        assert_eq!(
+            preamble,
+            preamble.trim_end(),
+            "Preamble has trailing whitespace"
+        );
     }
 
     #[test]
@@ -467,57 +544,74 @@ mod tests {
             "Expected single newline after tool header.\nGot:\n{preamble}"
         );
 
-        // Verify blank line after section header
+        // Verify no extra blank line after Environment header
         assert!(
-            preamble.contains("# Tool Usage Guidelines\n\n## `Mock` Tool"),
-            "Expected blank line after section header.\nGot:\n{preamble}"
+            preamble.contains("# Environment\nWorking directory:"),
+            "Expected single newline after Environment header.\nGot:\n{preamble}"
         );
 
-        // Verify no trailing whitespace at end of preamble
-        assert_eq!(
-            preamble,
-            preamble.trim_end(),
-            "Preamble has trailing whitespace"
+        // Verify no extra blank line after section header
+        assert!(
+            preamble.contains("# Tool Usage Guidelines\n## `Mock` Tool"),
+            "Expected single newline after section header.\nGot:\n{preamble}"
         );
+
+        assert_no_trailing_whitespace(&preamble);
     }
 
     #[test]
-    fn multiple_tools_with_working_dir_have_single_newline_between() {
-        let mut pb = SystemPromptBuilder::new().working_directory("/test");
+    fn no_blank_lines_between_major_sections() {
+        let mut pb = SystemPromptBuilder::new()
+            .working_directory("/home/user/project")
+            .add_context("Git Workflow", "Git guidance.");
         let _ = pb.track(MockTool { id: 1 });
-        let _ = pb.track(OtherTool);
+
         let preamble = pb.build();
 
-        // Verify exact transition: context ends, then next tool header
+        // Verify no blank line between Environment and Tool Usage Guidelines
         assert!(
-            preamble.contains("Mock tool context.\n## `Other` Tool"),
-            "Expected single newline between tool sections.\nGot:\n{preamble}"
+            preamble.contains("Working directory: /home/user/project\n# Tool Usage Guidelines"),
+            "Expected single newline before Tool Usage Guidelines.\nGot:\n{preamble}"
         );
 
-        // Verify single newline after tool header
+        // Verify no blank line between Tool Usage Guidelines and Supplemental Context
         assert!(
-            preamble.contains("## `Mock` Tool\nMock tool context."),
-            "Expected single newline after tool header.\nGot:\n{preamble}"
+            preamble.contains("Mock tool context.\n# Supplemental Context"),
+            "Expected single newline before Supplemental Context.\nGot:\n{preamble}"
         );
 
-        // Verify blank line after Environment header
+        // Verify no blank lines immediately after section headers
         assert!(
-            preamble.contains("# Environment\n\nWorking directory:"),
-            "Expected blank line after Environment header.\nGot:\n{preamble}"
+            preamble.contains("# Environment\nWorking"),
+            "Expected no blank line after # Environment.\nGot:\n{preamble}"
         );
-
-        // Verify blank line after Tool Usage Guidelines header
         assert!(
-            preamble.contains("# Tool Usage Guidelines\n\n## `Mock` Tool"),
-            "Expected blank line after section header.\nGot:\n{preamble}"
+            preamble.contains("# Tool Usage Guidelines\n##"),
+            "Expected no blank line after # Tool Usage Guidelines.\nGot:\n{preamble}"
         );
+        assert!(
+            preamble.contains("# Supplemental Context\n##"),
+            "Expected no blank line after # Supplemental Context.\nGot:\n{preamble}"
+        );
+        assert_no_triple_newlines(&preamble);
+    }
 
-        // Verify no trailing whitespace at end of preamble
-        assert_eq!(
-            preamble,
-            preamble.trim_end(),
-            "Preamble has trailing whitespace"
+    #[test]
+    fn empty_environment_section_has_single_newline_boundaries() {
+        let mut pb = SystemPromptBuilder::new().add_context("Git Workflow", "Git guidance.");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        assert!(
+            preamble.contains("# Environment\n# Tool Usage Guidelines"),
+            "Expected Tool Usage Guidelines immediately after empty Environment section.\nGot:\n{preamble}"
         );
+        assert!(
+            preamble.contains("Mock tool context.\n# Supplemental Context"),
+            "Expected Supplemental Context immediately after tool content.\nGot:\n{preamble}"
+        );
+        assert_no_triple_newlines(&preamble);
     }
 
     #[test]
@@ -535,20 +629,14 @@ mod tests {
     }
 
     #[test]
-    fn builder_without_env_data_and_tools_returns_empty() {
-        let pb = SystemPromptBuilder::new();
-        let preamble = pb.build();
-        assert!(preamble.is_empty());
-    }
-
-    #[test]
-    fn builder_with_working_dir_but_no_tools() {
+    fn builder_with_working_dir_only_renders_environment_section() {
         // Environment section should render even without tools tracked
         let pb = SystemPromptBuilder::new().working_directory("/home/user/project");
         let preamble = pb.build();
 
         assert!(preamble.contains("# Environment"));
         assert!(preamble.contains("Working directory: /home/user/project"));
+        assert!(!preamble.contains("Allowed directories:"));
         assert!(!preamble.contains("# Tool Usage Guidelines"));
     }
 
@@ -556,34 +644,20 @@ mod tests {
     fn working_directory_accepts_runtime_string() {
         // Simulates std::env::current_dir().unwrap().display().to_string()
         let runtime_path = String::from("/runtime/computed/path");
-        let pb = SystemPromptBuilder::new().working_directory(runtime_path);
-        let preamble = pb.build();
+        let preamble = SystemPromptBuilder::new()
+            .working_directory(runtime_path)
+            .build();
 
         assert!(preamble.contains("Working directory: /runtime/computed/path"));
     }
 
     #[test]
     fn working_directory_accepts_str() {
-        let pb = SystemPromptBuilder::new().working_directory("/static/path");
-        let preamble = pb.build();
+        let preamble = SystemPromptBuilder::new()
+            .working_directory("/static/path")
+            .build();
 
         assert!(preamble.contains("Working directory: /static/path"));
-    }
-
-    #[test]
-    fn default_builder_compiles() {
-        let _pb_default: SystemPromptBuilder = SystemPromptBuilder::new();
-    }
-
-    #[test]
-    fn backwards_compatibility_existing_api() {
-        // Existing code should work unchanged
-        let mut pb = SystemPromptBuilder::new();
-        let _ = pb.track(MockTool { id: 1 });
-        let preamble = pb.build();
-
-        assert!(preamble.contains("# Tool Usage Guidelines"));
-        assert!(preamble.contains("## `Mock` Tool"));
     }
 
     #[test]
@@ -676,45 +750,20 @@ mod tests {
     }
 
     #[test]
-    fn builder_with_only_working_dir_no_allowed_paths() {
-        // Only working_directory() should not render "Allowed directories:" section
-        let pb = SystemPromptBuilder::new().working_directory("/home/user/project");
-        let preamble = pb.build();
-
-        assert!(preamble.contains("# Environment"));
-        assert!(preamble.contains("Working directory: /home/user/project"));
-        assert!(
-            !preamble.contains("Allowed directories:"),
-            "Should not render Allowed directories when not explicitly set"
-        );
-    }
-
-    #[test]
-    fn add_context_includes_supplemental_section() {
+    fn add_context_without_tools_renders_environment_before_supplemental() {
         let pb = SystemPromptBuilder::new()
             .working_directory("/home/user")
             .add_context("Git Workflow", "Git guidance content.");
 
         let preamble = pb.build();
 
+        assert!(preamble.contains("# Environment"));
+        assert!(!preamble.contains("# Tool Usage Guidelines"));
         assert!(preamble.contains("# Supplemental Context"));
         assert!(preamble.contains("## Git Workflow"));
         assert!(preamble.contains("Git guidance content."));
-    }
-
-    #[test]
-    fn add_context_appears_after_tools() {
-        let mut pb = SystemPromptBuilder::new().add_context("Git Workflow", "Git guidance.");
-        let _ = pb.track(MockTool { id: 1 });
-
-        let preamble = pb.build();
-
-        let tools_pos = preamble.find("# Tool Usage Guidelines").unwrap();
         let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
-        assert!(
-            tools_pos < supplemental_pos,
-            "Tools should appear before supplemental context"
-        );
+        assert!(preamble.find("# Environment").unwrap() < supplemental_pos);
     }
 
     #[test]
@@ -732,32 +781,6 @@ mod tests {
             git_pos < github_pos,
             "Contexts should appear in insertion order"
         );
-    }
-
-    #[test]
-    fn add_context_only_no_tools() {
-        let pb = SystemPromptBuilder::new()
-            .working_directory("/home/user")
-            .add_context("Git Workflow", "Git guidance.");
-
-        let preamble = pb.build();
-
-        assert!(!preamble.contains("# Tool Usage Guidelines"));
-        assert!(preamble.contains("# Supplemental Context"));
-        assert!(preamble.contains("## Git Workflow"));
-    }
-
-    #[test]
-    fn add_context_with_env_section() {
-        let pb = SystemPromptBuilder::new()
-            .working_directory("/home/user")
-            .add_context("Git Workflow", "Git guidance.");
-
-        let preamble = pb.build();
-
-        let env_pos = preamble.find("# Environment").unwrap();
-        let supplemental_pos = preamble.find("# Supplemental Context").unwrap();
-        assert!(env_pos < supplemental_pos);
     }
 
     #[test]
@@ -786,25 +809,7 @@ mod tests {
 
         let preamble = pb.build();
 
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline in preamble.\nGot:\n{preamble}"
-        );
-    }
-
-    #[test]
-    fn add_context_chains_fluently() {
-        // Verify fluent chaining works
-        let pb = SystemPromptBuilder::new()
-            .add_context("A", "a")
-            .add_context("B", "b")
-            .add_context("C", "c");
-
-        let preamble = pb.build();
-
-        assert!(preamble.contains("## A"));
-        assert!(preamble.contains("## B"));
-        assert!(preamble.contains("## C"));
+        assert_no_triple_newlines(&preamble);
     }
 
     #[test]
@@ -986,7 +991,7 @@ mod tests {
 
     #[test]
     fn system_prompt_no_trailing_newline_gets_separator() {
-        // System prompt without trailing newline should get "\n\n" separator
+        // System prompt without trailing newline should get "\n" separator
         let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {
             "# System
 
@@ -996,112 +1001,49 @@ mod tests {
 
         let preamble = pb.build();
 
-        // Should have exactly one blank line between system prompt and environment
+        // Should have exactly one newline between system prompt and environment
         assert!(
-            preamble.contains("No trailing newline\n\n# Environment"),
-            "Expected one blank line after system prompt.\nGot:\n{preamble}"
+            preamble.contains("No trailing newline\n# Environment"),
+            "Expected single newline after system prompt.\nGot:\n{preamble}"
         );
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline in preamble.\nGot:\n{preamble}"
-        );
+        assert_no_triple_newlines(&preamble);
     }
 
     #[test]
-    fn system_prompt_single_trailing_newline_gets_one_more() {
-        // System prompt ending with \n should get "\n" to make "\n\n"
-        let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {"
-            # System
-
-            Ends with single newline
-        "});
-        let _ = pb.track(MockTool { id: 1 });
-
-        let preamble = pb.build();
-
-        // Should have exactly one blank line between system prompt and environment
-        assert!(
-            preamble.contains("Ends with single newline\n\n# Environment"),
-            "Expected one blank line after system prompt.\nGot:\n{preamble}"
-        );
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline in preamble.\nGot:\n{preamble}"
-        );
-    }
-
-    #[test]
-    fn system_prompt_double_trailing_newline_no_extra() {
-        // System prompt ending with \n\n should get no extra separator
-        let mut pb = SystemPromptBuilder::new().system_prompt(indoc! {"
-            # System
-
-            Ends with double newline
-
-        "});
-        let _ = pb.track(MockTool { id: 1 });
-
-        let preamble = pb.build();
-
-        // Should have exactly one blank line between system prompt and environment
-        assert!(
-            preamble.contains("Ends with double newline\n\n# Environment"),
-            "Expected one blank line after system prompt.\nGot:\n{preamble}"
-        );
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline in preamble.\nGot:\n{preamble}"
-        );
-    }
-
-    #[test]
-    fn system_prompt_trailing_newlines_with_environment() {
-        let pb = SystemPromptBuilder::new()
-            .system_prompt(indoc! {"
-            # System
-
-            Ends with single newline
-        "})
-            .working_directory("/home/user");
-
-        let preamble = pb.build();
-
-        assert!(
-            preamble.contains("Ends with single newline\n\n# Environment"),
-            "Expected one blank line after system prompt.\nGot:\n{preamble}"
-        );
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline in preamble.\nGot:\n{preamble}"
-        );
-    }
-
-    #[test]
-    fn system_prompt_chains_fluently() {
-        // Verify fluent chaining with other methods
+    fn system_prompt_single_trailing_newline_no_extra() {
+        // System prompt ending with \n needs no extra separator
         let pb = SystemPromptBuilder::new()
             .system_prompt(indoc! {"
                 # System
 
-                Content."})
-            .working_directory("/home/user")
-            .add_context("A", "a");
+                Ends with single newline
+            "})
+            .working_directory("/home/user");
 
         let preamble = pb.build();
 
-        assert!(preamble.contains("# System"));
-        assert!(preamble.contains("# Environment"));
-        assert!(preamble.contains("# Supplemental Context"));
+        // Should have exactly one newline between system prompt and environment
+        assert!(
+            preamble.contains("Ends with single newline\n# Environment"),
+            "Expected single newline after system prompt.\nGot:\n{preamble}"
+        );
+        assert_no_triple_newlines(&preamble);
     }
 
     #[test]
-    fn section_separator_returns_correct_suffix() {
-        // Direct unit test for section_separator helper
-        assert_eq!(section_separator("no newline"), "\n\n");
-        assert_eq!(section_separator("single newline\n"), "\n");
-        assert_eq!(section_separator("double newline\n\n"), "");
-        assert_eq!(section_separator("triple newline\n\n\n"), "");
-        assert_eq!(section_separator(""), "\n\n");
+    fn system_prompt_preserves_trailing_newlines() {
+        // System prompt with trailing blank lines are preserved as-is;
+        // build() only adds a newline when none exists.
+        let mut pb = SystemPromptBuilder::new().system_prompt("# System\n\nContent.\n\n");
+        let _ = pb.track(MockTool { id: 1 });
+
+        let preamble = pb.build();
+
+        // build() should not add extra newlines beyond what the user provided
+        assert!(
+            preamble.contains("Content.\n\n# Environment"),
+            "build() should not add newlines to already-newline-terminated content.\nGot:\n{preamble}"
+        );
     }
 
     #[test]
@@ -1167,15 +1109,8 @@ mod tests {
         );
 
         // Verify no formatting issues
-        assert!(
-            !preamble.contains("\n\n\n"),
-            "Found triple newline (double blank line)"
-        );
-        assert_eq!(
-            preamble,
-            preamble.trim_end(),
-            "Preamble has trailing whitespace"
-        );
+        assert_no_triple_newlines(&preamble);
+        assert_no_trailing_whitespace(&preamble);
     }
 
     #[test]
@@ -1194,5 +1129,62 @@ mod tests {
             "Missing project path"
         );
         assert!(preamble.contains("- /tmp"), "Missing tmp path");
+    }
+
+    #[test]
+    fn built_in_tools_emit_common_rules_once() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<true, true>);
+        let _ = pb.track(BuiltInWriteTool::<true>);
+        let _ = pb.track(BuiltInEditTool::<true>);
+        let _ = pb.track(BuiltInBashTool);
+        let _ = pb.track(BuiltInGlobTool::<true>);
+        let _ = pb.track(BuiltInGrepTool::<true, true>);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Common Rules"));
+        assert_eq!(
+            preamble
+                .matches("Only listed allowed directories may be accessed")
+                .count(),
+            1
+        );
+        assert!(preamble.contains("Prefer `glob`, `grep`, `read`, `edit`, and `write` over `bash`"));
+        assert!(preamble.contains(
+            "Prefer `edit` for targeted changes and `write` for new files or full rewrites."
+        ));
+        assert!(preamble.contains("copy exact text from `read` and omit any `L{n}: ` prefixes"));
+    }
+
+    #[test]
+    fn built_in_tools_omit_unavailable_tool_references() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<false, false>);
+        let _ = pb.track(BuiltInEditTool::<false>);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("## Common Rules"));
+        assert!(preamble.contains("Read a file before `edit`, then copy exact text from `read`."));
+        assert!(preamble.contains("- Returns raw text. Lines over `2000` chars are truncated."));
+        assert!(preamble.contains("- Reads files, not directories."));
+        assert!(!preamble.contains("`glob`"));
+        assert!(!preamble.contains("`bash`"));
+        assert!(!preamble.contains("`write`"));
+        assert!(!preamble.contains("L{n}: "));
+    }
+
+    #[test]
+    fn task_rule_lists_only_available_local_tools() {
+        let mut pb = SystemPromptBuilder::new().working_directory("/home/user/project");
+        let _ = pb.track(BuiltInReadTool::<false, true>);
+        let _ = pb.track(BuiltInTaskTool);
+
+        let preamble = pb.build();
+
+        assert!(preamble.contains("Do not use it when `read` on one or a few files is enough."));
+        assert!(!preamble.contains("`glob` on one or a few files is enough"));
+        assert!(!preamble.contains("`grep` on one or a few files is enough"));
     }
 }

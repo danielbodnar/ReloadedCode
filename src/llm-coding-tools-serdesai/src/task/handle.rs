@@ -7,9 +7,8 @@
 use crate::agent_runtime::{TaskBuildContext, build_task_enabled_agent};
 use llm_coding_tools_agents::{AgentMode, RulesetExt};
 use llm_coding_tools_core::permissions::Ruleset;
-use llm_coding_tools_core::{
-    CredentialLookup, CredentialResolver, TaskInput, TaskOutput, tool_names,
-};
+use llm_coding_tools_core::tool_metadata::task as task_meta;
+use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput, TaskOutput};
 use serdes_ai::tools::ToolError;
 use std::sync::Arc;
 
@@ -74,7 +73,7 @@ where
     ) -> Result<TaskOutput, ToolError> {
         if input.session_id.is_some() {
             return Err(ToolError::validation_error(
-                tool_names::TASK,
+                task_meta::NAME,
                 Some("session_id".to_string()),
                 "task sessions are not supported by this runtime; omit `session_id`",
             ));
@@ -84,7 +83,7 @@ where
         let task_settings = self.context.runtime().task_settings();
         if !task_settings.allows_delegation(self.current_depth) {
             return Err(ToolError::validation_error(
-                tool_names::TASK,
+                task_meta::NAME,
                 None,
                 format!(
                     "task delegation depth {} reached runtime max_task_depth {}; cannot delegate to `{}`",
@@ -122,7 +121,7 @@ where
         })?;
         let target = catalog.by_name(target_name).ok_or_else(|| {
             ToolError::validation_error(
-                tool_names::TASK,
+                task_meta::NAME,
                 Some("subagent_type".to_string()),
                 format!("unknown delegated agent `{target_name}`"),
             )
@@ -130,7 +129,7 @@ where
 
         if matches!(target.mode, AgentMode::Primary) {
             return Err(ToolError::validation_error(
-                tool_names::TASK,
+                task_meta::NAME,
                 Some("subagent_type".to_string()),
                 format!(
                     "agent `{target_name}` uses `mode: primary` and cannot be called with task"
@@ -139,16 +138,16 @@ where
         }
 
         // `validate_target` only applies `Ruleset` filtering when `caller.permission`
-        // explicitly defines `tool_names::TASK`; without that opt-in, non-Primary
+        // explicitly defines `task_meta::NAME`; without that opt-in, non-Primary
         // targets remain callable for compatibility, while `AgentMode::Primary`
         // targets are always denied above.
-        let has_explicit_task_permission = caller.permission.contains_key(tool_names::TASK);
+        let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
         if has_explicit_task_permission
             && !Ruleset::from_permission_config(&caller.permission)
-                .is_allowed(tool_names::TASK, target_name)
+                .is_allowed(task_meta::NAME, target_name)
         {
             return Err(ToolError::validation_error(
-                tool_names::TASK,
+                task_meta::NAME,
                 Some("subagent_type".to_string()),
                 format!("caller `{caller_name}` is not allowed to delegate to `{target_name}`"),
             ));
@@ -173,7 +172,6 @@ mod tests {
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
-    use llm_coding_tools_core::tool_names;
 
     fn agent(
         name: &str,
@@ -206,7 +204,7 @@ mod tests {
         for (pattern, action) in patterns {
             map.insert(pattern.to_string(), *action);
         }
-        IndexMap::from([("task".into(), PermissionRule::Pattern(map))])
+        IndexMap::from([(task_meta::NAME.into(), PermissionRule::Pattern(map))])
     }
 
     fn catalog() -> ModelCatalog {
@@ -260,7 +258,7 @@ mod tests {
         let runtime = runtime_with_agents(vec![agent(
             "caller",
             AgentMode::All,
-            allow_tools(&[tool_names::TASK]),
+            allow_tools(&[task_meta::NAME]),
         )])
         .build();
         let context = build_test_context(runtime);
@@ -279,7 +277,7 @@ mod tests {
         let err = result.unwrap_err();
         match &err {
             ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "task");
+                assert_eq!(tool_name, task_meta::NAME);
                 assert!(!errors.is_empty());
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("nonexistent"));
@@ -292,7 +290,7 @@ mod tests {
     #[tokio::test]
     async fn validate_target_rejects_primary_target() {
         let runtime = runtime_with_agents(vec![
-            agent("caller", AgentMode::All, allow_tools(&[tool_names::TASK])),
+            agent("caller", AgentMode::All, allow_tools(&[task_meta::NAME])),
             agent("primary-agent", AgentMode::Primary, allow_tools(&[])),
         ])
         .build();
@@ -312,7 +310,7 @@ mod tests {
         let err = result.unwrap_err();
         match &err {
             ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "task");
+                assert_eq!(tool_name, task_meta::NAME);
                 assert!(!errors.is_empty());
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("primary"));
@@ -349,7 +347,7 @@ mod tests {
         let err = result.unwrap_err();
         match &err {
             ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "task");
+                assert_eq!(tool_name, task_meta::NAME);
                 assert!(!errors.is_empty());
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("not allowed"));
@@ -362,7 +360,7 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_session_id() {
         let runtime = runtime_with_agents(vec![
-            agent("caller", AgentMode::All, allow_tools(&[tool_names::TASK])),
+            agent("caller", AgentMode::All, allow_tools(&[task_meta::NAME])),
             agent("target", AgentMode::All, allow_tools(&[])),
         ])
         .build();
@@ -382,7 +380,7 @@ mod tests {
         let err = result.unwrap_err();
         match &err {
             ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "task");
+                assert_eq!(tool_name, task_meta::NAME);
                 assert!(!errors.is_empty());
                 let error_field = errors[0].field.as_ref().expect("Expected field");
                 assert_eq!(error_field, "session_id");
@@ -399,7 +397,7 @@ mod tests {
         // Defense-in-depth: even if the Task tool were somehow present at max depth,
         // execute() rejects the call.
         let runtime = runtime_with_agents(vec![
-            agent("caller", AgentMode::All, allow_tools(&[tool_names::TASK])),
+            agent("caller", AgentMode::All, allow_tools(&[task_meta::NAME])),
             agent("target", AgentMode::All, allow_tools(&[])),
         ])
         .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
@@ -421,7 +419,7 @@ mod tests {
         let err = result.unwrap_err();
         match &err {
             ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "task");
+                assert_eq!(tool_name, task_meta::NAME);
                 assert!(!errors.is_empty());
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("max_task_depth"));

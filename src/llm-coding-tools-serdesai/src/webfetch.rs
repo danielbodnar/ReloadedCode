@@ -5,18 +5,14 @@
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
-use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
+use llm_coding_tools_core::tool_metadata::webfetch as webfetch_meta;
 use llm_coding_tools_core::tools::fetch_url;
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::time::Duration;
-
-/// Default timeout: 30 seconds.
-const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 fn default_timeout_ms() -> u64 {
-    DEFAULT_TIMEOUT_MS
+    webfetch_meta::DEFAULT_TIMEOUT_MS
 }
 
 /// Arguments for the webfetch tool.
@@ -62,19 +58,19 @@ impl WebFetchTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            tool_names::WEBFETCH,
-            "Fetch content from a URL. HTML is converted to markdown, JSON is prettified.",
-        )
-        .with_parameters(
+        ToolDefinition::new(webfetch_meta::NAME, webfetch_meta::DESCRIPTION).with_parameters(
             SchemaBuilder::new()
-                .string("url", "The URL to fetch", true)
+                .string(
+                    webfetch_meta::param::URL.name,
+                    webfetch_meta::param::URL.description,
+                    webfetch_meta::param::URL.required,
+                )
                 .integer_constrained(
-                    "timeout_ms",
-                    "Timeout in milliseconds. Defaults to 30000 (30 seconds).",
-                    false,
+                    webfetch_meta::param::TIMEOUT_MS.name,
+                    webfetch_meta::param::TIMEOUT_MS.description,
+                    webfetch_meta::param::TIMEOUT_MS.required,
                     Some(1),
-                    Some(600_000),
+                    Some(webfetch_meta::MAX_TIMEOUT_MS as i64),
                 )
                 .build()
                 .expect("schema serialization should never fail"),
@@ -83,19 +79,19 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: WebFetchArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::WEBFETCH, None, e.to_string()))?;
-        let timeout = Duration::from_millis(args.timeout_ms);
-        let result = fetch_url(&self.client, &args.url, timeout).await;
+            .map_err(|e| ToolError::validation_error(webfetch_meta::NAME, None, e.to_string()))?;
 
-        to_serdes_result(tool_names::WEBFETCH, result.map(ToolOutput::from))
+        let result = fetch_url(&self.client, &args.url, args.timeout_ms).await;
+
+        to_serdes_result(webfetch_meta::NAME, result.map(ToolOutput::from))
     }
 }
 
 impl ToolContext for WebFetchTool {
-    const NAME: &'static str = tool_names::WEBFETCH;
+    const NAME: &'static str = webfetch_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::WEBFETCH
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::WebFetch
     }
 }
 

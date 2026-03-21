@@ -132,7 +132,9 @@ mod tests {
         ProviderSource, ProviderType,
     };
     use llm_coding_tools_core::permissions::PermissionAction;
-    use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::tool_metadata::{
+        read as read_meta, task as task_meta, write as write_meta,
+    };
 
     fn agent(
         name: &str,
@@ -166,7 +168,7 @@ mod tests {
         for (pattern, action) in patterns {
             map.insert(pattern.to_string(), *action);
         }
-        IndexMap::from([(tool_names::TASK.into(), PermissionRule::Pattern(map))])
+        IndexMap::from([(task_meta::NAME.into(), PermissionRule::Pattern(map))])
     }
 
     fn catalog() -> ModelCatalog {
@@ -209,7 +211,7 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::Primary,
-                    allow_tools(&[tool_names::READ]),
+                    allow_tools(&[read_meta::NAME]),
                     "prompt",
                 ),
                 agent("other", AgentMode::Primary, allow_tools(&[]), "prompt"),
@@ -224,8 +226,8 @@ mod tests {
         });
 
         let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(!tool_names.contains(&tool_names::TASK));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!names.contains(&task_meta::NAME));
     }
 
     #[test]
@@ -238,13 +240,13 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::All,
-                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    allow_tools(&[task_meta::NAME, read_meta::NAME]),
                     "prompt",
                 ),
                 agent(
                     "target",
                     AgentMode::All,
-                    allow_tools(&[tool_names::WRITE]),
+                    allow_tools(&[write_meta::NAME]),
                     "prompt",
                 ),
             ]))
@@ -258,9 +260,9 @@ mod tests {
         });
 
         let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&tool_names::TASK));
-        assert!(tool_names.contains(&tool_names::READ));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(names.contains(&task_meta::NAME));
+        assert!(names.contains(&read_meta::NAME));
     }
 
     #[test]
@@ -291,8 +293,8 @@ mod tests {
         });
 
         let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert_eq!(tool_names, vec![tool_names::TASK]);
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert_eq!(names, vec![task_meta::NAME]);
     }
 
     #[test]
@@ -305,7 +307,7 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::Primary,
-                    allow_tools(&[tool_names::READ]),
+                    allow_tools(&[read_meta::NAME]),
                     "prompt",
                 ),
                 agent("reader", AgentMode::Subagent, allow_tools(&[]), "prompt"),
@@ -322,9 +324,9 @@ mod tests {
         // OpenCode-compatible default: omitting `permission.task` still exposes Task.
         // Any non-primary callable target keeps delegation available to the caller.
         let agent = build_task_enabled_agent(context, "caller", 0).expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&tool_names::READ));
-        assert!(tool_names.contains(&tool_names::TASK));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(names.contains(&read_meta::NAME));
+        assert!(names.contains(&task_meta::NAME));
     }
 
     #[test]
@@ -337,7 +339,7 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::Primary,
-                    allow_tools(&[tool_names::READ]),
+                    allow_tools(&[read_meta::NAME]),
                     "prompt",
                 ),
                 agent("other", AgentMode::Primary, allow_tools(&[]), "prompt"),
@@ -348,8 +350,8 @@ mod tests {
         let agent = runtime
             .build_with_task("caller", model_catalog, credentials)
             .expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(!tool_names.contains(&tool_names::TASK));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!names.contains(&task_meta::NAME));
     }
 
     #[test]
@@ -364,13 +366,13 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::All,
-                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    allow_tools(&[task_meta::NAME, read_meta::NAME]),
                     "prompt",
                 ),
                 agent(
                     "target",
                     AgentMode::All,
-                    allow_tools(&[tool_names::WRITE]),
+                    allow_tools(&[write_meta::NAME]),
                     "prompt",
                 ),
             ]))
@@ -385,9 +387,9 @@ mod tests {
         });
 
         let agent = build_task_enabled_agent(context, "caller", 1).expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(!tool_names.contains(&tool_names::TASK));
-        assert!(tool_names.contains(&tool_names::READ));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!names.contains(&task_meta::NAME));
+        assert!(names.contains(&read_meta::NAME));
     }
 
     #[test]
@@ -401,13 +403,13 @@ mod tests {
                 agent(
                     "caller",
                     AgentMode::All,
-                    allow_tools(&[tool_names::TASK, tool_names::READ]),
+                    allow_tools(&[task_meta::NAME, read_meta::NAME]),
                     "prompt",
                 ),
                 agent(
                     "target",
                     AgentMode::All,
-                    allow_tools(&[tool_names::WRITE]),
+                    allow_tools(&[write_meta::NAME]),
                     "prompt",
                 ),
             ]))
@@ -418,8 +420,8 @@ mod tests {
         let agent = runtime
             .build_with_task("caller", model_catalog, credentials)
             .expect("build should succeed");
-        let tool_names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
-        assert!(!tool_names.contains(&tool_names::TASK));
-        assert!(tool_names.contains(&tool_names::READ));
+        let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
+        assert!(!names.contains(&task_meta::NAME));
+        assert!(names.contains(&read_meta::NAME));
     }
 }

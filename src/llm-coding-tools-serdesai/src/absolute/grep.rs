@@ -2,17 +2,15 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::grep as grep_meta;
 use llm_coding_tools_core::tools::{DEFAULT_MAX_LINE_LENGTH, grep_search};
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 
 use crate::common::grep::output_to_return as grep_output_to_return;
 use crate::convert::to_serdes_result;
-
-const DEFAULT_LIMIT: usize = 100;
-const MAX_LIMIT: usize = 2000;
 
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
@@ -48,53 +46,59 @@ impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
 #[async_trait]
 impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_NUMBERS> {
     fn definition(&self) -> ToolDefinition {
-        let description = if LINE_NUMBERS {
-            "Search file contents using regex patterns. Returns matches with file paths, line numbers, and content, sorted by file modification time."
-        } else {
-            "Search file contents using regex patterns. Returns matches with file paths and content, sorted by file modification time."
-        };
         let schema = SchemaBuilder::new()
             .string(
-                "pattern",
-                "Regular expression pattern to search for in file contents",
-                true,
+                grep_meta::param::PATTERN.name,
+                grep_meta::param::PATTERN.description,
+                grep_meta::param::PATTERN.required,
             )
-            .string("path", "Absolute directory path to search in", true)
             .string(
-                "include",
-                "File pattern to filter search results (e.g., \"*.rs\", \"*.{ts,tsx}\")",
-                false,
+                grep_meta::param::PATH_ABSOLUTE.name,
+                grep_meta::param::PATH_ABSOLUTE.description,
+                grep_meta::param::PATH_ABSOLUTE.required,
+            )
+            .string(
+                grep_meta::param::INCLUDE.name,
+                grep_meta::param::INCLUDE.description,
+                grep_meta::param::INCLUDE.required,
             )
             .integer_constrained(
-                "limit",
-                "Maximum number of matches to return (default: 100, max: 2000)",
-                false,
+                grep_meta::param::LIMIT.name,
+                grep_meta::param::LIMIT.description,
+                grep_meta::param::LIMIT.required,
                 Some(1),
-                Some(2000),
+                Some(grep_meta::MAX_LIMIT as i64),
             )
             .build()
             .expect("schema build should not fail");
 
-        ToolDefinition::new(tool_names::GREP, description).with_parameters(schema)
+        ToolDefinition::new(
+            grep_meta::NAME,
+            grep_meta::description::absolute(LINE_NUMBERS),
+        )
+        .with_parameters(schema)
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: GrepArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::GREP, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(grep_meta::NAME, None, e.to_string()))?;
 
         let pattern = args.pattern.trim();
         if pattern.is_empty() {
             return Err(ToolError::validation_error(
-                tool_names::GREP,
+                grep_meta::NAME,
                 Some("pattern".to_string()),
                 "pattern must not be empty".to_string(),
             ));
         }
 
-        let limit = args.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+        let limit = args
+            .limit
+            .unwrap_or(grep_meta::DEFAULT_LIMIT)
+            .min(grep_meta::MAX_LIMIT);
         if limit == 0 {
             return Err(ToolError::validation_error(
-                tool_names::GREP,
+                grep_meta::NAME,
                 Some("limit".to_string()),
                 "limit must be greater than zero".to_string(),
             ));
@@ -113,7 +117,7 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
         let result = grep_search(&resolver, pattern, include, &args.path, limit);
 
         match result {
-            Err(e) => to_serdes_result(tool_names::GREP, Err(e)),
+            Err(e) => to_serdes_result(grep_meta::NAME, Err(e)),
             Ok(grep_output) => Ok(grep_output_to_return::<LINE_NUMBERS>(
                 grep_output,
                 limit,
@@ -124,10 +128,13 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
 }
 
 impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
-    const NAME: &'static str = tool_names::GREP;
+    const NAME: &'static str = grep_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::GREP_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Grep {
+            path_mode: PathMode::Absolute,
+            line_numbers: LINE_NUMBERS,
+        }
     }
 }
 

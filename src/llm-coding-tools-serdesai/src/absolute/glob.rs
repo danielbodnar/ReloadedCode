@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::glob_files;
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
@@ -39,40 +40,43 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
     fn definition(&self) -> ToolDefinition {
         let schema = SchemaBuilder::new()
             .string(
-                "pattern",
-                "Glob pattern to match files (e.g., \"**/*.rs\", \"src/**/*.ts\")",
-                true,
+                glob_meta::param::PATTERN.name,
+                glob_meta::param::PATTERN.description,
+                glob_meta::param::PATTERN.required,
             )
-            .string("path", "Absolute directory path to search in", true)
+            .string(
+                glob_meta::param::PATH_ABSOLUTE.name,
+                glob_meta::param::PATH_ABSOLUTE.description,
+                glob_meta::param::PATH_ABSOLUTE.required,
+            )
             .build()
             .expect("schema build should not fail");
 
-        ToolDefinition::new(
-             tool_names::GLOB,
-             "Find files matching a glob pattern. Respects .gitignore and returns paths sorted by modification time (newest first).",
-         )
-         .with_parameters(schema)
+        ToolDefinition::new(glob_meta::NAME, glob_meta::description::ABSOLUTE)
+            .with_parameters(schema)
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: GlobArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::GLOB, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(glob_meta::NAME, None, e.to_string()))?;
 
         let resolver = AbsolutePathResolver;
         let result = glob_files(&resolver, &args.pattern, &args.path);
 
         match result {
-            Err(e) => to_serdes_result(tool_names::GLOB, Err(e)),
+            Err(e) => to_serdes_result(glob_meta::NAME, Err(e)),
             Ok(output) => Ok(glob_output_to_return(output)),
         }
     }
 }
 
 impl ToolContext for GlobTool {
-    const NAME: &'static str = tool_names::GLOB;
+    const NAME: &'static str = glob_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::GLOB_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Glob {
+            path_mode: PathMode::Absolute,
+        }
     }
 }
 

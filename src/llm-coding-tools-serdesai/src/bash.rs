@@ -4,16 +4,13 @@
 
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;
-use llm_coding_tools_core::context::ToolContext;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
+use llm_coding_tools_core::tool_metadata::bash as bash_meta;
 use llm_coding_tools_core::tools::execute_command;
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
-/// Default timeout: 2 minutes.
-const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 
 /// Arguments for the bash tool.
 #[derive(Debug, Clone, Deserialize)]
@@ -64,31 +61,27 @@ impl BashTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for BashTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            tool_names::BASH,
-            "Execute a shell command with optional working directory and timeout.",
-        )
-        .with_parameters(
+        ToolDefinition::new(bash_meta::NAME, bash_meta::DESCRIPTION).with_parameters(
             SchemaBuilder::new()
                 .string_constrained(
-                    "command",
-                    "The shell command to execute",
-                    true,
+                    bash_meta::param::COMMAND.name,
+                    bash_meta::param::COMMAND.description,
+                    bash_meta::param::COMMAND.required,
                     Some(1),
                     None,
                     None,
                 )
                 .string(
-                    "workdir",
-                    "Working directory for command execution (must be absolute path)",
-                    false,
+                    bash_meta::param::WORKDIR.name,
+                    bash_meta::param::WORKDIR.description,
+                    bash_meta::param::WORKDIR.required,
                 )
                 .integer_constrained(
-                    "timeout_ms",
-                    "Timeout in milliseconds. Defaults to 120000 (2 minutes).",
-                    false,
+                    bash_meta::param::TIMEOUT_MS.name,
+                    bash_meta::param::TIMEOUT_MS.description,
+                    bash_meta::param::TIMEOUT_MS.required,
                     Some(1),
-                    Some(600_000),
+                    Some(bash_meta::MAX_TIMEOUT_MS as i64),
                 )
                 .build()
                 .expect("schema serialization should never fail"),
@@ -97,7 +90,7 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: BashArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::BASH, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(bash_meta::NAME, None, e.to_string()))?;
 
         // Use arg workdir, falling back to default_workdir
         let workdir: Option<&Path> = args
@@ -111,22 +104,19 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
             .timeout_ms
             .map(Duration::from_millis)
             .or(self.default_timeout)
-            .unwrap_or(Duration::from_millis(DEFAULT_TIMEOUT_MS));
+            .unwrap_or(Duration::from_millis(bash_meta::DEFAULT_TIMEOUT_MS));
 
         let result = execute_command(&args.command, workdir, timeout).await;
 
-        to_serdes_result(
-            tool_names::BASH,
-            result.map(|output| output.format_output()),
-        )
+        to_serdes_result(bash_meta::NAME, result.map(|output| output.format_output()))
     }
 }
 
 impl ToolContext for BashTool {
-    const NAME: &'static str = tool_names::BASH;
+    const NAME: &'static str = bash_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::BASH
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Bash
     }
 }
 

@@ -32,7 +32,12 @@ llm-coding-tools-core = { version = "0.2", default-features = false, features = 
 
 ## Tools, context, and integration
 
-Canonical tool names are defined in [`tool_names`] ([`read`], [`write`], [`edit`], [`glob`], [`grep`], [`bash`], [`webfetch`], [`todoread`], [`todowrite`], [`task`]).
+Canonical tool metadata lives in [`tool_metadata`].
+
+Each grouped module exposes the model-facing tool name plus the provider-facing
+metadata used by wrappers such as SerdesAI: [`read`], [`write`], [`edit`],
+[`glob`], [`grep`], [`bash`], [`webfetch`], [`todoread`], [`todowrite`],
+and [`task`].
 
 ### Standard tools
 
@@ -74,12 +79,14 @@ fn demo() -> ToolResult<()> {
 
 [`context`] provides reusable guidance constants.
 
-Wrappers usually bind a tool's canonical name and guidance through [`ToolContext`]:
+Wrappers usually bind a tool's canonical name and guidance through
+[`ToolContext`]:
 
 Any-path read tool:
 
 ```rust,no_run
-use llm_coding_tools_core::{ToolContext, context, tool_names};
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
+use llm_coding_tools_core::{ToolContext, tool_metadata};
 
 struct ReadTool;
 
@@ -90,10 +97,13 @@ impl ReadTool {
 }
 
 impl ToolContext for ReadTool {
-    const NAME: &'static str = tool_names::READ;
+    const NAME: &'static str = tool_metadata::read::NAME;
 
-    fn context(&self) -> &'static str {
-        context::READ_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Read {
+            path_mode: PathMode::Absolute,
+            line_numbers: true,
+        }
     }
 }
 
@@ -103,7 +113,10 @@ let _tool = ReadTool::new();
 Sandboxed read tool:
 
 ```rust,no_run
-use llm_coding_tools_core::{AllowedPathResolver, ToolContext, context, tool_names};
+use llm_coding_tools_core::{
+    AllowedPathResolver, ToolContext, tool_metadata,
+};
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 
 struct ReadTool {
     _resolver: AllowedPathResolver,
@@ -118,20 +131,27 @@ impl ReadTool {
 }
 
 impl ToolContext for ReadTool {
-    const NAME: &'static str = tool_names::READ;
+    const NAME: &'static str = tool_metadata::read::NAME;
 
-    fn context(&self) -> &'static str {
-        context::READ_ALLOWED
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Read {
+            path_mode: PathMode::Allowed,
+            line_numbers: true,
+        }
     }
 }
 
-let resolver = AllowedPathResolver::new(["/workspace/project"]).expect("valid allowed path");
+let resolver = AllowedPathResolver::new(["/workspace/project"])
+    .expect("valid allowed path");
 let _tool = ReadTool::new(resolver);
 ```
 
-Core tool functions are generic over [`PathResolver`], but wrappers usually expose separate absolute/allowed tool types for simpler ergonomics (to avoid extra generic parameters).
+Core tool functions are generic over [`PathResolver`], but wrappers usually
+expose separate absolute/allowed tool types for simpler ergonomics.
+This avoids extra generic parameters.
 
-This keeps registration name (`read`) and prompt guidance in sync.
+This keeps registration names such as `tool_metadata::read::NAME` and prompt
+guidance in sync.
 
 ## System prompt builder
 
@@ -216,17 +236,17 @@ resolver.set_override("OPENAI_API_KEY", "sk-override");
 let key = resolver.resolve("OPENAI_API_KEY");
 ```
 
-[`tool_names`]: crate::tool_names
-[`read`]: crate::tool_names::READ
-[`write`]: crate::tool_names::WRITE
-[`edit`]: crate::tool_names::EDIT
-[`glob`]: crate::tool_names::GLOB
-[`grep`]: crate::tool_names::GREP
-[`bash`]: crate::tool_names::BASH
-[`webfetch`]: crate::tool_names::WEBFETCH
-[`todoread`]: crate::tool_names::TODO_READ
-[`todowrite`]: crate::tool_names::TODO_WRITE
-[`task`]: crate::tool_names::TASK
+[`tool_metadata`]: crate::tool_metadata
+[`read`]: crate::tool_metadata::read::NAME
+[`write`]: crate::tool_metadata::write::NAME
+[`edit`]: crate::tool_metadata::edit::NAME
+[`glob`]: crate::tool_metadata::glob::NAME
+[`grep`]: crate::tool_metadata::grep::NAME
+[`bash`]: crate::tool_metadata::bash::NAME
+[`webfetch`]: crate::tool_metadata::webfetch::NAME
+[`todoread`]: crate::tool_metadata::todo_read::NAME
+[`todowrite`]: crate::tool_metadata::todo_write::NAME
+[`task`]: crate::tool_metadata::task::NAME
 [`read_file`]: crate::read_file
 [`write_file`]: crate::write_file
 [`edit_file`]: crate::edit_file

@@ -11,7 +11,11 @@
 //! The default tools are: read, write, edit, glob, grep, bash, webfetch, todoread,
 //! todowrite, task.
 
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::{
+    bash as bash_meta, edit as edit_meta, glob as glob_meta, grep as grep_meta, read as read_meta,
+    task as task_meta, todo_read as todo_read_meta, todo_write as todo_write_meta,
+    webfetch as webfetch_meta, write as write_meta,
+};
 
 /// One tool the runtime can provide to agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,16 +60,16 @@ pub enum ToolCatalogKind {
 }
 
 const DEFAULT_TOOLS: [ToolCatalogEntry; 10] = [
-    ToolCatalogEntry::new(tool_names::READ, ToolCatalogKind::Read),
-    ToolCatalogEntry::new(tool_names::WRITE, ToolCatalogKind::Write),
-    ToolCatalogEntry::new(tool_names::EDIT, ToolCatalogKind::Edit),
-    ToolCatalogEntry::new(tool_names::GLOB, ToolCatalogKind::Glob),
-    ToolCatalogEntry::new(tool_names::GREP, ToolCatalogKind::Grep),
-    ToolCatalogEntry::new(tool_names::BASH, ToolCatalogKind::Bash),
-    ToolCatalogEntry::new(tool_names::WEBFETCH, ToolCatalogKind::WebFetch),
-    ToolCatalogEntry::new(tool_names::TODO_READ, ToolCatalogKind::TodoRead),
-    ToolCatalogEntry::new(tool_names::TODO_WRITE, ToolCatalogKind::TodoWrite),
-    ToolCatalogEntry::new(tool_names::TASK, ToolCatalogKind::Task),
+    ToolCatalogEntry::new(read_meta::NAME, ToolCatalogKind::Read),
+    ToolCatalogEntry::new(write_meta::NAME, ToolCatalogKind::Write),
+    ToolCatalogEntry::new(edit_meta::NAME, ToolCatalogKind::Edit),
+    ToolCatalogEntry::new(glob_meta::NAME, ToolCatalogKind::Glob),
+    ToolCatalogEntry::new(grep_meta::NAME, ToolCatalogKind::Grep),
+    ToolCatalogEntry::new(bash_meta::NAME, ToolCatalogKind::Bash),
+    ToolCatalogEntry::new(webfetch_meta::NAME, ToolCatalogKind::WebFetch),
+    ToolCatalogEntry::new(todo_read_meta::NAME, ToolCatalogKind::TodoRead),
+    ToolCatalogEntry::new(todo_write_meta::NAME, ToolCatalogKind::TodoWrite),
+    ToolCatalogEntry::new(task_meta::NAME, ToolCatalogKind::Task),
 ];
 
 /// Returns the standard tool set.
@@ -76,23 +80,27 @@ pub fn default_tools() -> Vec<ToolCatalogEntry> {
 #[cfg(test)]
 mod tests {
     use super::{default_tools, ToolCatalogEntry, ToolCatalogKind};
-    use llm_coding_tools_core::tool_names;
+    use llm_coding_tools_core::tool_metadata::{
+        bash as bash_meta, edit as edit_meta, glob as glob_meta, grep as grep_meta,
+        read as read_meta, task as task_meta, todo_read as todo_read_meta,
+        todo_write as todo_write_meta, webfetch as webfetch_meta, write as write_meta,
+    };
 
     #[test]
     fn default_tools_match_expected_catalog() {
         assert_eq!(
             default_tools(),
             vec![
-                ToolCatalogEntry::new(tool_names::READ, ToolCatalogKind::Read),
-                ToolCatalogEntry::new(tool_names::WRITE, ToolCatalogKind::Write),
-                ToolCatalogEntry::new(tool_names::EDIT, ToolCatalogKind::Edit),
-                ToolCatalogEntry::new(tool_names::GLOB, ToolCatalogKind::Glob),
-                ToolCatalogEntry::new(tool_names::GREP, ToolCatalogKind::Grep),
-                ToolCatalogEntry::new(tool_names::BASH, ToolCatalogKind::Bash),
-                ToolCatalogEntry::new(tool_names::WEBFETCH, ToolCatalogKind::WebFetch),
-                ToolCatalogEntry::new(tool_names::TODO_READ, ToolCatalogKind::TodoRead),
-                ToolCatalogEntry::new(tool_names::TODO_WRITE, ToolCatalogKind::TodoWrite),
-                ToolCatalogEntry::new(tool_names::TASK, ToolCatalogKind::Task),
+                ToolCatalogEntry::new(read_meta::NAME, ToolCatalogKind::Read),
+                ToolCatalogEntry::new(write_meta::NAME, ToolCatalogKind::Write),
+                ToolCatalogEntry::new(edit_meta::NAME, ToolCatalogKind::Edit),
+                ToolCatalogEntry::new(glob_meta::NAME, ToolCatalogKind::Glob),
+                ToolCatalogEntry::new(grep_meta::NAME, ToolCatalogKind::Grep),
+                ToolCatalogEntry::new(bash_meta::NAME, ToolCatalogKind::Bash),
+                ToolCatalogEntry::new(webfetch_meta::NAME, ToolCatalogKind::WebFetch,),
+                ToolCatalogEntry::new(todo_read_meta::NAME, ToolCatalogKind::TodoRead,),
+                ToolCatalogEntry::new(todo_write_meta::NAME, ToolCatalogKind::TodoWrite,),
+                ToolCatalogEntry::new(task_meta::NAME, ToolCatalogKind::Task),
             ],
         );
     }

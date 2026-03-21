@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AllowedPathResolver;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::edit as edit_meta;
 use llm_coding_tools_core::tools::edit_file;
 use serde::Deserialize;
 use serdes_ai::tools::{
@@ -48,31 +49,35 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
     fn definition(&self) -> ToolDefinition {
         let schema = SchemaBuilder::new()
             .string(
-                "file_path",
-                "Path to the file (relative to allowed directories)",
-                true,
+                edit_meta::param::FILE_PATH_ALLOWED.name,
+                edit_meta::param::FILE_PATH_ALLOWED.description,
+                edit_meta::param::FILE_PATH_ALLOWED.required,
             )
-            .string("old_string", "The exact text to find and replace", true)
-            .string("new_string", "The text to replace with", true)
+            .string(
+                edit_meta::param::OLD_STRING.name,
+                edit_meta::param::OLD_STRING.description,
+                edit_meta::param::OLD_STRING.required,
+            )
+            .string(
+                edit_meta::param::NEW_STRING.name,
+                edit_meta::param::NEW_STRING.description,
+                edit_meta::param::NEW_STRING.required,
+            )
             .boolean(
-                "replace_all",
-                "Replace all occurrences instead of just the first. Defaults to false.",
-                false,
+                edit_meta::param::REPLACE_ALL.name,
+                edit_meta::param::REPLACE_ALL.description,
+                edit_meta::param::REPLACE_ALL.required,
             )
             .build()
             .expect("schema build should not fail");
 
-        ToolDefinition::new(
-            tool_names::EDIT,
-            "Make exact string replacements in files within allowed directories. \
-              Paths are relative to configured base directories.",
-        )
-        .with_parameters(schema)
+        ToolDefinition::new(edit_meta::NAME, edit_meta::description::ALLOWED)
+            .with_parameters(schema)
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: EditArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::EDIT, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(edit_meta::NAME, None, e.to_string()))?;
 
         let result = edit_file(
             &self.resolver,
@@ -88,10 +93,12 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
 }
 
 impl ToolContext for EditTool {
-    const NAME: &'static str = tool_names::EDIT;
+    const NAME: &'static str = edit_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::EDIT_ALLOWED
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Edit {
+            path_mode: PathMode::Allowed,
+        }
     }
 }
 

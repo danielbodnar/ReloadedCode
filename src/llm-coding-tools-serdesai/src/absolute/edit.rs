@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
+use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::AbsolutePathResolver;
-use llm_coding_tools_core::tool_names;
+use llm_coding_tools_core::tool_metadata::edit as edit_meta;
 use llm_coding_tools_core::tools::edit_file;
 use serde::Deserialize;
 use serdes_ai::tools::{
@@ -42,27 +43,36 @@ impl EditTool {
 impl<Deps: Send + Sync> Tool<Deps> for EditTool {
     fn definition(&self) -> ToolDefinition {
         let schema = SchemaBuilder::new()
-            .string("file_path", "Absolute path to the file", true)
-            .string("old_string", "The exact text to find and replace", true)
-            .string("new_string", "The text to replace with", true)
+            .string(
+                edit_meta::param::FILE_PATH_ABSOLUTE.name,
+                edit_meta::param::FILE_PATH_ABSOLUTE.description,
+                edit_meta::param::FILE_PATH_ABSOLUTE.required,
+            )
+            .string(
+                edit_meta::param::OLD_STRING.name,
+                edit_meta::param::OLD_STRING.description,
+                edit_meta::param::OLD_STRING.required,
+            )
+            .string(
+                edit_meta::param::NEW_STRING.name,
+                edit_meta::param::NEW_STRING.description,
+                edit_meta::param::NEW_STRING.required,
+            )
             .boolean(
-                "replace_all",
-                "Replace all occurrences instead of just the first. Defaults to false.",
-                false,
+                edit_meta::param::REPLACE_ALL.name,
+                edit_meta::param::REPLACE_ALL.description,
+                edit_meta::param::REPLACE_ALL.required,
             )
             .build()
             .expect("schema build should not fail");
 
-        ToolDefinition::new(
-             tool_names::EDIT,
-             "Makes exact string replacements in files. Use replace_all=true to replace all occurrences.",
-         )
-         .with_parameters(schema)
+        ToolDefinition::new(edit_meta::NAME, edit_meta::description::ABSOLUTE)
+            .with_parameters(schema)
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: EditArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(tool_names::EDIT, None, e.to_string()))?;
+            .map_err(|e| ToolError::validation_error(edit_meta::NAME, None, e.to_string()))?;
 
         let resolver = AbsolutePathResolver;
         let result = edit_file(
@@ -79,10 +89,12 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
 }
 
 impl ToolContext for EditTool {
-    const NAME: &'static str = tool_names::EDIT;
+    const NAME: &'static str = edit_meta::NAME;
 
-    fn context(&self) -> &'static str {
-        llm_coding_tools_core::context::EDIT_ABSOLUTE
+    fn context(&self) -> ToolPrompt {
+        ToolPrompt::Edit {
+            path_mode: PathMode::Absolute,
+        }
     }
 }
 
