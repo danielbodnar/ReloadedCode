@@ -8,11 +8,18 @@ Framework-agnostic core library of standard tools used by coding agents - headle
 
 ## Table of contents
 
-- [Install](#install)
-- [Feature flags](#feature-flags)
-- [Tools, context, and integration](#tools-context-and-integration)
-- [System prompt builder](#system-prompt-builder)
-- [Permissions](#permissions)
+- [llm-coding-tools-core](#llm-coding-tools-core)
+  - [Table of contents](#table-of-contents)
+  - [Install](#install)
+  - [Feature flags](#feature-flags)
+  - [Tools, context, and integration](#tools-context-and-integration)
+    - [Standard tools](#standard-tools)
+    - [Path safety and sandboxing](#path-safety-and-sandboxing)
+    - [Context and wrapper mapping](#context-and-wrapper-mapping)
+  - [System prompt builder](#system-prompt-builder)
+    - [Typical wrapper integration (serdesAI)](#typical-wrapper-integration-serdesai)
+  - [Permissions](#permissions)
+  - [Credentials](#credentials)
 
 ## Install
 
@@ -189,6 +196,12 @@ let agent = AgentBuilder::<(), String>::new(model)
     .build();
 # }
 ```
+
+To preview the built-in guidelines and their static cost, run the `system_prompt_preview` example (and its variants).
+
+The system prompt is auto-optimized: cross-tool references e.g.
+`prefer X tool over Y for Z` are ommitted unless all tools are present.
+Currently uses ~2000 tokens for full toolset, ~560 tokens for search-only.
 
 ## Permissions
 

@@ -28,10 +28,11 @@ LLM agents:
 - **Shell**: Cross-platform command execution with timeout
 - **Web**: URL fetching with HTML-to-markdown conversion
 - **Path Security**: Choose between unrestricted or sandboxed file access
-- **Context Strings**: Embedded LLM guidance for tool usage
-- **Agent Loading**: Parse OpenCode-compatible agent markdown into typed configs
+- **OpenCode Agents**: Support for OpenCode-style agents
 - **Model Catalog Sync**: Download and cache the models.dev catalog for
   provider/model lookups
+- **Optimized System Prompt**: Built-in tool guidance stays compact.
+    Full tool set is ~2000 tokens; search-only drops to ~560
 
 ## Feature Flags (llm-coding-tools-core)
 
