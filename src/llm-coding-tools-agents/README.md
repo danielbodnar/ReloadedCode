@@ -1,5 +1,7 @@
 # llm-coding-tools-agents
 
+[![Crates.io](https://img.shields.io/crates/v/llm-coding-tools-agents.svg)](https://crates.io/crates/llm-coding-tools-agents) [![Docs.rs](https://docs.rs/llm-coding-tools-agents/badge.svg)](https://docs.rs/llm-coding-tools-agents)
+
 Load OpenCode agent markdown files into Rust.
 
 This crate reads agent definitions from markdown files with YAML frontmatter,
