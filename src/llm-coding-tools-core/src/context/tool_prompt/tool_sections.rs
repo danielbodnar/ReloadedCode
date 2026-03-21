@@ -8,6 +8,14 @@ use const_format::formatcp;
 use super::{push_block, push_line, write_tool_list, ToolPrompt, ToolPromptFacts};
 use crate::tool_metadata::{bash, edit, glob, grep, read, webfetch};
 
+/// Appends the guidance text for `prompt` into `output`.
+///
+/// Uses `facts` to conditionally include cross-tool references. Trailing
+/// newlines are not guaranteed - the caller is responsible for separator
+/// handling.
+///
+/// See [`ToolPrompt`] for available variants and [`ToolPromptFacts`]
+/// for the cross-tool metadata used by each section.
 pub(super) fn render_tool(prompt: ToolPrompt, output: &mut String, facts: ToolPromptFacts) {
     match prompt {
         ToolPrompt::Static(text) => output.push_str(text),
