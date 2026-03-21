@@ -1,10 +1,5 @@
 # llm-coding-tools
 
-[![Crates.io - llm-coding-tools-core](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core)
-[![Crates.io - llm-coding-tools-agents](https://img.shields.io/crates/v/llm-coding-tools-agents.svg)](https://crates.io/crates/llm-coding-tools-agents)
-[![Crates.io - llm-coding-tools-serdesai](https://img.shields.io/crates/v/llm-coding-tools-serdesai.svg)](https://crates.io/crates/llm-coding-tools-serdesai)
-[![Crates.io - llm-coding-tools-models-dev](https://img.shields.io/crates/v/llm-coding-tools-models-dev.svg)](https://crates.io/crates/llm-coding-tools-models-dev)
-[![Docs.rs](https://docs.rs/llm-coding-tools-serdesai/badge.svg)](https://docs.rs/llm-coding-tools-serdesai)
 [![CI](https://github.com/Sewer56/llm-coding-tools/actions/workflows/rust.yml/badge.svg)](https://github.com/Sewer56/llm-coding-tools/actions)
 
 Lightweight, heavily optimized coding tool implementations for LLM-powered

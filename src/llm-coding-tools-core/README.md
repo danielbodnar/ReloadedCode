@@ -1,5 +1,7 @@
 # llm-coding-tools-core
 
+[![Crates.io](https://img.shields.io/crates/v/llm-coding-tools-core.svg)](https://crates.io/crates/llm-coding-tools-core) [![Docs.rs](https://docs.rs/llm-coding-tools-core/badge.svg)](https://docs.rs/llm-coding-tools-core)
+
 Framework-agnostic core library of standard tools used by coding agents - headless, TUI, or anything in between.
 
 `llm-coding-tools-core` provides reviewed, production-grade implementations of common coding-agent tools, plus shared safety, prompt, and policy primitives.

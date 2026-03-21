@@ -1,5 +1,7 @@
 # llm-coding-tools-models-dev
 
+[![Crates.io](https://img.shields.io/crates/v/llm-coding-tools-models-dev.svg)](https://crates.io/crates/llm-coding-tools-models-dev) [![Docs.rs](https://docs.rs/llm-coding-tools-models-dev/badge.svg)](https://docs.rs/llm-coding-tools-models-dev)
+
 Reads the online models.dev catalog into llm-coding-tools-core; with support
 for a cached fallback and caching via ETag(s).
 
