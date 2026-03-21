@@ -35,7 +35,10 @@ pub enum ToolPrompt {
     /// Uses a fixed guidance string as-is.
     Static(&'static str),
     /// Writes guidance for `bash`.
-    Bash,
+    Bash {
+        network_disabled: bool,
+        sandboxed: bool,
+    },
     /// Writes guidance for `read`.
     Read {
         path_mode: PathMode,
@@ -114,7 +117,7 @@ impl ToolPromptFacts {
     fn record(&mut self, prompt: ToolPrompt) {
         match prompt {
             ToolPrompt::Static(_) => {}
-            ToolPrompt::Bash => self.has_bash = true,
+            ToolPrompt::Bash { .. } => self.has_bash = true,
             ToolPrompt::Read {
                 path_mode,
                 line_numbers,

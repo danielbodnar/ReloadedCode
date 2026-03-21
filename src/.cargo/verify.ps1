@@ -4,6 +4,8 @@
 #
 # Note: llm-coding-tools-serdesai is async-only.
 # Blocking mode is validated for core and models-dev.
+# llm-coding-tools-bubblewrap is Linux-only; all bubblewrap steps
+# are skipped on non-Linux platforms.
 
 $ErrorActionPreference = "Stop"
 
@@ -30,48 +32,75 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Join-Path $scriptDir ".."
 Set-Location $projectRoot
 
+$isLinux = $IsLinux -eq $true
+
 try {
     Write-Host "Building..."
-Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-core", "--quiet")
-Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-agents", "--quiet")
-Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-serdesai", "--quiet")
-Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-models-dev", "--quiet")
+    if ($isLinux) {
+        Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-bubblewrap", "--quiet")
+    }
+    Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-core", "--quiet")
+    Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-agents", "--quiet")
+    Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-serdesai", "--quiet")
+    Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-models-dev", "--quiet")
 
-Write-Host "Testing..."
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--quiet")
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-agents", "--quiet")
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-serdesai", "--quiet")
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--quiet")
+    Write-Host "Testing..."
+    if ($isLinux) {
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--quiet")
+    }
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--quiet")
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-agents", "--quiet")
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-serdesai", "--quiet")
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--quiet")
 
-Write-Host "Clippy..."
-Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-core", "--quiet", "--", "-D", "warnings")
-Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-agents", "--quiet", "--", "-D", "warnings")
-Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-serdesai", "--quiet", "--", "-D", "warnings")
-Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-models-dev", "--quiet", "--", "-D", "warnings")
+    Write-Host "Clippy..."
+    if ($isLinux) {
+        Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-bubblewrap", "--quiet", "--", "-D", "warnings")
+    }
+    Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-core", "--quiet", "--", "-D", "warnings")
+    Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-agents", "--quiet", "--", "-D", "warnings")
+    Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-serdesai", "--quiet", "--", "-D", "warnings")
+    Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-models-dev", "--quiet", "--", "-D", "warnings")
 
-Write-Host "Testing blocking feature..."
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--no-default-features", "--features", "blocking", "--quiet")
-Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--no-default-features", "--features", "blocking", "--quiet")
+    Write-Host "Testing linux-bubblewrap feature..."
+    if ($isLinux) {
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--features", "tokio", "--quiet")
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--features", "blocking", "--quiet")
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--features", "linux-bubblewrap", "--quiet")
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--no-default-features", "--features", "blocking,linux-bubblewrap", "--quiet")
+        Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-serdesai", "--features", "linux-bubblewrap", "--quiet")
+    } else {
+        Write-Host "  (skipped - not Linux)"
+    }
 
-Write-Host "Docs..."
-$originalRustdocFlags = $env:RUSTDOCFLAGS
-$env:RUSTDOCFLAGS = "-D warnings"
-try {
-    Invoke-LoggedCommand "cargo" @("doc", "--workspace", "--document-private-items", "--no-deps", "--quiet")
-} finally {
-    $env:RUSTDOCFLAGS = $originalRustdocFlags
-}
+    Write-Host "Testing blocking feature..."
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--no-default-features", "--features", "blocking", "--quiet")
+    Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--no-default-features", "--features", "blocking", "--quiet")
 
-Write-Host "Formatting..."
-Invoke-LoggedCommand "cargo" @("fmt", "--all", "--check", "--quiet")
+    Write-Host "Docs..."
+    $docArgs = @("--workspace", "--document-private-items", "--no-deps", "--quiet")
+    if (-not $isLinux) {
+        $docArgs += "--exclude"
+        $docArgs += "llm-coding-tools-bubblewrap"
+    }
+    $originalRustdocFlags = $env:RUSTDOCFLAGS
+    $env:RUSTDOCFLAGS = "-D warnings"
+    try {
+        Invoke-LoggedCommand "cargo" @("doc") + $docArgs
+    } finally {
+        $env:RUSTDOCFLAGS = $originalRustdocFlags
+    }
 
-Write-Host "Publish dry-run..."
-Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-core", "--quiet")
-Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-agents", "--quiet")
-Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-serdesai", "--quiet")
-Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-models-dev", "--quiet")
+    Write-Host "Formatting..."
+    Invoke-LoggedCommand "cargo" @("fmt", "--all", "--check", "--quiet")
 
-Write-Host "All checks passed!"
+    Write-Host "Publish dry-run..."
+    if ($isLinux) {
+        Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-bubblewrap", "--quiet")
+    }
+    Invoke-LoggedCommand "cargo" @("package", "--workspace", "--allow-dirty", "--quiet")
+
+    Write-Host "All checks passed!"
 }
 finally {
     Set-Location $originalDir
