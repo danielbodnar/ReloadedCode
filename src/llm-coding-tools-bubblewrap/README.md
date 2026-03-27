@@ -152,10 +152,7 @@ That keeps the builder state easy to read.
 
 For the internal architecture and module layout, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-[`Availability`]: crate::Availability
 [`Availability::detect`]: crate::Availability::detect
 [`Profile`]: crate::Profile
 [`Builder`]: crate::Builder
-[`Preset`]: crate::Preset
-[`TmpBacking`]: crate::TmpBacking
 [`wrap::wrap_command`]: crate::wrap::wrap_command

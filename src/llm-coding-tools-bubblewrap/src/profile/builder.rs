@@ -549,6 +549,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::{SandboxDirs, SandboxFixture};
     use serial_test::serial;
+    use tempfile::TempDir;
 
     #[test]
     #[serial]
@@ -707,15 +708,17 @@ mod tests {
 
     #[test]
     fn public_bot_preset_rejects_nonexistent_workspace_directory() {
-        let err = Builder::public_bot(
-            Path::new("/tmp/workspace"),
-            Path::new("/tmp/home"),
-            Path::new("/tmp/cache"),
-            Some(TmpBacking::Tmpfs),
-        )
-        .with_availability(Availability::Available)
-        .build()
-        .unwrap_err();
+        let temp = TempDir::new().unwrap();
+        let home = temp.path().join("home");
+        let cache = temp.path().join("cache");
+        fs::create_dir(&home).unwrap();
+        fs::create_dir(&cache).unwrap();
+        let workspace = temp.path().join("workspace_does_not_exist");
+
+        let err = Builder::public_bot(&*workspace, &*home, &*cache, Some(TmpBacking::Tmpfs))
+            .with_availability(Availability::Available)
+            .build()
+            .unwrap_err();
 
         assert!(format!("{err}").contains("workspace host directory"));
     }

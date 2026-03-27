@@ -130,9 +130,6 @@ impl BashTool {
     /// job-scoped read-only files via `with_credential_file_mounts`. Do not forward
     /// SSH agents or mount full host credential stores.
     ///
-    /// # Errors
-    ///
-    /// Returns an execution error if the `bwrap` binary is missing or cannot run.
     #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
     pub fn with_linux_bwrap(mut self, profile: impl Into<std::sync::Arc<Profile>>) -> Self {
         self.mode = BashExecutionMode::LinuxBwrap(profile.into());
@@ -170,6 +167,14 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
         )
     }
 
+    /// Executes a shell command through the configured [`BashExecutionMode`].
+    ///
+    /// # Errors
+    ///
+    /// - [`ToolError::ValidationFailed`] if the JSON arguments fail deserialization.
+    /// - [`ToolError::ExecutionFailed`] if the command cannot be spawned, the per-command
+    ///   workdir is invalid, or a timeout or I/O failure occurs while collecting
+    ///   output.
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args: BashArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(bash_meta::NAME, None, e.to_string()))?;

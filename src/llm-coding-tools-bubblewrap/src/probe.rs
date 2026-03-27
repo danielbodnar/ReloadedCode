@@ -95,6 +95,9 @@ fn profile_name(preset: Option<Preset>) -> &'static str {
 pub(crate) fn find_binary_on_path(name: &str) -> Option<Box<Path>> {
     let path = env::var_os("PATH")?;
     for dir in env::split_paths(&path) {
+        if !dir.is_absolute() || dir.as_os_str().is_empty() {
+            continue;
+        }
         let candidate = dir.join(name);
         if candidate.is_file() {
             return Some(candidate.into_boxed_path());

@@ -190,9 +190,12 @@ fn path_entry_allowed(preset: Preset, entry: &Path) -> bool {
         Preset::PublicBot => PUBLIC_BOT_PREFIXES
             .iter()
             .any(|prefix| entry.starts_with(prefix)),
-        Preset::TrustedMaintenance => !TRUSTED_DENY_PREFIXES
-            .iter()
-            .any(|prefix| entry.starts_with(prefix)),
+        Preset::TrustedMaintenance => {
+            entry.is_absolute()
+                && !TRUSTED_DENY_PREFIXES
+                    .iter()
+                    .any(|prefix| entry.starts_with(prefix))
+        }
     }
 }
 

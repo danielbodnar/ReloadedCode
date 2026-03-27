@@ -83,6 +83,10 @@ echo "Publish dry-run..."
 if [ "$IS_LINUX" = true ]; then
   run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-bubblewrap --quiet
 fi
-run_cmd cargo package --workspace --allow-dirty --quiet
+PKG_ARGS=(--workspace --allow-dirty --quiet)
+if [ "$IS_LINUX" = false ]; then
+  PKG_ARGS+=(--exclude llm-coding-tools-bubblewrap)
+fi
+run_cmd cargo package "${PKG_ARGS[@]}"
 
 echo "All checks passed!"

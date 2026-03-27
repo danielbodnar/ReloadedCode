@@ -1,7 +1,7 @@
 # Linux Sandbox Profiles
 
 This guide covers the Bubblewrap-based Linux sandboxing provided by
-`llm-coding-tools-bubblewrap` when the `linux-sandbox` feature is enabled.
+`llm-coding-tools-bubblewrap` when the `linux-bubblewrap` feature is enabled.
 
 ## Why Sandboxing Matters
 

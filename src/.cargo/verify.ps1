@@ -32,11 +32,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Join-Path $scriptDir ".."
 Set-Location $projectRoot
 
-$isLinux = $IsLinux -eq $true
+$onLinux = $IsLinux -eq $true
 
 try {
     Write-Host "Building..."
-    if ($isLinux) {
+    if ($onLinux) {
         Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-bubblewrap", "--quiet")
     }
     Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-core", "--quiet")
@@ -45,7 +45,7 @@ try {
     Invoke-LoggedCommand "cargo" @("build", "-p", "llm-coding-tools-models-dev", "--quiet")
 
     Write-Host "Testing..."
-    if ($isLinux) {
+    if ($onLinux) {
         Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--quiet")
     }
     Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--quiet")
@@ -54,7 +54,7 @@ try {
     Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-models-dev", "--quiet")
 
     Write-Host "Clippy..."
-    if ($isLinux) {
+    if ($onLinux) {
         Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-bubblewrap", "--quiet", "--", "-D", "warnings")
     }
     Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-core", "--quiet", "--", "-D", "warnings")
@@ -63,7 +63,7 @@ try {
     Invoke-LoggedCommand "cargo" @("clippy", "-p", "llm-coding-tools-models-dev", "--quiet", "--", "-D", "warnings")
 
     Write-Host "Testing linux-bubblewrap feature..."
-    if ($isLinux) {
+    if ($onLinux) {
         Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--features", "tokio", "--quiet")
         Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-bubblewrap", "--features", "blocking", "--quiet")
         Invoke-LoggedCommand "cargo" @("test", "-p", "llm-coding-tools-core", "--features", "linux-bubblewrap", "--quiet")
@@ -79,14 +79,14 @@ try {
 
     Write-Host "Docs..."
     $docArgs = @("--workspace", "--document-private-items", "--no-deps", "--quiet")
-    if (-not $isLinux) {
+    if (-not $onLinux) {
         $docArgs += "--exclude"
         $docArgs += "llm-coding-tools-bubblewrap"
     }
     $originalRustdocFlags = $env:RUSTDOCFLAGS
     $env:RUSTDOCFLAGS = "-D warnings"
     try {
-        Invoke-LoggedCommand "cargo" @("doc") + $docArgs
+        Invoke-LoggedCommand "cargo" (@("doc") + $docArgs)
     } finally {
         $env:RUSTDOCFLAGS = $originalRustdocFlags
     }
@@ -95,10 +95,15 @@ try {
     Invoke-LoggedCommand "cargo" @("fmt", "--all", "--check", "--quiet")
 
     Write-Host "Publish dry-run..."
-    if ($isLinux) {
+    if ($onLinux) {
         Invoke-LoggedCommand "cargo" @("publish", "--dry-run", "--allow-dirty", "-p", "llm-coding-tools-bubblewrap", "--quiet")
     }
-    Invoke-LoggedCommand "cargo" @("package", "--workspace", "--allow-dirty", "--quiet")
+    $pkgArgs = @("--workspace", "--allow-dirty", "--quiet")
+    if (-not $onLinux) {
+        $pkgArgs += "--exclude"
+        $pkgArgs += "llm-coding-tools-bubblewrap"
+    }
+    Invoke-LoggedCommand "cargo" (@("package") + $pkgArgs)
 
     Write-Host "All checks passed!"
 }

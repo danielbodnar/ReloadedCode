@@ -9,7 +9,7 @@ include = ["src/**/*", "README.md"]
 readme = "README.md"
 
 [features]
-default = []
+default = ["tokio"]
 tokio = ["dep:process-wrap", "process-wrap/tokio1", "process-wrap/process-group"]
 blocking = ["dep:process-wrap", "process-wrap/std", "process-wrap/process-group"]
 
