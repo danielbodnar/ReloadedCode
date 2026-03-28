@@ -8,6 +8,7 @@
 use super::builder::Builder;
 use super::types::{EnvVar, FileOverlay, NetworkPolicy, Preset, Symlink, TmpBacking};
 use crate::path_util::normalize_path;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -160,6 +161,7 @@ fn inherited_path(preset: Preset) -> String {
     let path_bytes = path.as_encoded_bytes();
     let capacity = path_bytes.iter().filter(|&&b| b == b':').count() + 1;
     let mut entries = Vec::with_capacity(capacity);
+    let mut seen = HashSet::with_capacity(capacity);
     for entry in std::env::split_paths(&path) {
         let entry = normalize_path(&entry);
         if !path_entry_allowed(preset, &entry) {
@@ -170,7 +172,7 @@ fn inherited_path(preset: Preset) -> String {
             continue;
         }
         let value = value.into_owned();
-        if entries.iter().any(|existing| existing == &value) {
+        if !seen.insert(value.clone()) {
             continue;
         }
         entries.push(value);
