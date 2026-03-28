@@ -156,7 +156,10 @@ fn inherited_path(preset: Preset) -> String {
         return DEFAULT_SANDBOX_PATH.to_string();
     };
 
-    let mut entries = Vec::new();
+    // Preallocate based on upper bound: number of separators + 1
+    let path_bytes = path.as_encoded_bytes();
+    let capacity = path_bytes.iter().filter(|&&b| b == b':').count() + 1;
+    let mut entries = Vec::with_capacity(capacity);
     for entry in std::env::split_paths(&path) {
         let entry = normalize_path(&entry);
         if !path_entry_allowed(preset, &entry) {
@@ -205,7 +208,7 @@ fn path_entry_allowed(preset: Preset, entry: &Path) -> bool {
 /// Checks each prefix in [`PUBLIC_BOT_PREFIXES`] against the host filesystem
 /// and includes only those that exist.
 fn public_bot_read_only_mounts() -> Arc<[Box<Path>]> {
-    let mut mounts = Vec::new();
+    let mut mounts = Vec::with_capacity(PUBLIC_BOT_PREFIXES.len());
     for path in PUBLIC_BOT_PREFIXES {
         let path = PathBuf::from(path);
         if path.exists() {
@@ -222,7 +225,7 @@ fn public_bot_read_only_mounts() -> Arc<[Box<Path>]> {
 /// each candidate and includes only those where the link path is absent and
 /// the target directory exists on the host.
 fn public_bot_compat_symlinks() -> Arc<[Symlink]> {
-    let mut symlinks = Vec::new();
+    let mut symlinks = Vec::with_capacity(3);
     for (target, link_path, required_path) in [
         ("usr/bin", "/bin", "/usr/bin"),
         ("usr/lib", "/lib", "/usr/lib"),
