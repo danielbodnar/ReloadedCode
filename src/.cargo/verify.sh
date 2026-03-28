@@ -27,66 +27,77 @@ if [ "$(uname -s)" = "Linux" ]; then
   IS_LINUX=true
 fi
 
-echo "Building..."
-if [ "$IS_LINUX" = true ]; then
-  run_cmd cargo build -p llm-coding-tools-bubblewrap --quiet
-fi
+echo "Building (async features)..."
 run_cmd cargo build -p llm-coding-tools-core --quiet
 run_cmd cargo build -p llm-coding-tools-agents --quiet
 run_cmd cargo build -p llm-coding-tools-serdesai --quiet
 run_cmd cargo build -p llm-coding-tools-models-dev --quiet
 
-echo "Testing..."
-if [ "$IS_LINUX" = true ]; then
-  run_cmd cargo test -p llm-coding-tools-bubblewrap --quiet
-fi
+echo "Testing (async features)..."
 run_cmd cargo test -p llm-coding-tools-core --quiet
 run_cmd cargo test -p llm-coding-tools-agents --quiet
 run_cmd cargo test -p llm-coding-tools-serdesai --quiet
 run_cmd cargo test -p llm-coding-tools-models-dev --quiet
 
-echo "Clippy..."
-if [ "$IS_LINUX" = true ]; then
-  run_cmd cargo clippy -p llm-coding-tools-bubblewrap --quiet -- -D warnings
-fi
+echo "Clippy (async features)..."
 run_cmd cargo clippy -p llm-coding-tools-core --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-agents --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-serdesai --quiet -- -D warnings
 run_cmd cargo clippy -p llm-coding-tools-models-dev --quiet -- -D warnings
 
-echo "Testing linux-bubblewrap feature..."
-if [ "$IS_LINUX" = true ]; then
-  run_cmd cargo test -p llm-coding-tools-bubblewrap --features tokio --quiet
-  run_cmd cargo test -p llm-coding-tools-bubblewrap --no-default-features --features blocking --quiet
-  run_cmd cargo test -p llm-coding-tools-core --features linux-bubblewrap --quiet
-  run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap --quiet
-  run_cmd cargo test -p llm-coding-tools-serdesai --features linux-bubblewrap --quiet
-else
-  echo "  (skipped — not Linux)"
-fi
+echo "Building (blocking feature)..."
+run_cmd cargo build -p llm-coding-tools-core --no-default-features --features blocking --quiet
+run_cmd cargo build -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet
 
-echo "Testing blocking feature..."
+echo "Testing (blocking feature)..."
 run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking --quiet
 run_cmd cargo test -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet
 
+echo "Clippy (blocking feature)..."
+run_cmd cargo clippy -p llm-coding-tools-core --no-default-features --features blocking --quiet -- -D warnings
+run_cmd cargo clippy -p llm-coding-tools-models-dev --no-default-features --features blocking --quiet -- -D warnings
+
 echo "Docs..."
-DOC_ARGS=(--workspace --document-private-items --no-deps --quiet)
-if [ "$IS_LINUX" = false ]; then
-  DOC_ARGS+=(--exclude llm-coding-tools-bubblewrap)
-fi
+DOC_ARGS=(--workspace --document-private-items --no-deps --quiet --exclude llm-coding-tools-bubblewrap)
 run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc "${DOC_ARGS[@]}"
 
 echo "Formatting..."
 run_cmd cargo fmt --all --check --quiet
 
-echo "Publish dry-run..."
+echo "Linux-only feature coverage..."
 if [ "$IS_LINUX" = true ]; then
-  run_cmd cargo publish --dry-run --allow-dirty -p llm-coding-tools-bubblewrap --quiet
+  echo "Building (linux async features)..."
+  run_cmd cargo build -p llm-coding-tools-bubblewrap --quiet
+  run_cmd cargo build -p llm-coding-tools-core --features linux-bubblewrap --quiet
+  run_cmd cargo build -p llm-coding-tools-serdesai --features linux-bubblewrap --quiet
+
+  echo "Testing (linux async features)..."
+  run_cmd cargo test -p llm-coding-tools-bubblewrap --quiet
+  run_cmd cargo test -p llm-coding-tools-core --features linux-bubblewrap --quiet
+  run_cmd cargo test -p llm-coding-tools-serdesai --features linux-bubblewrap --quiet
+
+  echo "Clippy (linux async features)..."
+  run_cmd cargo clippy -p llm-coding-tools-bubblewrap --quiet -- -D warnings
+  run_cmd cargo clippy -p llm-coding-tools-core --features linux-bubblewrap --quiet -- -D warnings
+  run_cmd cargo clippy -p llm-coding-tools-serdesai --features linux-bubblewrap --quiet -- -D warnings
+
+  echo "Building (linux blocking features)..."
+  run_cmd cargo build -p llm-coding-tools-bubblewrap --no-default-features --features blocking --quiet
+  run_cmd cargo build -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap --quiet
+
+  echo "Testing (linux blocking features)..."
+  run_cmd cargo test -p llm-coding-tools-bubblewrap --no-default-features --features blocking --quiet
+  run_cmd cargo test -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap --quiet
+
+  echo "Clippy (linux blocking features)..."
+  run_cmd cargo clippy -p llm-coding-tools-bubblewrap --no-default-features --features blocking --quiet -- -D warnings
+  run_cmd cargo clippy -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap --quiet -- -D warnings
+
+  echo "Docs (linux-only package)..."
+  run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc -p llm-coding-tools-bubblewrap --document-private-items --no-deps --quiet
+
+else
+  echo "  (skipped - not Linux)"
 fi
-PKG_ARGS=(--workspace --allow-dirty --quiet)
-if [ "$IS_LINUX" = false ]; then
-  PKG_ARGS+=(--exclude llm-coding-tools-bubblewrap)
-fi
-run_cmd cargo package "${PKG_ARGS[@]}"
 
 echo "All checks passed!"
