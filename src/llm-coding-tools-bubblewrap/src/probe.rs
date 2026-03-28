@@ -5,6 +5,7 @@
 use crate::path_util::normalize_path;
 use crate::{Availability, LinuxBwrapError, Preset};
 use parking_lot::RwLock;
+use std::collections::HashSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -124,7 +125,7 @@ fn first_shell_candidate_with_in<F, R>(
 where
     F: FnMut(&Path) -> Option<R>,
 {
-    let mut seen = std::collections::HashSet::with_capacity(10);
+    let mut seen = HashSet::with_capacity(10);
 
     for name in ["bash", "sh"] {
         if let Some(shell_path) = find_binary_on_path_in(name, env_path) {
@@ -150,7 +151,7 @@ where
 
 fn classify_shell_candidate<F, R>(
     classify: &mut F,
-    seen: &mut std::collections::HashSet<Box<Path>>,
+    seen: &mut HashSet<Box<Path>>,
     path: Box<Path>,
 ) -> Option<(Box<Path>, R)>
 where

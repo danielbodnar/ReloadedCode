@@ -56,7 +56,7 @@ where
 fn take_pipe_buffer(buffer: SharedPipeBuffer) -> Vec<u8> {
     match Arc::try_unwrap(buffer) {
         Ok(mutex) => mutex.into_inner(),
-        Err(shared) => std::mem::take(&mut *shared.lock()),
+        Err(shared) => core::mem::take(&mut *shared.lock()),
     }
 }
 
