@@ -24,36 +24,31 @@ struct GlobArgs {
 /// Tool for finding files matching glob patterns.
 ///
 /// Respects `.gitignore` and returns paths sorted by modification time (newest first).
-#[derive(Debug, Clone, Default)]
-pub struct GlobTool;
+#[derive(Debug, Clone)]
+pub struct GlobTool {
+    definition: ToolDefinition,
+}
+
+impl Default for GlobTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GlobTool {
     /// Creates a new glob tool instance.
     #[inline]
     pub fn new() -> Self {
-        Self
+        Self {
+            definition: build_definition(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                glob_meta::param::PATTERN.name,
-                glob_meta::param::PATTERN.description,
-                glob_meta::param::PATTERN.required,
-            )
-            .string(
-                glob_meta::param::PATH_ABSOLUTE.name,
-                glob_meta::param::PATH_ABSOLUTE.description,
-                glob_meta::param::PATH_ABSOLUTE.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(glob_meta::NAME, glob_meta::description::ABSOLUTE)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -77,6 +72,30 @@ impl ToolContext for GlobTool {
         ToolPrompt::Glob {
             path_mode: PathMode::Absolute,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            glob_meta::param::PATTERN.name,
+            glob_meta::param::PATTERN.description,
+            glob_meta::param::PATTERN.required,
+        )
+        .string(
+            glob_meta::param::PATH_ABSOLUTE.name,
+            glob_meta::param::PATH_ABSOLUTE.description,
+            glob_meta::param::PATH_ABSOLUTE.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: glob_meta::NAME.to_owned(),
+        description: glob_meta::description::ABSOLUTE.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

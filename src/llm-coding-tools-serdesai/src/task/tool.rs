@@ -22,7 +22,7 @@ use serdes_ai::tools::{RunContext, Tool, ToolDefinition, ToolError, ToolResult, 
 #[derive(Clone)]
 pub(crate) struct TaskTool<C: CredentialLookup + Send + Sync + 'static = CredentialResolver> {
     caller_name: Box<str>,
-    targets: Vec<TaskTargetSummary>,
+    definition: ToolDefinition,
     handle: TaskHandle<C>,
 }
 
@@ -38,7 +38,7 @@ where
     ) -> Self {
         Self {
             caller_name: caller_name.into(),
-            targets,
+            definition: task_tool_definition(&targets),
             handle,
         }
     }
@@ -50,7 +50,7 @@ where
     C: CredentialLookup + Send + Sync + 'static,
 {
     fn definition(&self) -> ToolDefinition {
-        task_tool_definition(&self.targets)
+        self.definition.clone()
     }
 
     /// Deserialises `args` as [`TaskInput`], delegates to [`TaskHandle::execute`],

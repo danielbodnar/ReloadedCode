@@ -23,36 +23,31 @@ struct WriteArgs {
 /// Tool for writing content to files.
 ///
 /// Creates parent directories if needed and overwrites existing files.
-#[derive(Debug, Clone, Default)]
-pub struct WriteTool;
+#[derive(Debug, Clone)]
+pub struct WriteTool {
+    definition: ToolDefinition,
+}
+
+impl Default for WriteTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WriteTool {
     /// Creates a new write tool instance.
     #[inline]
     pub fn new() -> Self {
-        Self
+        Self {
+            definition: build_definition(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for WriteTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                write_meta::param::FILE_PATH_ABSOLUTE.name,
-                write_meta::param::FILE_PATH_ABSOLUTE.description,
-                write_meta::param::FILE_PATH_ABSOLUTE.required,
-            )
-            .string(
-                write_meta::param::CONTENT.name,
-                write_meta::param::CONTENT.description,
-                write_meta::param::CONTENT.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(write_meta::NAME, write_meta::description::ABSOLUTE)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -74,6 +69,30 @@ impl ToolContext for WriteTool {
         ToolPrompt::Write {
             path_mode: PathMode::Absolute,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            write_meta::param::FILE_PATH_ABSOLUTE.name,
+            write_meta::param::FILE_PATH_ABSOLUTE.description,
+            write_meta::param::FILE_PATH_ABSOLUTE.required,
+        )
+        .string(
+            write_meta::param::CONTENT.name,
+            write_meta::param::CONTENT.description,
+            write_meta::param::CONTENT.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: write_meta::NAME.to_owned(),
+        description: write_meta::description::ABSOLUTE.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

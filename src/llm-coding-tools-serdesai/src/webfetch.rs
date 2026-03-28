@@ -33,6 +33,7 @@ struct WebFetchArgs {
 #[derive(Debug, Clone)]
 pub struct WebFetchTool {
     client: reqwest::Client,
+    definition: ToolDefinition,
 }
 
 impl Default for WebFetchTool {
@@ -46,35 +47,23 @@ impl WebFetchTool {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),
+            definition: build_definition(),
         }
     }
 
     /// Creates a webfetch tool with a custom client.
     pub fn with_client(client: reqwest::Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            definition: build_definition(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(webfetch_meta::NAME, webfetch_meta::DESCRIPTION).with_parameters(
-            SchemaBuilder::new()
-                .string(
-                    webfetch_meta::param::URL.name,
-                    webfetch_meta::param::URL.description,
-                    webfetch_meta::param::URL.required,
-                )
-                .integer_constrained(
-                    webfetch_meta::param::TIMEOUT_MS.name,
-                    webfetch_meta::param::TIMEOUT_MS.description,
-                    webfetch_meta::param::TIMEOUT_MS.required,
-                    Some(1),
-                    Some(webfetch_meta::MAX_TIMEOUT_MS as i64),
-                )
-                .build()
-                .expect("schema serialization should never fail"),
-        )
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -92,6 +81,30 @@ impl ToolContext for WebFetchTool {
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::WebFetch
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: webfetch_meta::NAME.to_owned(),
+        description: webfetch_meta::DESCRIPTION.to_owned(),
+        parameters_json_schema: SchemaBuilder::new()
+            .string(
+                webfetch_meta::param::URL.name,
+                webfetch_meta::param::URL.description,
+                webfetch_meta::param::URL.required,
+            )
+            .integer_constrained(
+                webfetch_meta::param::TIMEOUT_MS.name,
+                webfetch_meta::param::TIMEOUT_MS.description,
+                webfetch_meta::param::TIMEOUT_MS.required,
+                Some(1),
+                Some(webfetch_meta::MAX_TIMEOUT_MS as i64),
+            )
+            .build()
+            .expect("schema serialization should never fail"),
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

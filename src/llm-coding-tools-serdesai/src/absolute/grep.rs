@@ -32,51 +32,31 @@ struct GrepArgs {
 /// The `LINE_NUMBERS` const generic controls output format:
 /// - `true` (default): Lines prefixed with `L{number}: `
 /// - `false`: Raw matching lines
-#[derive(Debug, Clone, Default)]
-pub struct GrepTool<const LINE_NUMBERS: bool = true>;
+#[derive(Debug, Clone)]
+pub struct GrepTool<const LINE_NUMBERS: bool = true> {
+    definition: ToolDefinition,
+}
+
+impl<const LINE_NUMBERS: bool> Default for GrepTool<LINE_NUMBERS> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
     /// Creates a new grep tool instance.
     #[inline]
     pub fn new() -> Self {
-        Self
+        Self {
+            definition: build_definition::<LINE_NUMBERS>(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_NUMBERS> {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                grep_meta::param::PATTERN.name,
-                grep_meta::param::PATTERN.description,
-                grep_meta::param::PATTERN.required,
-            )
-            .string(
-                grep_meta::param::PATH_ABSOLUTE.name,
-                grep_meta::param::PATH_ABSOLUTE.description,
-                grep_meta::param::PATH_ABSOLUTE.required,
-            )
-            .string(
-                grep_meta::param::INCLUDE.name,
-                grep_meta::param::INCLUDE.description,
-                grep_meta::param::INCLUDE.required,
-            )
-            .integer_constrained(
-                grep_meta::param::LIMIT.name,
-                grep_meta::param::LIMIT.description,
-                grep_meta::param::LIMIT.required,
-                Some(1),
-                Some(grep_meta::MAX_LIMIT as i64),
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(
-            grep_meta::NAME,
-            grep_meta::description::absolute(LINE_NUMBERS),
-        )
-        .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -135,6 +115,42 @@ impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
             path_mode: PathMode::Absolute,
             line_numbers: LINE_NUMBERS,
         }
+    }
+}
+
+fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            grep_meta::param::PATTERN.name,
+            grep_meta::param::PATTERN.description,
+            grep_meta::param::PATTERN.required,
+        )
+        .string(
+            grep_meta::param::PATH_ABSOLUTE.name,
+            grep_meta::param::PATH_ABSOLUTE.description,
+            grep_meta::param::PATH_ABSOLUTE.required,
+        )
+        .string(
+            grep_meta::param::INCLUDE.name,
+            grep_meta::param::INCLUDE.description,
+            grep_meta::param::INCLUDE.required,
+        )
+        .integer_constrained(
+            grep_meta::param::LIMIT.name,
+            grep_meta::param::LIMIT.description,
+            grep_meta::param::LIMIT.required,
+            Some(1),
+            Some(grep_meta::MAX_LIMIT as i64),
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: grep_meta::NAME.to_owned(),
+        description: grep_meta::description::absolute(LINE_NUMBERS).to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

@@ -35,6 +35,7 @@ use crate::error::{ToolError, ToolResult};
 use crate::ToolOutput;
 use core::fmt::Write;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::path::Path;
 use std::time::Duration;
 #[cfg(feature = "tokio")]
@@ -64,6 +65,17 @@ pub enum BashExecutionMode {
 /// Default buffer capacity for stdout/stderr pipe reads.
 /// 32KB covers typical command output without reallocations.
 const PIPE_BUFFER_CAPACITY: usize = 32 * 1024;
+
+#[inline]
+fn string_from_utf8_or_lossy(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => match String::from_utf8_lossy(&error.into_bytes()) {
+            Cow::Borrowed(text) => text.to_owned(),
+            Cow::Owned(text) => text,
+        },
+    }
+}
 
 #[inline]
 fn timeout_message_with_buffered_output(

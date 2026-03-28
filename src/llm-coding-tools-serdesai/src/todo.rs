@@ -33,59 +33,24 @@ struct TodoReadArgs {}
 /// Tool for writing/replacing the todo list.
 #[derive(Debug, Clone)]
 pub struct TodoWriteTool {
+    definition: ToolDefinition,
     state: TodoState,
 }
 
 impl TodoWriteTool {
     /// Creates a new todo write tool with the given state.
     pub fn new(state: TodoState) -> Self {
-        Self { state }
+        Self {
+            definition: build_todo_write_definition(),
+            state,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            todo_write_meta::NAME,
-            todo_write_meta::DESCRIPTION,
-        )
-        .with_parameters(
-            SchemaBuilder::new()
-                .raw(
-                    todo_write_meta::param::TODOS.name,
-                    serde_json::json!({
-                        "type": "array",
-                        "description": todo_write_meta::param::TODOS.description,
-                        "items": {
-                            "type": "object",
-                            "required": [
-                                todo_write_meta::param::ID.name,
-                                todo_write_meta::param::CONTENT.name,
-                                todo_write_meta::param::STATUS.name,
-                                todo_write_meta::param::PRIORITY.name
-                            ],
-                            "properties": {
-                                "id": { "type": "string", "description": todo_write_meta::param::ID.description },
-                                "content": { "type": "string", "description": todo_write_meta::param::CONTENT.description },
-                                "status": {
-                                    "type": "string",
-                                    "enum": ["pending", "in_progress", "completed", "cancelled"],
-                                    "description": todo_write_meta::param::STATUS.description
-                                },
-                                "priority": {
-                                    "type": "string",
-                                    "enum": ["high", "medium", "low"],
-                                    "description": todo_write_meta::param::PRIORITY.description
-                                }
-                            }
-                        }
-                    }),
-                    todo_write_meta::param::TODOS.required,
-                )
-                .build()
-                .expect("schema serialization should never fail"),
-        )
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -107,24 +72,24 @@ impl ToolContext for TodoWriteTool {
 /// Tool for reading the current todo list.
 #[derive(Debug, Clone)]
 pub struct TodoReadTool {
+    definition: ToolDefinition,
     state: TodoState,
 }
 
 impl TodoReadTool {
     /// Creates a new todo read tool with the given state.
     pub fn new(state: TodoState) -> Self {
-        Self { state }
+        Self {
+            definition: build_todo_read_definition(),
+            state,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(todo_read_meta::NAME, todo_read_meta::DESCRIPTION).with_parameters(
-            SchemaBuilder::new()
-                .build()
-                .expect("schema serialization should never fail"),
-        )
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -155,6 +120,61 @@ pub fn create_todo_tools() -> (TodoReadTool, TodoWriteTool, TodoState) {
         TodoWriteTool::new(state.clone()),
         state,
     )
+}
+
+fn build_todo_write_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: todo_write_meta::NAME.to_owned(),
+        description: todo_write_meta::DESCRIPTION.to_owned(),
+        parameters_json_schema: SchemaBuilder::new()
+            .raw(
+                todo_write_meta::param::TODOS.name,
+                serde_json::json!({
+                    "type": "array",
+                    "description": todo_write_meta::param::TODOS.description,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            todo_write_meta::param::ID.name,
+                            todo_write_meta::param::CONTENT.name,
+                            todo_write_meta::param::STATUS.name,
+                            todo_write_meta::param::PRIORITY.name
+                        ],
+                        "properties": {
+                            "id": { "type": "string", "description": todo_write_meta::param::ID.description },
+                            "content": { "type": "string", "description": todo_write_meta::param::CONTENT.description },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed", "cancelled"],
+                                "description": todo_write_meta::param::STATUS.description
+                            },
+                            "priority": {
+                                "type": "string",
+                                "enum": ["high", "medium", "low"],
+                                "description": todo_write_meta::param::PRIORITY.description
+                            }
+                        }
+                    }
+                }),
+                todo_write_meta::param::TODOS.required,
+            )
+            .build()
+            .expect("schema serialization should never fail"),
+        strict: None,
+        outer_typed_dict_key: None,
+    }
+}
+
+fn build_todo_read_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: todo_read_meta::NAME.to_owned(),
+        description: todo_read_meta::DESCRIPTION.to_owned(),
+        parameters_json_schema: SchemaBuilder::new()
+            .build()
+            .expect("schema serialization should never fail"),
+        strict: None,
+        outer_typed_dict_key: None,
+    }
 }
 
 #[cfg(test)]

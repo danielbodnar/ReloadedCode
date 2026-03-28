@@ -53,6 +53,7 @@ struct BashArgs {
 /// Uses bash on Unix, cmd on Windows.
 #[derive(Debug, Clone)]
 pub struct BashTool {
+    definition: ToolDefinition,
     /// Explicit execution mode for this tool instance.
     mode: BashExecutionMode, // ZST. 0 bytes when all optionals disabled.
     /// Default timeout for commands when not specified in args.
@@ -82,6 +83,7 @@ impl BashTool {
     /// to sandbox commands.
     pub fn host() -> Self {
         Self {
+            definition: build_definition(),
             mode: BashExecutionMode::Host,
             default_timeout: None,
             default_workdir: None,
@@ -140,31 +142,7 @@ impl BashTool {
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for BashTool {
     fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(bash_meta::NAME, bash_meta::DESCRIPTION).with_parameters(
-            SchemaBuilder::new()
-                .string_constrained(
-                    bash_meta::param::COMMAND.name,
-                    bash_meta::param::COMMAND.description,
-                    bash_meta::param::COMMAND.required,
-                    Some(1),
-                    None,
-                    None,
-                )
-                .string(
-                    bash_meta::param::WORKDIR.name,
-                    bash_meta::param::WORKDIR.description,
-                    bash_meta::param::WORKDIR.required,
-                )
-                .integer_constrained(
-                    bash_meta::param::TIMEOUT_MS.name,
-                    bash_meta::param::TIMEOUT_MS.description,
-                    bash_meta::param::TIMEOUT_MS.required,
-                    Some(1),
-                    Some(bash_meta::MAX_TIMEOUT_MS as i64),
-                )
-                .build()
-                .expect("schema serialization should never fail"),
-        )
+        self.definition.clone()
     }
 
     /// Executes a shell command through the configured [`BashExecutionMode`].
@@ -240,6 +218,38 @@ impl ToolContext for BashTool {
             network_disabled: bash_prompt_network_disabled(&self.mode),
             sandboxed: bash_prompt_sandboxed(&self.mode),
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: bash_meta::NAME.to_owned(),
+        description: bash_meta::DESCRIPTION.to_owned(),
+        parameters_json_schema: SchemaBuilder::new()
+            .string_constrained(
+                bash_meta::param::COMMAND.name,
+                bash_meta::param::COMMAND.description,
+                bash_meta::param::COMMAND.required,
+                Some(1),
+                None,
+                None,
+            )
+            .string(
+                bash_meta::param::WORKDIR.name,
+                bash_meta::param::WORKDIR.description,
+                bash_meta::param::WORKDIR.required,
+            )
+            .integer_constrained(
+                bash_meta::param::TIMEOUT_MS.name,
+                bash_meta::param::TIMEOUT_MS.description,
+                bash_meta::param::TIMEOUT_MS.required,
+                Some(1),
+                Some(bash_meta::MAX_TIMEOUT_MS as i64),
+            )
+            .build()
+            .expect("schema serialization should never fail"),
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

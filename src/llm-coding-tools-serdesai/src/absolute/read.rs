@@ -29,48 +29,31 @@ struct ReadArgs {
 /// The `LINE_NUMBERS` const generic controls output format:
 /// - `true` (default): Lines prefixed with `L{number}: `
 /// - `false`: Raw file content
-#[derive(Debug, Clone, Default)]
-pub struct ReadTool<const LINE_NUMBERS: bool = true>;
+#[derive(Debug, Clone)]
+pub struct ReadTool<const LINE_NUMBERS: bool = true> {
+    definition: ToolDefinition,
+}
+
+impl<const LINE_NUMBERS: bool> Default for ReadTool<LINE_NUMBERS> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
     /// Creates a new read tool instance.
     #[inline]
     pub fn new() -> Self {
-        Self
+        Self {
+            definition: build_definition::<LINE_NUMBERS>(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_NUMBERS> {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                read_meta::param::FILE_PATH_ABSOLUTE.name,
-                read_meta::param::FILE_PATH_ABSOLUTE.description,
-                read_meta::param::FILE_PATH_ABSOLUTE.required,
-            )
-            .integer_constrained(
-                read_meta::param::OFFSET.name,
-                read_meta::param::OFFSET.description,
-                read_meta::param::OFFSET.required,
-                Some(1),
-                None,
-            )
-            .integer_constrained(
-                read_meta::param::LIMIT.name,
-                read_meta::param::LIMIT.description,
-                read_meta::param::LIMIT.required,
-                Some(1),
-                None,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(
-            read_meta::NAME,
-            read_meta::description::absolute(LINE_NUMBERS),
-        )
-        .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -93,6 +76,39 @@ impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
             path_mode: PathMode::Absolute,
             line_numbers: LINE_NUMBERS,
         }
+    }
+}
+
+fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            read_meta::param::FILE_PATH_ABSOLUTE.name,
+            read_meta::param::FILE_PATH_ABSOLUTE.description,
+            read_meta::param::FILE_PATH_ABSOLUTE.required,
+        )
+        .integer_constrained(
+            read_meta::param::OFFSET.name,
+            read_meta::param::OFFSET.description,
+            read_meta::param::OFFSET.required,
+            Some(1),
+            None,
+        )
+        .integer_constrained(
+            read_meta::param::LIMIT.name,
+            read_meta::param::LIMIT.description,
+            read_meta::param::LIMIT.required,
+            Some(1),
+            None,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: read_meta::NAME.to_owned(),
+        description: read_meta::description::absolute(LINE_NUMBERS).to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

@@ -29,6 +29,7 @@ struct ReadArgs {
 /// Restricts access to configured allowed directories.
 #[derive(Debug, Clone)]
 pub struct ReadTool<const LINE_NUMBERS: bool = true> {
+    definition: ToolDefinition,
     resolver: AllowedPathResolver,
 }
 
@@ -53,41 +54,17 @@ impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
     /// let edit = EditTool::new(resolver);
     /// ```
     pub fn new(resolver: AllowedPathResolver) -> Self {
-        Self { resolver }
+        Self {
+            definition: build_definition::<LINE_NUMBERS>(),
+            resolver,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_NUMBERS> {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                read_meta::param::FILE_PATH_ALLOWED.name,
-                read_meta::param::FILE_PATH_ALLOWED.description,
-                read_meta::param::FILE_PATH_ALLOWED.required,
-            )
-            .integer_constrained(
-                read_meta::param::OFFSET.name,
-                read_meta::param::OFFSET.description,
-                read_meta::param::OFFSET.required,
-                Some(1),
-                None,
-            )
-            .integer_constrained(
-                read_meta::param::LIMIT.name,
-                read_meta::param::LIMIT.description,
-                read_meta::param::LIMIT.required,
-                Some(1),
-                None,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(
-            read_meta::NAME,
-            read_meta::description::allowed(LINE_NUMBERS),
-        )
-        .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -109,6 +86,39 @@ impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
             path_mode: PathMode::Allowed,
             line_numbers: LINE_NUMBERS,
         }
+    }
+}
+
+fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            read_meta::param::FILE_PATH_ALLOWED.name,
+            read_meta::param::FILE_PATH_ALLOWED.description,
+            read_meta::param::FILE_PATH_ALLOWED.required,
+        )
+        .integer_constrained(
+            read_meta::param::OFFSET.name,
+            read_meta::param::OFFSET.description,
+            read_meta::param::OFFSET.required,
+            Some(1),
+            None,
+        )
+        .integer_constrained(
+            read_meta::param::LIMIT.name,
+            read_meta::param::LIMIT.description,
+            read_meta::param::LIMIT.required,
+            Some(1),
+            None,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: read_meta::NAME.to_owned(),
+        description: read_meta::description::allowed(LINE_NUMBERS).to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

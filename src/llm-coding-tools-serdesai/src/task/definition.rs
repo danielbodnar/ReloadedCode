@@ -31,11 +31,12 @@ pub fn render_task_targets(targets: &[TaskTargetSummary]) -> String {
 
 /// Builds a SerdesAI Task definition using the shared target summaries.
 pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
-    let description = format!(
-        "{}\n\n{}",
-        task_meta::DESCRIPTION_PREFIX,
-        render_task_targets(targets)
-    );
+    let rendered_targets = render_task_targets(targets);
+    let mut description =
+        String::with_capacity(task_meta::DESCRIPTION_PREFIX.len() + rendered_targets.len() + 2);
+    description.push_str(task_meta::DESCRIPTION_PREFIX);
+    description.push_str("\n\n");
+    description.push_str(&rendered_targets);
     let schema = SchemaBuilder::new()
         .string(
             task_meta::param::DESCRIPTION.name,
@@ -65,7 +66,13 @@ pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
         .build()
         .expect("task schema should be valid");
 
-    ToolDefinition::new(task_meta::NAME, description).with_parameters(schema)
+    ToolDefinition {
+        name: task_meta::NAME.to_owned(),
+        description,
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
+    }
 }
 
 #[cfg(test)]

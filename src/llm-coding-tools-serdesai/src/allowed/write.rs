@@ -22,6 +22,7 @@ struct WriteArgs {
 /// Tool for writing content to files within allowed directories.
 #[derive(Debug, Clone)]
 pub struct WriteTool {
+    definition: ToolDefinition,
     resolver: AllowedPathResolver,
 }
 
@@ -32,29 +33,17 @@ impl WriteTool {
     ///
     /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
-        Self { resolver }
+        Self {
+            definition: build_definition(),
+            resolver,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for WriteTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                write_meta::param::FILE_PATH_ALLOWED.name,
-                write_meta::param::FILE_PATH_ALLOWED.description,
-                write_meta::param::FILE_PATH_ALLOWED.required,
-            )
-            .string(
-                write_meta::param::CONTENT.name,
-                write_meta::param::CONTENT.description,
-                write_meta::param::CONTENT.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(write_meta::NAME, write_meta::description::ALLOWED)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -73,6 +62,30 @@ impl ToolContext for WriteTool {
         ToolPrompt::Write {
             path_mode: PathMode::Allowed,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            write_meta::param::FILE_PATH_ALLOWED.name,
+            write_meta::param::FILE_PATH_ALLOWED.description,
+            write_meta::param::FILE_PATH_ALLOWED.required,
+        )
+        .string(
+            write_meta::param::CONTENT.name,
+            write_meta::param::CONTENT.description,
+            write_meta::param::CONTENT.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: write_meta::NAME.to_owned(),
+        description: write_meta::description::ALLOWED.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

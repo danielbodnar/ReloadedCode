@@ -24,6 +24,7 @@ struct GlobArgs {
 /// Tool for finding files matching glob patterns within allowed directories.
 #[derive(Debug, Clone)]
 pub struct GlobTool {
+    definition: ToolDefinition,
     resolver: AllowedPathResolver,
 }
 
@@ -34,29 +35,17 @@ impl GlobTool {
     ///
     /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
-        Self { resolver }
+        Self {
+            definition: build_definition(),
+            resolver,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                glob_meta::param::PATTERN.name,
-                glob_meta::param::PATTERN.description,
-                glob_meta::param::PATTERN.required,
-            )
-            .string(
-                glob_meta::param::PATH_ALLOWED.name,
-                glob_meta::param::PATH_ALLOWED.description,
-                glob_meta::param::PATH_ALLOWED.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(glob_meta::NAME, glob_meta::description::ALLOWED)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -78,6 +67,30 @@ impl ToolContext for GlobTool {
         ToolPrompt::Glob {
             path_mode: PathMode::Allowed,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            glob_meta::param::PATTERN.name,
+            glob_meta::param::PATTERN.description,
+            glob_meta::param::PATTERN.required,
+        )
+        .string(
+            glob_meta::param::PATH_ALLOWED.name,
+            glob_meta::param::PATH_ALLOWED.description,
+            glob_meta::param::PATH_ALLOWED.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: glob_meta::NAME.to_owned(),
+        description: glob_meta::description::ALLOWED.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 
