@@ -203,9 +203,7 @@ fn path_entry_allowed(preset: Preset, entry: &Path) -> bool {
 /// Collects host directories to mount read-only for [`Preset::PublicBot`].
 ///
 /// Checks each prefix in [`PUBLIC_BOT_PREFIXES`] against the host filesystem
-/// and includes only those that exist. Falls back to `/usr/bin`, `/usr/lib`,
-/// and `/lib64` when none of the configured prefixes are present (e.g. in
-/// minimal container environments).
+/// and includes only those that exist.
 fn public_bot_read_only_mounts() -> Arc<[Box<Path>]> {
     let mut mounts = Vec::new();
     for path in PUBLIC_BOT_PREFIXES {
@@ -213,13 +211,6 @@ fn public_bot_read_only_mounts() -> Arc<[Box<Path>]> {
         if path.exists() {
             mounts.push(path.into_boxed_path());
         }
-    }
-    if mounts.is_empty() {
-        mounts.extend([
-            Box::from(Path::new("/usr/bin")),
-            Box::from(Path::new("/usr/lib")),
-            Box::from(Path::new("/lib64")),
-        ]);
     }
     mounts.into()
 }
