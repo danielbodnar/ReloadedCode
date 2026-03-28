@@ -92,6 +92,7 @@ fn profile_name(preset: Option<Preset>) -> &'static str {
     }
 }
 
+#[inline]
 fn find_binary_on_path_in(name: &str, path: Option<&OsStr>) -> Option<Box<Path>> {
     let path = path?;
     for dir in env::split_paths(path) {
@@ -149,6 +150,7 @@ where
     None
 }
 
+#[inline]
 fn classify_shell_candidate<F, R>(
     classify: &mut F,
     seen: &mut HashSet<Box<Path>>,
@@ -164,6 +166,7 @@ where
     classify(path.as_ref()).map(|result| (path, result))
 }
 
+#[inline]
 fn resolve_host_shell_in(path: Option<&OsStr>) -> Option<Box<Path>> {
     first_shell_candidate_with_in(path, &mut |_| Some(())).map(|(path, _)| path)
 }
