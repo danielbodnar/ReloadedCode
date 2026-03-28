@@ -468,6 +468,25 @@ impl Profile {
         )))
     }
 
+    /// Returns true only for exact path matches against prevalidated directories:
+    /// workspace(), synthetic_home(), cache_root() (when mount_cache_root()),
+    /// TmpBacking::BindHost host_dir, and entries in read_only_mounts() and read_write_mounts().
+    #[inline]
+    pub(crate) fn is_prevalidated_workdir(&self, workdir: &Path) -> bool {
+        workdir == self.workspace()
+            || workdir == self.synthetic_home()
+            || (self.mount_cache_root() && workdir == self.cache_root())
+            || matches!(self.tmp_backing(), TmpBacking::BindHost(host_dir) if workdir == host_dir.as_ref())
+            || self
+                .read_only_mounts()
+                .iter()
+                .any(|mount| workdir == mount.as_ref())
+            || self
+                .read_write_mounts()
+                .iter()
+                .any(|mount| workdir == mount.as_ref())
+    }
+
     fn sandbox_layout(&self) -> SandboxLayout<'_> {
         SandboxLayout {
             workspace: self.workspace(),
@@ -540,5 +559,51 @@ mod tests {
             Cow::Borrowed(mapped) => panic!("expected owned path, got {}", mapped.display()),
             Cow::Owned(mapped) => assert_eq!(mapped, Path::new("/workspace/subdir")),
         }
+    }
+
+    #[test]
+    fn is_prevalidated_workdir_accepts_exact_profile_owned_roots() {
+        let profile = Profile {
+            preset: None,
+            workspace: Box::from(Path::new("/host/workspace")),
+            workspace_dest: Box::from(Path::new("/workspace")),
+            synthetic_home: Box::from(Path::new("/host/home")),
+            synthetic_home_dest: Box::from(Path::new("/home/sandbox")),
+            cache_root: Box::from(Path::new("/host/cache")),
+            tmp_backing: TmpBacking::BindHost(Box::from(Path::new("/host/tmp"))),
+            mount_cache_root: true,
+            compat_symlinks: Arc::new([]),
+            read_only_mounts: Arc::from([Box::from(Path::new("/host/ro"))]),
+            read_write_mounts: Arc::from([Box::from(Path::new("/host/rw"))]),
+            tmpfs_overlays: Arc::new([]),
+            file_overlays: Arc::new([]),
+            credential_file_mounts: Arc::new([]),
+            read_only_host_rootfs: false,
+            network_policy: NetworkPolicy::Disabled,
+            clear_env: false,
+            default_env: Arc::new([]),
+            extra_env: Arc::new([]),
+            availability: Availability::Unknown,
+            bwrap_program: Arc::from(Box::from(Path::new("/usr/bin/bwrap"))),
+            shell: Box::from(Path::new("/bin/sh")),
+            static_args: Arc::<[OsString]>::from([]),
+        };
+
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/workspace")));
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/home")));
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/cache")));
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/tmp")));
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/ro")));
+        assert!(profile.is_prevalidated_workdir(Path::new("/host/rw")));
+    }
+
+    #[test]
+    fn is_prevalidated_workdir_rejects_nested_or_unmounted_paths() {
+        let profile = profile_with_workspace_dest("/workspace");
+
+        assert!(!profile.is_prevalidated_workdir(Path::new("/host/workspace/subdir")));
+        assert!(!profile.is_prevalidated_workdir(Path::new("/host/home/subdir")));
+        assert!(!profile.is_prevalidated_workdir(Path::new("/host/cache/subdir")));
+        assert!(!profile.is_prevalidated_workdir(Path::new("/outside")));
     }
 }

@@ -1,8 +1,9 @@
 //! Blocking shell command execution.
 
 use super::{
-    timeout_error_with_kill_failure, timeout_message_with_buffered_output, validate_workdir,
-    BashExecutionMode, BashOutput, PIPE_BUFFER_CAPACITY,
+    string_from_utf8_or_lossy, timeout_error_with_kill_failure,
+    timeout_message_with_buffered_output, validate_workdir, BashExecutionMode, BashOutput,
+    PIPE_BUFFER_CAPACITY,
 };
 use crate::error::{ToolError, ToolResult};
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -13,6 +14,11 @@ use std::path::Path;
 use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Initial sleep between non-blocking wait polls.
+const INITIAL_POLL_INTERVAL_MS: u64 = 1;
+/// Upper bound for wait poll backoff.
+const MAX_POLL_INTERVAL_MS: u64 = 10;
 
 enum WaitOutcome {
     Exited(std::process::ExitStatus),
@@ -96,19 +102,24 @@ pub(in crate::tools::bash) fn run_wrapped_command(
     });
 
     let start = Instant::now();
+    let mut poll_interval_ms = INITIAL_POLL_INTERVAL_MS;
 
     // Poll for completion with timeout.
     let wait_outcome = loop {
         match child.try_wait() {
             Ok(Some(status)) => break WaitOutcome::Exited(status),
             Ok(None) => {
-                if start.elapsed() >= timeout {
+                let elapsed = start.elapsed();
+                if elapsed >= timeout {
                     // Kill entire process tree via Job Object (Windows) or process group (Unix)
                     break WaitOutcome::TimedOut {
                         kill_error: child.kill().err(),
                     };
                 }
-                thread::sleep(Duration::from_millis(10));
+
+                let remaining = timeout.saturating_sub(elapsed);
+                thread::sleep(remaining.min(Duration::from_millis(poll_interval_ms)));
+                poll_interval_ms = (poll_interval_ms << 1).min(MAX_POLL_INTERVAL_MS);
             }
             Err(e) => break WaitOutcome::WaitError(e),
         }
@@ -126,8 +137,8 @@ pub(in crate::tools::bash) fn run_wrapped_command(
     match wait_outcome {
         WaitOutcome::Exited(status) => Ok(BashOutput {
             exit_code: status.code(),
-            stdout: String::from_utf8_lossy(&stdout_data).into_owned(),
-            stderr: String::from_utf8_lossy(&stderr_data).into_owned(),
+            stdout: string_from_utf8_or_lossy(stdout_data),
+            stderr: string_from_utf8_or_lossy(stderr_data),
         }),
         WaitOutcome::TimedOut { kill_error } => Err(timeout_error_with_kill_failure(
             timeout_message_with_buffered_output(timeout, &stdout_data, &stderr_data),

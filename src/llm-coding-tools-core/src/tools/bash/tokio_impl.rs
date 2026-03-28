@@ -1,8 +1,9 @@
 //! Tokio-based async shell command execution.
 
 use super::{
-    timeout_error_with_kill_failure, timeout_message_with_buffered_output, validate_workdir,
-    BashExecutionMode, BashOutput, PIPE_BUFFER_CAPACITY,
+    string_from_utf8_or_lossy, timeout_error_with_kill_failure,
+    timeout_message_with_buffered_output, validate_workdir, BashExecutionMode, BashOutput,
+    PIPE_BUFFER_CAPACITY,
 };
 use crate::error::{ToolError, ToolResult};
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -55,7 +56,7 @@ where
 fn take_pipe_buffer(buffer: SharedPipeBuffer) -> Vec<u8> {
     match Arc::try_unwrap(buffer) {
         Ok(mutex) => mutex.into_inner(),
-        Err(shared) => shared.lock().clone(),
+        Err(shared) => core::mem::take(&mut *shared.lock()),
     }
 }
 
@@ -165,8 +166,8 @@ pub(in crate::tools::bash) async fn run_wrapped_command(
 
             Ok(BashOutput {
                 exit_code: status.code(),
-                stdout: String::from_utf8_lossy(&stdout_data).into_owned(),
-                stderr: String::from_utf8_lossy(&stderr_data).into_owned(),
+                stdout: string_from_utf8_or_lossy(stdout_data),
+                stderr: string_from_utf8_or_lossy(stderr_data),
             })
         }
         None => {

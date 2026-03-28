@@ -62,7 +62,11 @@ fn resolve_sandbox_cwd<'a>(
     profile: &'a Profile,
     workdir: Option<&'a Path>,
 ) -> Result<Cow<'a, Path>, LinuxBwrapError> {
-    validate_workdir(workdir)?;
+    if let Some(dir) = workdir {
+        if !profile.is_prevalidated_workdir(dir) {
+            validate_workdir(Some(dir))?;
+        }
+    }
     profile.map_workdir_to_sandbox(workdir)
 }
 

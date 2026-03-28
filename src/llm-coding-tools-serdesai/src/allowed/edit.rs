@@ -30,6 +30,7 @@ struct EditArgs {
 /// Tool for making exact string replacements in files within allowed directories.
 #[derive(Debug, Clone)]
 pub struct EditTool {
+    definition: ToolDefinition,
     resolver: AllowedPathResolver,
 }
 
@@ -40,39 +41,17 @@ impl EditTool {
     ///
     /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
-        Self { resolver }
+        Self {
+            definition: build_definition(),
+            resolver,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for EditTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                edit_meta::param::FILE_PATH_ALLOWED.name,
-                edit_meta::param::FILE_PATH_ALLOWED.description,
-                edit_meta::param::FILE_PATH_ALLOWED.required,
-            )
-            .string(
-                edit_meta::param::OLD_STRING.name,
-                edit_meta::param::OLD_STRING.description,
-                edit_meta::param::OLD_STRING.required,
-            )
-            .string(
-                edit_meta::param::NEW_STRING.name,
-                edit_meta::param::NEW_STRING.description,
-                edit_meta::param::NEW_STRING.required,
-            )
-            .boolean(
-                edit_meta::param::REPLACE_ALL.name,
-                edit_meta::param::REPLACE_ALL.description,
-                edit_meta::param::REPLACE_ALL.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(edit_meta::NAME, edit_meta::description::ALLOWED)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -99,6 +78,40 @@ impl ToolContext for EditTool {
         ToolPrompt::Edit {
             path_mode: PathMode::Allowed,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            edit_meta::param::FILE_PATH_ALLOWED.name,
+            edit_meta::param::FILE_PATH_ALLOWED.description,
+            edit_meta::param::FILE_PATH_ALLOWED.required,
+        )
+        .string(
+            edit_meta::param::OLD_STRING.name,
+            edit_meta::param::OLD_STRING.description,
+            edit_meta::param::OLD_STRING.required,
+        )
+        .string(
+            edit_meta::param::NEW_STRING.name,
+            edit_meta::param::NEW_STRING.description,
+            edit_meta::param::NEW_STRING.required,
+        )
+        .boolean(
+            edit_meta::param::REPLACE_ALL.name,
+            edit_meta::param::REPLACE_ALL.description,
+            edit_meta::param::REPLACE_ALL.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: edit_meta::NAME.to_owned(),
+        description: edit_meta::description::ALLOWED.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

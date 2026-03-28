@@ -30,6 +30,7 @@ struct GrepArgs {
 /// Tool for searching file contents within allowed directories.
 #[derive(Debug, Clone)]
 pub struct GrepTool<const LINE_NUMBERS: bool = true> {
+    definition: ToolDefinition,
     resolver: AllowedPathResolver,
 }
 
@@ -40,44 +41,17 @@ impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
     ///
     /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
-        Self { resolver }
+        Self {
+            definition: build_definition::<LINE_NUMBERS>(),
+            resolver,
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_NUMBERS> {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                grep_meta::param::PATTERN.name,
-                grep_meta::param::PATTERN.description,
-                grep_meta::param::PATTERN.required,
-            )
-            .string(
-                grep_meta::param::PATH_ALLOWED.name,
-                grep_meta::param::PATH_ALLOWED.description,
-                grep_meta::param::PATH_ALLOWED.required,
-            )
-            .string(
-                grep_meta::param::INCLUDE.name,
-                grep_meta::param::INCLUDE.description,
-                grep_meta::param::INCLUDE.required,
-            )
-            .integer_constrained(
-                grep_meta::param::LIMIT.name,
-                grep_meta::param::LIMIT.description,
-                grep_meta::param::LIMIT.required,
-                Some(1),
-                Some(grep_meta::MAX_LIMIT as i64),
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(
-            grep_meta::NAME,
-            grep_meta::description::allowed(LINE_NUMBERS),
-        )
-        .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -135,6 +109,42 @@ impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
             path_mode: PathMode::Allowed,
             line_numbers: LINE_NUMBERS,
         }
+    }
+}
+
+fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            grep_meta::param::PATTERN.name,
+            grep_meta::param::PATTERN.description,
+            grep_meta::param::PATTERN.required,
+        )
+        .string(
+            grep_meta::param::PATH_ALLOWED.name,
+            grep_meta::param::PATH_ALLOWED.description,
+            grep_meta::param::PATH_ALLOWED.required,
+        )
+        .string(
+            grep_meta::param::INCLUDE.name,
+            grep_meta::param::INCLUDE.description,
+            grep_meta::param::INCLUDE.required,
+        )
+        .integer_constrained(
+            grep_meta::param::LIMIT.name,
+            grep_meta::param::LIMIT.description,
+            grep_meta::param::LIMIT.required,
+            Some(1),
+            Some(grep_meta::MAX_LIMIT as i64),
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: grep_meta::NAME.to_owned(),
+        description: grep_meta::description::allowed(LINE_NUMBERS).to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 

@@ -5,8 +5,9 @@
 use crate::path_util::normalize_path;
 use crate::{Availability, LinuxBwrapError, Preset};
 use parking_lot::RwLock;
+use std::collections::HashSet;
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
@@ -91,10 +92,10 @@ fn profile_name(preset: Option<Preset>) -> &'static str {
     }
 }
 
-/// Searches `PATH` directories for a file named `name` and returns the first match.
-pub(crate) fn find_binary_on_path(name: &str) -> Option<Box<Path>> {
-    let path = env::var_os("PATH")?;
-    for dir in env::split_paths(&path) {
+#[inline]
+fn find_binary_on_path_in(name: &str, path: Option<&OsStr>) -> Option<Box<Path>> {
+    let path = path?;
+    for dir in env::split_paths(path) {
         if !dir.is_absolute() || dir.as_os_str().is_empty() {
             continue;
         }
@@ -115,29 +116,59 @@ pub(crate) fn first_shell_candidate_with<F, R>(mut classify: F) -> Option<(Box<P
 where
     F: FnMut(&Path) -> Option<R>,
 {
+    first_shell_candidate_with_in(env::var_os("PATH").as_deref(), &mut classify)
+}
+
+fn first_shell_candidate_with_in<F, R>(
+    env_path: Option<&OsStr>,
+    classify: &mut F,
+) -> Option<(Box<Path>, R)>
+where
+    F: FnMut(&Path) -> Option<R>,
+{
+    let mut seen = HashSet::with_capacity(10);
+
     for name in ["bash", "sh"] {
-        if let Some(path) = find_binary_on_path(name) {
-            let path = normalize_path(path.as_ref());
-            if let Some(r) = classify(path.as_ref()) {
-                return Some((path, r));
+        if let Some(shell_path) = find_binary_on_path_in(name, env_path) {
+            if let Some(result) = classify_shell_candidate(classify, &mut seen, shell_path) {
+                return Some(result);
             }
         }
     }
+
     for candidate in SHELL_CANDIDATES {
-        let path = PathBuf::from(candidate);
-        if path.is_file() {
-            let path = normalize_path(&path);
-            if let Some(r) = classify(path.as_ref()) {
-                return Some((path, r));
+        let candidate_path = PathBuf::from(candidate);
+        if candidate_path.is_file() {
+            if let Some(result) =
+                classify_shell_candidate(classify, &mut seen, candidate_path.into_boxed_path())
+            {
+                return Some(result);
             }
         }
     }
+
     None
 }
 
-/// Returns any available host shell (`bash` preferred, then `sh`).
-pub(crate) fn resolve_host_shell() -> Option<Box<Path>> {
-    first_shell_candidate_with(|_| Some(())).map(|(path, _)| path)
+#[inline]
+fn classify_shell_candidate<F, R>(
+    classify: &mut F,
+    seen: &mut HashSet<Box<Path>>,
+    path: Box<Path>,
+) -> Option<(Box<Path>, R)>
+where
+    F: FnMut(&Path) -> Option<R>,
+{
+    let path = normalize_path(path.as_ref());
+    if !seen.insert(path.clone()) {
+        return None;
+    }
+    classify(path.as_ref()).map(|result| (path, result))
+}
+
+#[inline]
+fn resolve_host_shell_in(path: Option<&OsStr>) -> Option<Box<Path>> {
+    first_shell_candidate_with_in(path, &mut |_| Some(())).map(|(path, _)| path)
 }
 
 fn probe_backend() -> LinuxBwrapBackend {
@@ -157,7 +188,7 @@ fn probe_backend() -> LinuxBwrapBackend {
         }
     }
 
-    let backend = probe_backend_uncached();
+    let backend = probe_backend_uncached(path.as_deref());
     *cache.write() = Some((path, backend.clone()));
     backend
 }
@@ -166,31 +197,14 @@ fn probe_backend() -> LinuxBwrapBackend {
 ///
 /// The probe binds the host root read-only and runs a tiny shell command. That
 /// checks both namespace support and shell visibility on FHS and Nix systems.
-fn probe_backend_uncached() -> LinuxBwrapBackend {
-    let Some(bwrap) = find_binary_on_path("bwrap") else {
+fn probe_backend_uncached(path: Option<&OsStr>) -> LinuxBwrapBackend {
+    let Some(bwrap) = find_binary_on_path_in("bwrap", path) else {
         return LinuxBwrapBackend::MissingBinary {
             reason: Box::from("`bwrap` was not found on PATH"),
         };
     };
 
-    let version = Command::new(bwrap.as_os_str())
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output();
-    let Ok(version) = version else {
-        return LinuxBwrapBackend::MissingBinary {
-            reason: format!("failed to execute {}", bwrap.display()).into_boxed_str(),
-        };
-    };
-    if !version.status.success() {
-        return LinuxBwrapBackend::Unusable {
-            reason: probe_failure_reason(&version, "`bwrap --version` failed"),
-        };
-    }
-
-    let Some(shell) = resolve_host_shell() else {
+    let Some(shell) = resolve_host_shell_in(path) else {
         return LinuxBwrapBackend::Unusable {
             reason: Box::from("no usable host shell (`bash` or `sh`) was found"),
         };
@@ -257,6 +271,11 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    /// Searches `PATH` directories for a file named `name` and returns the first match.
+    fn find_binary_on_path(name: &str) -> Option<Box<Path>> {
+        find_binary_on_path_in(name, env::var_os("PATH").as_deref())
+    }
+
     // These tests swap PATH and exercise a process-wide availability cache, so
     // cases that probe `bwrap` run serially to avoid cross-test contamination.
 
@@ -298,14 +317,6 @@ mod tests {
         // Make `bwrap` look installed, then fail the "can it sandbox?" probe.
         let script = format!(
             r#"#!/bin/sh
-# Handle --version probe
-for arg in "$@"; do
-    if [ "$arg" = "--version" ]; then
-        echo "bubblewrap 0.8.0"
-        exit 0
-    fi
-done
-# Fail the "can it sandbox?" probe
 echo "{}" >&2
 exit 1
 "#,

@@ -28,46 +28,31 @@ struct EditArgs {
 }
 
 /// Tool for making exact string replacements in files.
-#[derive(Debug, Clone, Default)]
-pub struct EditTool;
+#[derive(Debug, Clone)]
+pub struct EditTool {
+    definition: ToolDefinition,
+}
+
+impl Default for EditTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EditTool {
     /// Creates a new edit tool instance.
     #[inline]
     pub fn new() -> Self {
-        Self
+        Self {
+            definition: build_definition(),
+        }
     }
 }
 
 #[async_trait]
 impl<Deps: Send + Sync> Tool<Deps> for EditTool {
     fn definition(&self) -> ToolDefinition {
-        let schema = SchemaBuilder::new()
-            .string(
-                edit_meta::param::FILE_PATH_ABSOLUTE.name,
-                edit_meta::param::FILE_PATH_ABSOLUTE.description,
-                edit_meta::param::FILE_PATH_ABSOLUTE.required,
-            )
-            .string(
-                edit_meta::param::OLD_STRING.name,
-                edit_meta::param::OLD_STRING.description,
-                edit_meta::param::OLD_STRING.required,
-            )
-            .string(
-                edit_meta::param::NEW_STRING.name,
-                edit_meta::param::NEW_STRING.description,
-                edit_meta::param::NEW_STRING.required,
-            )
-            .boolean(
-                edit_meta::param::REPLACE_ALL.name,
-                edit_meta::param::REPLACE_ALL.description,
-                edit_meta::param::REPLACE_ALL.required,
-            )
-            .build()
-            .expect("schema build should not fail");
-
-        ToolDefinition::new(edit_meta::NAME, edit_meta::description::ABSOLUTE)
-            .with_parameters(schema)
+        self.definition.clone()
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
@@ -95,6 +80,40 @@ impl ToolContext for EditTool {
         ToolPrompt::Edit {
             path_mode: PathMode::Absolute,
         }
+    }
+}
+
+fn build_definition() -> ToolDefinition {
+    let schema = SchemaBuilder::new()
+        .string(
+            edit_meta::param::FILE_PATH_ABSOLUTE.name,
+            edit_meta::param::FILE_PATH_ABSOLUTE.description,
+            edit_meta::param::FILE_PATH_ABSOLUTE.required,
+        )
+        .string(
+            edit_meta::param::OLD_STRING.name,
+            edit_meta::param::OLD_STRING.description,
+            edit_meta::param::OLD_STRING.required,
+        )
+        .string(
+            edit_meta::param::NEW_STRING.name,
+            edit_meta::param::NEW_STRING.description,
+            edit_meta::param::NEW_STRING.required,
+        )
+        .boolean(
+            edit_meta::param::REPLACE_ALL.name,
+            edit_meta::param::REPLACE_ALL.description,
+            edit_meta::param::REPLACE_ALL.required,
+        )
+        .build()
+        .expect("schema build should not fail");
+
+    ToolDefinition {
+        name: edit_meta::NAME.to_owned(),
+        description: edit_meta::description::ABSOLUTE.to_owned(),
+        parameters_json_schema: schema,
+        strict: None,
+        outer_typed_dict_key: None,
     }
 }
 
