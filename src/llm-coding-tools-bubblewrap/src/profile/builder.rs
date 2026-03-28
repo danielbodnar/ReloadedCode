@@ -442,11 +442,12 @@ fn build_static_args(builder: &Builder) -> Arc<[OsString]> {
 
     if builder.read_only_host_rootfs {
         push_bind(&mut args, "--ro-bind", Path::new("/"), Path::new("/"));
-    } else {
-        push_same_path_binds(&mut args, "--ro-bind", builder.read_only_mounts.as_ref());
     }
     push_tmpfs_mounts(&mut args, builder.tmpfs_overlays.as_ref());
     push_file_overlay_mounts(&mut args, builder.file_overlays.as_ref());
+    if !builder.read_only_host_rootfs {
+        push_same_path_binds(&mut args, "--ro-bind", builder.read_only_mounts.as_ref());
+    }
     push_symlinks(&mut args, builder.compat_symlinks.as_ref());
     args.extend([
         OsString::from("--dev"),

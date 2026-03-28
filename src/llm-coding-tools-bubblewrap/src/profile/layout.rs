@@ -76,6 +76,8 @@ impl<'config> SandboxLayout<'config> {
             return Some(PathMapping::SamePath);
         }
         // Extra mounts: user-specified read-only and read-write bind mounts.
+        // Both appear after tmpfs/file overlays in the bwrap arg list, so they
+        // always take precedence over any overlay at overlapping paths.
         if self
             .read_only_mounts
             .iter()
