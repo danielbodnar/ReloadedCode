@@ -7,11 +7,13 @@
 
 use super::layout::SandboxLayout;
 use super::types::{
-    Availability, EnvVar, FileMount, NetworkPolicy, Preset, Profile, Symlink, TmpBacking,
+    Availability, EnvVar, FileMount, FileOverlay, NetworkPolicy, Preset, Profile, Symlink,
+    TmpBacking,
 };
 use super::validation::{
     ensure_cache_root_subdirs, validate_absolute_path, validate_directory_path, validate_env_vars,
-    validate_mount_paths, validate_symlinks, validate_tmp_backing, validate_tmpfs_overlays,
+    validate_file_overlays, validate_mount_paths, validate_symlinks, validate_tmp_backing,
+    validate_tmpfs_overlays,
 };
 use crate::probe::{first_shell_candidate_matching, resolve_backend_or_error_for};
 use crate::LinuxBwrapError;
@@ -96,6 +98,8 @@ pub struct Builder {
     pub(crate) read_write_mounts: Arc<[Box<Path>]>,
     /// Sandbox paths backed by `tmpfs` (writable, discarded on exit).
     pub(crate) tmpfs_overlays: Arc<[Box<Path>]>,
+    /// Sandbox files replaced by a read-only bind-mount of a host file.
+    pub(crate) file_overlays: Arc<[FileOverlay]>,
     /// Individual files mounted read-only for credential injection.
     pub(crate) credential_file_mounts: Arc<[FileMount]>,
     /// When `true`, the entire host rootfs is mounted read-only instead of individual read-only mounts.
@@ -150,6 +154,7 @@ impl Builder {
             read_only_mounts: Arc::new([]),
             read_write_mounts: Arc::new([]),
             tmpfs_overlays: Arc::new([]),
+            file_overlays: Arc::new([]),
             credential_file_mounts: Arc::new([]),
             read_only_host_rootfs: false,
             network_policy: NetworkPolicy::Disabled,
@@ -213,6 +218,7 @@ impl Builder {
             read_only_mounts: self.read_only_mounts,
             read_write_mounts: self.read_write_mounts,
             tmpfs_overlays: self.tmpfs_overlays,
+            file_overlays: self.file_overlays,
             credential_file_mounts: self.credential_file_mounts,
             read_only_host_rootfs: self.read_only_host_rootfs,
             network_policy: self.network_policy,
@@ -271,6 +277,15 @@ impl Builder {
     /// Replaces the tmpfs overlay list.
     pub fn with_tmpfs_overlays(mut self, mounts: impl Into<Arc<[Box<Path>]>>) -> Self {
         self.tmpfs_overlays = mounts.into();
+        self
+    }
+
+    /// Replaces the file overlay list.
+    ///
+    /// Each overlay replaces a sandbox file with a read-only bind-mount of
+    /// the specified host source file.
+    pub fn with_file_overlays(mut self, overlays: impl Into<Arc<[FileOverlay]>>) -> Self {
+        self.file_overlays = overlays.into();
         self
     }
 
@@ -337,6 +352,7 @@ fn validate_builder(builder: &Builder) -> Result<(), LinuxBwrapError> {
     validate_mount_paths(&builder.read_only_mounts, "read-only mount source")?;
     validate_mount_paths(&builder.read_write_mounts, "read-write mount source")?;
     validate_tmpfs_overlays(&builder.tmpfs_overlays)?;
+    validate_file_overlays(&builder.file_overlays)?;
     validate_symlinks(&builder.compat_symlinks)?;
     validate_env_vars(builder.default_env.as_ref(), "default")?;
     validate_env_vars(builder.extra_env.as_ref(), "extra")?;
@@ -401,6 +417,7 @@ fn builder_sandbox_layout(builder: &Builder) -> SandboxLayout<'_> {
         tmp_backing: &builder.tmp_backing,
         read_only_host_rootfs: builder.read_only_host_rootfs,
         tmpfs_overlays: builder.tmpfs_overlays.as_ref(),
+        file_overlays: builder.file_overlays.as_ref(),
         read_only_mounts: builder.read_only_mounts.as_ref(),
         read_write_mounts: builder.read_write_mounts.as_ref(),
     }
@@ -429,6 +446,7 @@ fn build_static_args(builder: &Builder) -> Arc<[OsString]> {
         push_same_path_binds(&mut args, "--ro-bind", builder.read_only_mounts.as_ref());
     }
     push_tmpfs_mounts(&mut args, builder.tmpfs_overlays.as_ref());
+    push_file_overlay_mounts(&mut args, builder.file_overlays.as_ref());
     push_symlinks(&mut args, builder.compat_symlinks.as_ref());
     args.extend([
         OsString::from("--dev"),
@@ -475,6 +493,7 @@ fn arg_capacity_for(builder: &Builder) -> usize {
         + builder.credential_file_mounts.len() * 3
         + builder.compat_symlinks.len() * 3
         + builder.tmpfs_overlays.len() * 2
+        + builder.file_overlays.len() * 3
         + usize::from(builder.mount_cache_root) * 3;
     let tmp_slots = match builder.tmp_backing {
         TmpBacking::Tmpfs => 2,
@@ -525,6 +544,12 @@ fn push_tmpfs_mounts(args: &mut Vec<OsString>, paths: &[Box<Path>]) {
     for path in paths {
         args.push(OsString::from("--tmpfs"));
         args.push(path.as_os_str().into());
+    }
+}
+
+fn push_file_overlay_mounts(args: &mut Vec<OsString>, overlays: &[FileOverlay]) {
+    for overlay in overlays {
+        push_bind(args, "--ro-bind", overlay.source(), overlay.dest());
     }
 }
 

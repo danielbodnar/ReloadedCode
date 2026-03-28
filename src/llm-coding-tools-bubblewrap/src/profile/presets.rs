@@ -6,7 +6,7 @@
 //! before calling [`crate::profile::Builder::build`].
 
 use super::builder::Builder;
-use super::types::{EnvVar, NetworkPolicy, Preset, Symlink, TmpBacking};
+use super::types::{EnvVar, FileOverlay, NetworkPolicy, Preset, Symlink, TmpBacking};
 use crate::path_util::normalize_path;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -62,15 +62,15 @@ impl Builder {
     /// send out any data it can read.
     ///
     /// - mounts the host root read-only
-    /// - overlays tmpfs on `/home` and `/etc/shadow`
+    /// - overlays tmpfs on `/home`; masks `/etc/shadow` with an empty file
     /// - uses a synthetic home at `/home/sandbox`
     /// - clears the inherited env and sets a cleaned `PATH`, `HOME`, `TMPDIR`, and `XDG_*`
     /// - keeps network enabled
     /// - bind-mounts the `host_tmp` directory at `/tmp`
     ///
     /// Writable state stays in the synthetic home, workspace, cache root, and
-    /// tmpfs overlays. `/etc/shadow` gets a tmpfs overlay so password hashes are
-    /// not exposed.
+    /// tmpfs overlays. `/etc/shadow` is masked by a read-only bind-mount of an
+    /// empty regular file so password hashes are not exposed.
     ///
     /// # Arguments
     /// - `workspace` - Host path to the workspace directory.
@@ -91,10 +91,11 @@ impl Builder {
             .with_preset(Preset::TrustedMaintenance)
             .with_synthetic_home_dest(Path::new(SYNTHETIC_HOME_DEST))
             .with_read_only_host_rootfs(true)
-            .with_tmpfs_overlays(Arc::from([
-                Box::from(Path::new("/home")),
-                Box::from(Path::new("/etc/shadow")),
-            ]))
+            .with_tmpfs_overlays(Arc::from([Box::from(Path::new("/home"))]))
+            .with_file_overlays(Arc::from([FileOverlay::new(
+                Path::new("/dev/null"),
+                Path::new("/etc/shadow"),
+            )]))
             .with_clear_env(true)
             .with_network_policy(NetworkPolicy::Enabled)
             .with_default_env(Arc::from([
@@ -283,6 +284,8 @@ mod tests {
 
         assert!(public.tmpfs_overlays().is_empty());
         assert!(!trusted.tmpfs_overlays().is_empty());
+        assert!(public.file_overlays().is_empty());
+        assert!(!trusted.file_overlays().is_empty());
 
         assert_eq!(public.network_policy(), NetworkPolicy::Disabled);
         assert_eq!(trusted.network_policy(), NetworkPolicy::Enabled);

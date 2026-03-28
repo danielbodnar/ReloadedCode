@@ -7,7 +7,7 @@
 //! Callers need this to pick a usable shell, translate a working directory,
 //! or validate a user-supplied path before launching a sandboxed command.
 
-use super::types::TmpBacking;
+use super::types::{FileOverlay, TmpBacking};
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
@@ -28,6 +28,7 @@ pub(crate) struct SandboxLayout<'a> {
     pub(crate) tmp_backing: &'a TmpBacking,
     pub(crate) read_only_host_rootfs: bool,
     pub(crate) tmpfs_overlays: &'a [Box<Path>],
+    pub(crate) file_overlays: &'a [FileOverlay],
     pub(crate) read_only_mounts: &'a [Box<Path>],
     pub(crate) read_write_mounts: &'a [Box<Path>],
 }
@@ -86,7 +87,12 @@ impl<'config> SandboxLayout<'config> {
         // Read-only host rootfs: everything else is visible unless a tmpfs
         // overlay hides it.
         if self.read_only_host_rootfs
-            && !path_hidden_by_overlay(self.tmpfs_overlays, self.tmp_backing, entry)
+            && !path_hidden_by_overlay(
+                self.tmpfs_overlays,
+                self.file_overlays,
+                self.tmp_backing,
+                entry,
+            )
         {
             return Some(PathMapping::SamePath);
         }
@@ -109,13 +115,21 @@ impl<'config> SandboxLayout<'config> {
 /// [`tmpfs_overlays`]: SandboxLayout::tmpfs_overlays
 pub(crate) fn path_hidden_by_overlay(
     tmpfs_overlays: &[Box<Path>],
+    file_overlays: &[FileOverlay],
     tmp_backing: &TmpBacking,
     entry: &Path,
 ) -> bool {
-    // Explicit overlays (e.g. /home/user/.cache) always shadow the host.
+    // Explicit overlays (e.g. /home) always shadow the host.
     if tmpfs_overlays
         .iter()
         .any(|overlay| entry.starts_with(overlay))
+    {
+        return true;
+    }
+    // File overlays (e.g. /etc/shadow) mask the exact file.
+    if file_overlays
+        .iter()
+        .any(|overlay| *entry == *overlay.dest())
     {
         return true;
     }

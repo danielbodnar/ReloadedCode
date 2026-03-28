@@ -92,7 +92,7 @@ bwrap prefix (flags, mounts, env). `wrap_command` only appends `--chdir
 | Network            | off (`--unshare-net`)      | on                             |
 | Host filesystem    | selective read-only mounts | full `/` read-only             |
 | Writable areas     | workspace, home, `/tmp`    | workspace, home, cache, `/tmp` |
-| `/etc/shadow`      | hidden (not mounted)       | hidden (tmpfs overlay)         |
+| `/etc/shadow`      | hidden (not mounted)       | hidden (file overlay)          |
 | Cache root         | not mounted                | bind-mounted                   |
 | Env                | cleared, sanitized PATH    | cleared, PATH + XDG + TMPDIR   |
 | Safe for untrusted | yes                        | no                             |

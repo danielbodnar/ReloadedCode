@@ -214,6 +214,46 @@ impl FileMount {
     }
 }
 
+/// One read-only file overlay inside the sandbox.
+///
+/// Replaces a file anywhere in the sandbox rootfs with content from a host
+/// file via a read-only bind-mount. Unlike [`FileMount`], the destination is
+/// not restricted to mounted prefixes - it can target any absolute path such
+/// as `/etc/shadow` or `/etc/hostname`.
+///
+/// # Validation
+/// - The source must be an absolute regular file on the host.
+/// - The destination must be an absolute path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileOverlay {
+    source: Box<Path>,
+    dest: Box<Path>,
+}
+
+impl FileOverlay {
+    /// Creates a file overlay.
+    ///
+    /// # Arguments
+    /// - `source` - The host file whose content is bind-mounted read-only.
+    /// - `dest` - The sandbox path to be replaced.
+    pub fn new(source: impl Into<Box<Path>>, dest: impl Into<Box<Path>>) -> Self {
+        Self {
+            source: source.into(),
+            dest: dest.into(),
+        }
+    }
+
+    /// Returns the host source file path.
+    pub fn source(&self) -> &Path {
+        &self.source
+    }
+
+    /// Returns the sandbox destination path.
+    pub fn dest(&self) -> &Path {
+        &self.dest
+    }
+}
+
 /// A validated bubblewrap profile ready for repeated command wrapping.
 ///
 /// Build this with [`crate::profile::Builder::build`](crate::profile::Builder::build).
@@ -236,6 +276,7 @@ pub struct Profile {
     pub(crate) read_only_mounts: Arc<[Box<Path>]>,
     pub(crate) read_write_mounts: Arc<[Box<Path>]>,
     pub(crate) tmpfs_overlays: Arc<[Box<Path>]>,
+    pub(crate) file_overlays: Arc<[FileOverlay]>,
     pub(crate) credential_file_mounts: Arc<[FileMount]>,
     pub(crate) read_only_host_rootfs: bool,
     pub(crate) network_policy: NetworkPolicy,
@@ -335,6 +376,14 @@ impl Profile {
         &self.tmpfs_overlays
     }
 
+    /// Returns the file overlays as a slice.
+    ///
+    /// Each overlay replaces a sandbox file with a read-only bind-mount of a
+    /// host file, effectively masking the original content.
+    pub fn file_overlays(&self) -> &[FileOverlay] {
+        &self.file_overlays
+    }
+
     /// Returns the credential file mounts as a slice.
     ///
     /// Make sure destination parent directories exist before launch.
@@ -430,6 +479,7 @@ impl Profile {
             tmp_backing: self.tmp_backing(),
             read_only_host_rootfs: self.read_only_host_rootfs(),
             tmpfs_overlays: self.tmpfs_overlays(),
+            file_overlays: self.file_overlays(),
             read_only_mounts: self.read_only_mounts(),
             read_write_mounts: self.read_write_mounts(),
         }
@@ -456,6 +506,7 @@ mod tests {
             read_only_mounts: Arc::new([]),
             read_write_mounts: Arc::new([]),
             tmpfs_overlays: Arc::new([]),
+            file_overlays: Arc::new([]),
             credential_file_mounts: Arc::new([]),
             read_only_host_rootfs: false,
             network_policy: NetworkPolicy::Disabled,

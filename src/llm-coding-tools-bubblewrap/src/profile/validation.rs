@@ -14,13 +14,13 @@
 //! - **Directory & path checks**: [`validate_absolute_path`],
 //!   [`validate_directory_path`], [`validate_optional_directory_path`],
 //!   [`validate_existing_path`], [`validate_mount_paths`]
-//! - **Overlay checks**: [`validate_tmpfs_overlays`]
+//! - **Overlay checks**: [`validate_tmpfs_overlays`], [`validate_file_overlays`]
 //! - **Symlink checks**: [`validate_symlinks`]
 //! - **Environment variable checks**: [`validate_env_vars`]
 //! - **Tmp backing checks**: [`validate_tmp_backing`]
 //! - **Cache setup**: [`ensure_cache_root_subdirs`]
 
-use super::types::{EnvVar, Symlink, TmpBacking};
+use super::types::{EnvVar, FileOverlay, Symlink, TmpBacking};
 use crate::LinuxBwrapError;
 use std::fs;
 use std::path::Path;
@@ -117,6 +117,18 @@ pub(crate) fn validate_mount_paths(
 pub(crate) fn validate_tmpfs_overlays(overlays: &[Box<Path>]) -> Result<(), LinuxBwrapError> {
     for overlay in overlays {
         validate_absolute_path(overlay, "tmpfs overlay path")?;
+    }
+    Ok(())
+}
+
+/// Validates file overlay entries.
+///
+/// The source must be an absolute path that exists on the host. The destination
+/// must be an absolute path.
+pub(crate) fn validate_file_overlays(overlays: &[FileOverlay]) -> Result<(), LinuxBwrapError> {
+    for overlay in overlays {
+        validate_existing_path(overlay.source(), "file overlay source")?;
+        validate_absolute_path(overlay.dest(), "file overlay destination")?;
     }
     Ok(())
 }

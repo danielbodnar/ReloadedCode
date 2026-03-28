@@ -14,5 +14,6 @@ pub(crate) mod validation;
 
 pub use builder::Builder;
 pub use types::{
-    Availability, EnvVar, FileMount, NetworkPolicy, Preset, Profile, Symlink, TmpBacking,
+    Availability, EnvVar, FileMount, FileOverlay, NetworkPolicy, Preset, Profile, Symlink,
+    TmpBacking,
 };
