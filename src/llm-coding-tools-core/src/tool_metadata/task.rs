@@ -24,10 +24,6 @@ pub mod param {
     pub const SUBAGENT_TYPE: ParamMetadata =
         ParamMetadata::new("subagent_type", "Exact name of the target subagent.", true);
 
-    /// `session_id` parameter metadata.
-    pub const SESSION_ID: ParamMetadata =
-        ParamMetadata::new("session_id", "Unsupported in this runtime; omit.", false);
-
     /// `command` parameter metadata.
     pub const COMMAND: ParamMetadata =
         ParamMetadata::new("command", "Source command or slash-command context.", false);

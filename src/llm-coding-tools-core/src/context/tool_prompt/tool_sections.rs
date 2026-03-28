@@ -217,11 +217,7 @@ fn write_todo_write_section(output: &mut String) {
 fn write_task_section(output: &mut String, facts: ToolPromptFacts) {
     push_block(
         output,
-        formatcp!(
-            "- This runtime is stateless. Do not pass `{}`.\n\
-            - Use it for real delegation, custom slash commands, or independent sub-work you can run in parallel.\n",
-            crate::tool_metadata::task::param::SESSION_ID.name,
-        ),
+        "- Use task for real delegation, custom slash commands, or independent sub-work you can run in parallel.\n",
     );
 
     let mut tools = [""; 3];

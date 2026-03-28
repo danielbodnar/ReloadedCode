@@ -1,7 +1,7 @@
 //! Markdown-agent runtime example using models.dev catalog.
 //!
 //! Loads markdown agents through [`AgentLoader`], builds one named agent through
-//! [`AgentRuntimeBuilder`], and runs it without Task/delegation.
+//! [`AgentBuildContext`], and runs it.
 //!
 //! The model catalog is loaded from models.dev, which provides up-to-date
 //! provider and model information from <https://models.dev/api.json>.
@@ -12,8 +12,8 @@
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
 use llm_coding_tools_core::CredentialResolver;
 use llm_coding_tools_models_dev::ModelsDevCatalog;
-use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeExt};
-use std::path::PathBuf;
+use llm_coding_tools_serdesai::{AgentBuildContext, AgentDefaults};
+use std::{path::PathBuf, sync::Arc};
 
 const AGENT_NAME: &str = "basic/file-reader";
 const MODEL_ID: &str = "synthetic/hf:zai-org/GLM-4.7-Flash";
@@ -43,12 +43,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .catalog(catalog)
         .defaults(AgentDefaults::with_model(MODEL_ID))
         .build();
+    let build_context = AgentBuildContext::new(
+        Arc::new(runtime),
+        Arc::new(load_result.catalog),
+        Arc::new(credentials),
+    );
 
     println!(
         "Loading named agent `{AGENT_NAME}` from {}",
         examples_root.display()
     );
-    let agent = runtime.build(AGENT_NAME, &load_result.catalog, &credentials)?;
+    let agent = build_context.build(AGENT_NAME)?;
     println!(
         "Built `{AGENT_NAME}` on demand with {} tools.",
         agent.tools().len()

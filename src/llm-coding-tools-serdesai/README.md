@@ -103,19 +103,23 @@ More info in [SANDBOX-PROFILES.md](https://github.com/Sewer56/llm-coding-tools/b
 
 ## Agent Runtime
 
-For OpenCode-style agent support, use `AgentRuntimeExt` to build agents from an [`AgentRuntime`](https://docs.rs/llm-coding-tools-agents/latest/llm_coding_tools_agents/struct.AgentRuntime.html):
+For OpenCode-style agent support, create an [`AgentBuildContext`] from shared runtime inputs and build agents by name:
 
 ```rust,no_run
-use llm_coding_tools_serdesai::AgentRuntimeExt;
+use llm_coding_tools_serdesai::AgentBuildContext;
 use llm_coding_tools_agents::AgentRuntimeBuilder;
 use llm_coding_tools_core::{CredentialResolver, models::ModelCatalog};
+use std::sync::Arc;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 # fn get_catalog() -> ModelCatalog { unimplemented!() }
 let runtime = AgentRuntimeBuilder::new().build();
-let catalog = get_catalog(); // Load from models-dev, config file, etc.
-let credentials = CredentialResolver::new();
-let _agent = runtime.build("planner", &catalog, &credentials)?;
+let build_context = AgentBuildContext::new(
+    Arc::new(runtime),
+    Arc::new(get_catalog()), // Load from models-dev, config file, etc.
+    Arc::new(CredentialResolver::new()),
+);
+let _agent = build_context.build("planner")?;
 # Ok(())
 # }
 ```
@@ -124,13 +128,13 @@ This requires the `llm-coding-tools-agents` crate, a `ModelCatalog` for model re
 
 ### Task Tool
 
-Use [`AgentRuntimeTaskExt::build_with_task`] to build an agent that can delegate one-shot work to subagents via the Task tool.
+The same `build()` call enables Task delegation when callable targets exist and `max_task_depth` permits delegation.
 
 ```rust,no_run
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
 use llm_coding_tools_core::CredentialResolver;
 use llm_coding_tools_models_dev::ModelsDevCatalog;
-use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeTaskExt};
+use llm_coding_tools_serdesai::{AgentBuildContext, AgentDefaults};
 use std::{path::PathBuf, sync::Arc};
 
 # #[tokio::main]
@@ -147,24 +151,23 @@ let runtime = AgentRuntimeBuilder::new()
     // .max_task_depth(5) // Optional: defaults to 3 Task hops
     .build();
 
-let credentials = Arc::new(CredentialResolver::new());
-let agent = runtime.build_with_task(
-    "orchestrator",
+let build_context = AgentBuildContext::new(
+    Arc::new(runtime),
     Arc::new(load_result.catalog),
-    credentials,
-)?;
+    Arc::new(CredentialResolver::new()),
+);
+let agent = build_context.build("orchestrator")?;
 # Ok(())
 # }
 ```
 
 This requires the `llm-coding-tools-models-dev` crate; the example uses `ModelsDevCatalog::load()` to obtain a `ModelCatalog` for model resolution.
 
-Each Task call builds and runs the subagent once, and rejects `session_id`.
+Each Task call builds and runs the subagent once.
 
 Normal tools default to `deny` when omitted, but omitted `permission.task`
 is auto-enabled if any task is callable for OpenCode compatibility.
 
-Use [`build_agent_with_credentials_and_task`] for the lower-level helper.
 See [examples/serdesai-task.rs](examples/serdesai-task.rs).
 
 ## Examples
@@ -179,12 +182,14 @@ cargo run --example serdesai-sandboxed -p llm-coding-tools-serdesai
 # Execution with Sandboxed `bash`
 cargo run --example serdesai-sandboxed-bash --features linux-bubblewrap -p llm-coding-tools-serdesai
 
-# Markdown agent runtime (no delegation)
+# Markdown agent runtime (shared build context)
 cargo run --example serdesai-agents -p llm-coding-tools-serdesai
 
 # Stateless single-hop Task delegation
 cargo run --example serdesai-task -p llm-coding-tools-serdesai
 ```
+
+For agent runtime architecture, see [AGENTS-ARCHITECTURE.md](AGENTS-ARCHITECTURE.md).
 
 ## License
 

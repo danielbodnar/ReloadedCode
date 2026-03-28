@@ -75,8 +75,6 @@ pub struct TaskInput {
     pub prompt: String,
     /// The subagent type/name to invoke.
     pub subagent_type: String,
-    /// Optional session ID to continue an existing task session.
-    pub session_id: Option<String>,
     /// Optional command that triggered this task (for context).
     pub command: Option<String>,
 }
@@ -86,8 +84,6 @@ pub struct TaskInput {
 pub struct TaskOutput {
     /// The text summary/response from the agent.
     pub summary: String,
-    /// Session ID for continuation (if supported by implementation).
-    pub session_id: Option<String>,
     /// Optional metadata from the execution.
     pub metadata: Option<Value>,
 }
@@ -98,16 +94,8 @@ impl TaskOutput {
     pub fn new(summary: impl Into<String>) -> Self {
         Self {
             summary: summary.into(),
-            session_id: None,
             metadata: None,
         }
-    }
-
-    /// Sets the session ID.
-    #[inline]
-    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
-        self.session_id = Some(session_id.into());
-        self
     }
 
     /// Sets metadata.

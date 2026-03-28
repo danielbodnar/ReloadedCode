@@ -4,7 +4,7 @@
 //! then builds and runs that agent with the caller's prompt.
 //! Each call is independent — no session state is kept between runs.
 
-use crate::agent_runtime::{TaskBuildContext, build_task_enabled_agent};
+use crate::agent_runtime::{TaskBuildContext, build_agent};
 use llm_coding_tools_agents::{AgentMode, RulesetExt};
 use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::task as task_meta;
@@ -34,7 +34,7 @@ impl<C> TaskHandle<C>
 where
     C: CredentialLookup + Send + Sync + 'static,
 {
-    /// Creates a new handle over the shared task-enabled build context.
+    /// Creates a new handle over the shared build context.
     #[inline]
     pub(crate) fn new(context: Arc<TaskBuildContext<C>>, current_depth: u8) -> Self {
         Self {
@@ -58,7 +58,6 @@ where
     /// # Errors
     ///
     /// Returns [`ToolError::ValidationFailed`] when:
-    /// - `session_id` is present (task sessions are unsupported).
     /// - The caller is already at the configured maximum Task delegation depth.
     /// - The caller or target agent is missing from the catalog.
     /// - The target uses [`AgentMode::Primary`].
@@ -71,14 +70,6 @@ where
         caller_name: &str,
         input: TaskInput,
     ) -> Result<TaskOutput, ToolError> {
-        if input.session_id.is_some() {
-            return Err(ToolError::validation_error(
-                task_meta::NAME,
-                Some("session_id".to_string()),
-                "task sessions are not supported by this runtime; omit `session_id`",
-            ));
-        }
-
         let target_name = input.subagent_type.clone();
         let task_settings = self.context.runtime().task_settings();
         if !task_settings.allows_delegation(self.current_depth) {
@@ -95,7 +86,7 @@ where
         }
 
         self.validate_target(caller_name, &target_name)?;
-        let agent = build_task_enabled_agent::<C>(
+        let agent = build_agent::<C>(
             self.context.clone(),
             target_name.as_str(),
             self.current_depth.saturating_add(1),
@@ -247,7 +238,7 @@ mod tests {
         runtime: llm_coding_tools_agents::AgentRuntime,
     ) -> Arc<TaskBuildContext<CredentialResolver<false>>> {
         Arc::new(TaskBuildContext::new_for_test(
-            runtime,
+            Arc::new(runtime),
             Arc::new(catalog()),
             credentials(),
         ))
@@ -268,7 +259,6 @@ mod tests {
             description: "test".into(),
             prompt: "test prompt".into(),
             subagent_type: "nonexistent".into(),
-            session_id: None,
             command: None,
         };
 
@@ -301,7 +291,6 @@ mod tests {
             description: "test".into(),
             prompt: "test prompt".into(),
             subagent_type: "primary-agent".into(),
-            session_id: None,
             command: None,
         };
 
@@ -338,7 +327,6 @@ mod tests {
             description: "test".into(),
             prompt: "test prompt".into(),
             subagent_type: "target".into(),
-            session_id: None,
             command: None,
         };
 
@@ -352,41 +340,6 @@ mod tests {
                 let error_message = &errors[0].message;
                 assert!(error_message.contains("not allowed"));
                 assert!(error_message.contains("caller"));
-            }
-            _ => panic!("Expected ValidationFailed error, got: {:?}", err),
-        }
-    }
-
-    #[tokio::test]
-    async fn execute_rejects_session_id() {
-        let runtime = runtime_with_agents(vec![
-            agent("caller", AgentMode::All, allow_tools(&[task_meta::NAME])),
-            agent("target", AgentMode::All, allow_tools(&[])),
-        ])
-        .build();
-        let context = build_test_context(runtime);
-        let handle = TaskHandle::new(context, 0);
-
-        let input = TaskInput {
-            description: "test".into(),
-            prompt: "test prompt".into(),
-            subagent_type: "target".into(),
-            session_id: Some("session-123".into()),
-            command: None,
-        };
-
-        let result = handle.execute("caller", input).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        match &err {
-            ToolError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, task_meta::NAME);
-                assert!(!errors.is_empty());
-                let error_field = errors[0].field.as_ref().expect("Expected field");
-                assert_eq!(error_field, "session_id");
-                let error_message = &errors[0].message;
-                assert!(error_message.contains("not supported"));
-                assert!(error_message.contains("omit"));
             }
             _ => panic!("Expected ValidationFailed error, got: {:?}", err),
         }
@@ -410,7 +363,6 @@ mod tests {
             description: "test".into(),
             prompt: "test prompt".into(),
             subagent_type: "target".into(),
-            session_id: None,
             command: None,
         };
 

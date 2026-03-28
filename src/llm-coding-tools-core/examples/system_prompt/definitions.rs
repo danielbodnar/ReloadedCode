@@ -339,10 +339,6 @@ fn push_task_definition(definitions: &mut Vec<Value>, case: PromptCase) {
                     string_schema(tool_metadata::task::param::SUBAGENT_TYPE.description),
                 ),
                 (
-                    tool_metadata::task::param::SESSION_ID.name,
-                    string_schema(tool_metadata::task::param::SESSION_ID.description),
-                ),
-                (
                     tool_metadata::task::param::COMMAND.name,
                     string_schema(tool_metadata::task::param::COMMAND.description),
                 ),

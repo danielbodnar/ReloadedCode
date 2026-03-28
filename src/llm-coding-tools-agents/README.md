@@ -91,3 +91,5 @@ while settings with no runtime effect are accepted and ignored:
   ([docs](https://opencode.ai/docs/permissions#what-ask-does)).
 - [`hidden`](https://opencode.ai/docs/agents#hidden) is accepted for
   compatibility, but ignored at runtime.
+
+For the internal architecture, see [ARCHITECTURE.md](https://github.com/Sewer56/llm-coding-tools/blob/main/src/llm-coding-tools-agents/ARCHITECTURE.md).

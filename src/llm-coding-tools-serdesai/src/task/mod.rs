@@ -5,7 +5,7 @@
 //! - [`render_task_targets`] - Renders callable targets for Task descriptions.
 //!
 //! The concrete runtime pieces that execute delegated work stay crate-private so
-//! callers use the public task-enabled build APIs instead of constructing Task
+//! callers use the public build API instead of constructing Task
 //! tools by hand.
 
 mod definition;
