@@ -5,7 +5,7 @@
 //! [`crate::profile::Builder::trusted_maintenance`] for preset defaults.
 //! Call [`crate::profile::Builder::build`] when you are done.
 
-use super::layout::SandboxLayout;
+use super::layout::{join_mapped_path, PathMapping, SandboxLayout};
 use super::types::{
     Availability, EnvVar, FileMount, FileOverlay, NetworkPolicy, Preset, Profile, Symlink,
     TmpBacking,
@@ -15,7 +15,7 @@ use super::validation::{
     validate_file_overlays, validate_mount_paths, validate_symlinks, validate_tmp_backing,
     validate_tmpfs_overlays,
 };
-use crate::probe::{first_shell_candidate_matching, resolve_backend_or_error_for};
+use crate::probe::{first_shell_candidate_with, resolve_backend_or_error_for};
 use crate::LinuxBwrapError;
 use std::ffi::OsString;
 use std::fs;
@@ -396,8 +396,16 @@ fn credential_dest_is_allowed(builder: &Builder, dest: &Path) -> bool {
 
 fn resolve_shell_for_builder(builder: &Builder) -> Result<Box<Path>, LinuxBwrapError> {
     let layout = builder_sandbox_layout(builder);
-    if let Some(shell) = first_shell_candidate_matching(|shell| layout.path_visible(shell)) {
-        return Ok(shell);
+    if let Some((_host_shell, sandbox_path)) = first_shell_candidate_with(|shell| {
+        layout.classify(shell).map(|mapping| match mapping {
+            PathMapping::SamePath => shell.to_path_buf(),
+            PathMapping::Remap {
+                dest_prefix,
+                relative,
+            } => join_mapped_path(dest_prefix, relative).into_owned(),
+        })
+    }) {
+        return Ok(sandbox_path.into_boxed_path());
     }
 
     Err(LinuxBwrapError::Execution(

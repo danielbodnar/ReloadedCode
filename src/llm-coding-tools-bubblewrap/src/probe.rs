@@ -106,26 +106,21 @@ pub(crate) fn find_binary_on_path(name: &str) -> Option<Box<Path>> {
     None
 }
 
-/// Returns the first shell binary accepted by `accept`, checking `PATH` first
-/// then the hardcoded [`SHELL_CANDIDATES`].
+/// Returns the first shell binary for which `classify` returns [`Some`],
+/// checking `PATH` first then the hardcoded [`SHELL_CANDIDATES`].
 ///
 /// Duplicates (resolved to the same absolute path) are skipped.
-pub(crate) fn first_shell_candidate_matching<F>(mut accept: F) -> Option<Box<Path>>
+/// On success the host path and the classifier's return value are yielded
+/// together so the caller need not re-classify.
+pub(crate) fn first_shell_candidate_with<F, R>(mut classify: F) -> Option<(Box<Path>, R)>
 where
-    F: FnMut(&Path) -> bool,
+    F: FnMut(&Path) -> Option<R>,
 {
-    let mut seen: Vec<Box<Path>> = Vec::with_capacity(10);
     for name in ["bash", "sh"] {
         if let Some(path) = find_binary_on_path(name) {
             let path = normalize_path(path.as_ref());
-            if seen
-                .iter()
-                .all(|existing| existing.as_ref() != path.as_ref())
-            {
-                if accept(path.as_ref()) {
-                    return Some(path);
-                }
-                seen.push(path);
+            if let Some(r) = classify(path.as_ref()) {
+                return Some((path, r));
             }
         }
     }
@@ -133,14 +128,8 @@ where
         let path = PathBuf::from(candidate);
         if path.is_file() {
             let path = normalize_path(&path);
-            if seen
-                .iter()
-                .all(|existing| existing.as_ref() != path.as_ref())
-            {
-                if accept(path.as_ref()) {
-                    return Some(path);
-                }
-                seen.push(path);
+            if let Some(r) = classify(path.as_ref()) {
+                return Some((path, r));
             }
         }
     }
@@ -149,7 +138,7 @@ where
 
 /// Returns any available host shell (`bash` preferred, then `sh`).
 pub(crate) fn resolve_host_shell() -> Option<Box<Path>> {
-    first_shell_candidate_matching(|_| true)
+    first_shell_candidate_with(|_| Some(())).map(|(path, _)| path)
 }
 
 fn probe_backend() -> LinuxBwrapBackend {

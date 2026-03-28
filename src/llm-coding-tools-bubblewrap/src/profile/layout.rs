@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Constructed from either a [`Profile`][super::types::Profile] or an
 /// in-progress [`Builder`][super::builder::Builder] and passed to
-/// [`SandboxLayout::classify`] / [`SandboxLayout::path_visible`].
+/// [`SandboxLayout::classify`].
 #[derive(Clone, Copy)]
 pub(crate) struct SandboxLayout<'a> {
     pub(crate) workspace: &'a Path,
@@ -99,11 +99,6 @@ impl<'config> SandboxLayout<'config> {
             return Some(PathMapping::SamePath);
         }
         None
-    }
-
-    /// Returns whether a host path is visible inside the sandbox.
-    pub(crate) fn path_visible(self, entry: &Path) -> bool {
-        self.classify(entry).is_some()
     }
 }
 
