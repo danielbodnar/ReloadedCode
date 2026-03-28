@@ -468,6 +468,10 @@ impl Profile {
         )))
     }
 
+    /// Returns true only for exact path matches against prevalidated directories:
+    /// workspace(), synthetic_home(), cache_root() (when mount_cache_root()),
+    /// TmpBacking::BindHost host_dir, and entries in read_only_mounts() and read_write_mounts().
+    #[inline]
     pub(crate) fn is_prevalidated_workdir(&self, workdir: &Path) -> bool {
         workdir == self.workspace()
             || workdir == self.synthetic_home()
