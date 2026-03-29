@@ -151,18 +151,11 @@ mod tests {
 
     /// Verifies that each status variant returns the correct icon string.
     #[rstest]
-    #[case::pending("[ ]")]
-    #[case::in_progress("[>]")]
-    #[case::completed("[x]")]
-    #[case::cancelled("[-]")]
-    fn status_icons(#[case] expected: &str) {
-        let status = match expected {
-            "[ ]" => TodoStatus::Pending,
-            "[>]" => TodoStatus::InProgress,
-            "[x]" => TodoStatus::Completed,
-            "[-]" => TodoStatus::Cancelled,
-            _ => panic!("unknown icon"),
-        };
+    #[case::pending(TodoStatus::Pending, "[ ]")]
+    #[case::in_progress(TodoStatus::InProgress, "[>]")]
+    #[case::completed(TodoStatus::Completed, "[x]")]
+    #[case::cancelled(TodoStatus::Cancelled, "[-]")]
+    fn status_icons(#[case] status: TodoStatus, #[case] expected: &str) {
         assert_eq!(status.icon(), expected);
     }
 
