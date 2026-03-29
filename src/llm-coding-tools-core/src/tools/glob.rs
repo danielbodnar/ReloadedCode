@@ -185,16 +185,18 @@ mod tests {
     /// We verify this behaviour specifically to ensure the LLM does not receive
     /// unnecessary tokens for default values that provide no information.
     #[rstest]
-    #[case::partial_with_errors(true, vec!["walk error: permission denied"], true, true)]
-    #[case::clean_results_no_optional_fields(false, vec![], false, false)]
+    #[case::partial_with_errors(true, vec!["walk error: permission denied"])]
+    #[case::clean_results_no_optional_fields(false, vec![])]
     fn glob_output_serialization_omits_default_fields(
-        #[case] partial: bool,            // Whether walk encountered errors
-        #[case] errors: Vec<&str>,        // Error messages from walk
-        #[case] expect_partial_key: bool, // Should "partial" appear in JSON?
-        #[case] expect_errors_key: bool,  // Should "errors" appear in JSON?
+        #[case] partial: bool,     // Whether walk encountered errors
+        #[case] errors: Vec<&str>, // Error messages from walk
     ) {
         // Save error count before consuming the vec for assertions later
         let error_count = errors.len();
+
+        // Compute expected field presence from input values
+        let expected_partial_present = partial;
+        let expected_errors_present = !errors.is_empty();
 
         let output = GlobOutput {
             files: vec!["src/lib.rs".to_string()],
@@ -208,17 +210,17 @@ mod tests {
         // Verify presence/absence of optional fields based on their values
         assert_eq!(
             json.get("partial").is_some(),
-            expect_partial_key,
+            expected_partial_present,
             "partial field presence mismatch in JSON: {json}"
         );
         assert_eq!(
             json.get("errors").is_some(),
-            expect_errors_key,
+            expected_errors_present,
             "errors field presence mismatch in JSON: {json}"
         );
 
         // When errors are present, verify they serialized correctly
-        if expect_errors_key {
+        if expected_errors_present {
             let error_values = json.get("errors").unwrap().as_array().unwrap();
             assert_eq!(error_values.len(), error_count);
         }
