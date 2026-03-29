@@ -53,11 +53,12 @@ impl WebFetchTool {
 
     /// Creates a webfetch tool with a custom client and default settings.
     pub fn with_client(client: reqwest::Client) -> Self {
+        let max_timeout_ms = webfetch_meta::MAX_TIMEOUT_MS;
         Self {
             client,
-            definition: build_definition(),
+            definition: build_definition(max_timeout_ms),
             default_timeout_ms: webfetch_meta::DEFAULT_TIMEOUT_MS,
-            max_timeout_ms: webfetch_meta::MAX_TIMEOUT_MS,
+            max_timeout_ms,
             max_response_size: webfetch_meta::MAX_RESPONSE_SIZE_MIB * 1024 * 1024,
         }
     }
@@ -97,7 +98,7 @@ impl WebFetchTool {
         let max_response_size = max_response_size_mib.saturating_mul(1024 * 1024);
         Self {
             client: reqwest::Client::new(),
-            definition: build_definition(),
+            definition: build_definition(max_timeout_ms),
             default_timeout_ms,
             max_timeout_ms,
             max_response_size,
@@ -139,7 +140,7 @@ impl ToolContext for WebFetchTool {
     }
 }
 
-fn build_definition() -> ToolDefinition {
+fn build_definition(max_timeout_ms: u32) -> ToolDefinition {
     ToolDefinition {
         name: webfetch_meta::NAME.to_owned(),
         description: webfetch_meta::DESCRIPTION.to_owned(),
@@ -154,7 +155,7 @@ fn build_definition() -> ToolDefinition {
                 webfetch_meta::param::TIMEOUT_MS.description,
                 webfetch_meta::param::TIMEOUT_MS.required,
                 Some(1),
-                None,
+                Some(i64::from(max_timeout_ms)),
             )
             .build()
             .expect("schema serialization should never fail"),
