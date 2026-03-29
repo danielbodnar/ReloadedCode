@@ -159,13 +159,13 @@ where
             }
             ToolCatalogKind::Bash => {
                 let settings = &prepared.tool_settings.bash;
-                builder = builder.tool(
-                    prompt_builder.track(
-                        BashTool::new()
-                            .with_default_timeout_ms(settings.timeout_ms)
-                            .with_max_timeout_ms(settings.max_timeout_ms),
-                    ),
-                );
+                builder =
+                    builder.tool(prompt_builder.track(
+                        BashTool::new().with_timeouts(
+                            Some(settings.timeout_ms),
+                            Some(settings.max_timeout_ms),
+                        ),
+                    ));
             }
             ToolCatalogKind::WebFetch => {
                 let settings = &prepared.tool_settings.webfetch;

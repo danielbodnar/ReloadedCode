@@ -97,43 +97,52 @@ impl BashTool {
         &self.mode
     }
 
-    /// Sets the default timeout for commands in milliseconds.
+    /// Sets both default and maximum timeout in a single, atomic operation.
     ///
-    /// This timeout is used when `timeout_ms` is not provided in the tool arguments.
+    /// This method validates that `1 <= default_timeout_ms <= max_timeout_ms` and sets
+    /// both values together. Use `None` to preserve the current value for either timeout.
     ///
     /// # Panics
     ///
-    /// Panics if the timeout is 0 or exceeds `max_timeout_ms`.
-    pub fn with_default_timeout_ms(mut self, timeout_ms: u32) -> Self {
-        if timeout_ms == 0 {
-            panic!("default timeout must be at least 1ms");
-        }
-        if timeout_ms > self.max_timeout_ms {
-            panic!(
-                "default timeout ({}ms) cannot exceed max_timeout_ms ({}ms)",
-                timeout_ms, self.max_timeout_ms
-            );
-        }
-        self.default_timeout_ms = timeout_ms;
-        self
-    }
+    /// Panics if a non-None `default_timeout_ms` is 0, a non-None `max_timeout_ms` is 0,
+    /// or if the resulting `default_timeout_ms > max_timeout_ms`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use llm_coding_tools_serdesai::bash::BashTool;
+    ///
+    /// // Set both timeouts atomically
+    /// let tool = BashTool::new().with_timeouts(Some(5_000), Some(30_000));
+    ///
+    /// // Change only the default, keep max at its current/default value
+    /// let tool = BashTool::new().with_timeouts(Some(10_000), None);
+    ///
+    /// // Change only the max, keep default at its current/default value
+    /// let tool = BashTool::new().with_timeouts(None, Some(300_000));
+    /// ```
+    pub fn with_timeouts(
+        mut self,
+        default_timeout_ms: Option<u32>,
+        max_timeout_ms: Option<u32>,
+    ) -> Self {
+        let new_default = default_timeout_ms.unwrap_or(self.default_timeout_ms);
+        let new_max = max_timeout_ms.unwrap_or(self.max_timeout_ms);
 
-    /// Sets the maximum timeout allowed for LLM requests.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `max_timeout_ms` is 0 or less than the current `default_timeout_ms`.
-    pub fn with_max_timeout_ms(mut self, max_timeout_ms: u32) -> Self {
-        if max_timeout_ms == 0 {
-            panic!("max_timeout_ms must be at least 1");
+        if let Some(0) = default_timeout_ms {
+            panic!("with_timeouts: default_timeout_ms must be at least 1 (got 0)");
         }
-        if max_timeout_ms < self.default_timeout_ms {
+        if let Some(0) = max_timeout_ms {
+            panic!("with_timeouts: max_timeout_ms must be at least 1 (got 0)");
+        }
+        if new_default > new_max {
             panic!(
-                "max_timeout_ms ({}) must be >= default_timeout_ms ({})",
-                max_timeout_ms, self.default_timeout_ms
+                "with_timeouts: default_timeout_ms ({}) cannot exceed max_timeout_ms ({})",
+                new_default, new_max
             );
         }
-        self.max_timeout_ms = max_timeout_ms;
+        self.default_timeout_ms = new_default;
+        self.max_timeout_ms = new_max;
         self
     }
 
@@ -373,7 +382,7 @@ mod tests {
     #[serial]
     async fn per_call_timeout_overrides_default() {
         // Constructor sets 10s default, but per-call arg specifies 100ms
-        let tool = BashTool::new().with_default_timeout_ms(10_000);
+        let tool = BashTool::new().with_timeouts(Some(10_000), Some(bash_meta::MAX_TIMEOUT_MS));
         let cmd = if cfg!(target_os = "windows") {
             "ping -n 10 127.0.0.1"
         } else {
@@ -391,7 +400,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn default_timeout_used_when_arg_omitted() {
-        let tool = BashTool::new().with_default_timeout_ms(100);
+        let tool = BashTool::new().with_timeouts(Some(100), Some(200));
         let cmd = if cfg!(target_os = "windows") {
             "ping -n 10 127.0.0.1"
         } else {
