@@ -54,11 +54,6 @@ pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
             task_meta::param::SUBAGENT_TYPE.required,
         )
         .string(
-            task_meta::param::SESSION_ID.name,
-            task_meta::param::SESSION_ID.description,
-            task_meta::param::SESSION_ID.required,
-        )
-        .string(
             task_meta::param::COMMAND.name,
             task_meta::param::COMMAND.description,
             task_meta::param::COMMAND.required,
@@ -133,14 +128,5 @@ mod tests {
         // Verify description includes all expected parameters
         let desc = definition.description();
         assert!(!desc.is_empty());
-    }
-
-    #[test]
-    fn task_tool_definition_keeps_session_id_description_compatibility_only() {
-        let targets = vec![];
-        let definition = task_tool_definition(&targets);
-
-        // The definition should be valid and include task
-        assert_eq!(definition.name(), task_meta::NAME);
     }
 }

@@ -54,10 +54,7 @@ pub use llm_coding_tools_core::{
 };
 
 // Re-export standalone tools and runtime helpers
-pub use agent_runtime::{
-    AgentBuildError, AgentRuntimeExt, AgentRuntimeTaskExt, build_agent_with_credentials,
-    build_agent_with_credentials_and_task,
-};
+pub use agent_runtime::{AgentBuildContext, AgentBuildError};
 pub use bash::BashTool;
 pub use llm_coding_tools_agents::{
     AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,

@@ -1,7 +1,7 @@
 //! Stateless Task delegation example using the models.dev catalog.
 //!
 //! Loads markdown agents from `examples/agents/task-demo/`, builds the primary
-//! orchestrator through [`AgentRuntimeTaskExt::build_with_task`], and runs one
+//! orchestrator through [`AgentBuildContext::build`], and runs one
 //! prompt that should delegate exactly once to `reader`.
 //!
 //! Run: Edit the API_KEY_NAME and API_KEY_VALUE constants below, then:
@@ -11,7 +11,7 @@ use futures::StreamExt;
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
 use llm_coding_tools_core::{CredentialResolver, TaskInput};
 use llm_coding_tools_models_dev::ModelsDevCatalog;
-use llm_coding_tools_serdesai::{AgentDefaults, AgentRuntimeTaskExt};
+use llm_coding_tools_serdesai::{AgentBuildContext, AgentDefaults};
 use serdes_ai::{AgentStreamEvent, UserContent};
 use std::{
     fmt::Write,
@@ -52,16 +52,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .catalog(catalog)
         .defaults(AgentDefaults::with_model(MODEL_ID))
         .build();
+    let build_context = AgentBuildContext::new(
+        Arc::new(runtime),
+        Arc::new(load_result.catalog),
+        Arc::new(credentials),
+    );
 
     println!(
         "Loading named agent `{AGENT_NAME}` from {}",
         agents_dir.display()
     );
-    let agent = runtime.build_with_task(
-        AGENT_NAME,
-        Arc::new(load_result.catalog),
-        Arc::new(credentials),
-    )?;
+    let agent = build_context.build(AGENT_NAME)?;
     println!(
         "Built `{AGENT_NAME}` on demand with {} tools.",
         agent.tools().len()
