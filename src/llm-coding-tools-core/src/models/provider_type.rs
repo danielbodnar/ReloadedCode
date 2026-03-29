@@ -69,15 +69,15 @@ mod tests {
 
     /// Verifies that provider type flags return expected values.
     #[rstest]
-    #[case::azure_requires_base_url(ProviderType::Azure, true, false)]
-    #[case::ollama_no_api_key(ProviderType::Ollama, false, true)]
-    #[case::openai_requires_api_key(ProviderType::OpenAiCompletions, false, false)]
+    #[case::azure_requires_base_url(ProviderType::Azure, true, true)]
+    #[case::ollama_no_api_key(ProviderType::Ollama, false, false)]
+    #[case::openai_requires_api_key(ProviderType::OpenAiCompletions, false, true)]
     fn provider_type_flags(
         #[case] provider: ProviderType,
         #[case] requires_base_url: bool,
-        #[case] no_api_key: bool,
+        #[case] requires_api_key: bool,
     ) {
         assert_eq!(provider.requires_base_url(), requires_base_url);
-        assert_eq!(!provider.requires_api_key(), no_api_key);
+        assert_eq!(provider.requires_api_key(), requires_api_key);
     }
 }
