@@ -118,6 +118,7 @@ pub fn read_todos(state: &TodoState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn make_todo(id: &str, status: TodoStatus) -> Todo {
         Todo {
@@ -126,6 +127,43 @@ mod tests {
             status,
             priority: TodoPriority::Medium,
         }
+    }
+
+    /// Verifies that write_todos rejects todos with empty id or content.
+    #[rstest]
+    #[case::empty_id("", "Task", "id")]
+    #[case::empty_content("1", "  ", "content")]
+    fn write_validates_required_fields(
+        #[case] id: &str,
+        #[case] content: &str,
+        #[case] _field_name: &str,
+    ) {
+        let state = TodoState::new();
+        let todo = Todo {
+            id: id.to_string(),
+            content: content.to_string(),
+            status: TodoStatus::Pending,
+            priority: TodoPriority::Low,
+        };
+        let result = write_todos(&state, vec![todo]);
+        assert!(matches!(result, Err(ToolError::Validation(_))));
+    }
+
+    /// Verifies that each status variant returns the correct icon string.
+    #[rstest]
+    #[case::pending("[ ]")]
+    #[case::in_progress("[>]")]
+    #[case::completed("[x]")]
+    #[case::cancelled("[-]")]
+    fn status_icons(#[case] expected: &str) {
+        let status = match expected {
+            "[ ]" => TodoStatus::Pending,
+            "[>]" => TodoStatus::InProgress,
+            "[x]" => TodoStatus::Completed,
+            "[-]" => TodoStatus::Cancelled,
+            _ => panic!("unknown icon"),
+        };
+        assert_eq!(status.icon(), expected);
     }
 
     #[test]
@@ -164,40 +202,6 @@ mod tests {
         let output = read_todos(&state);
         assert!(!output.contains("Task a"));
         assert!(output.contains("Task b"));
-    }
-
-    #[test]
-    fn write_validates_empty_id() {
-        let state = TodoState::new();
-        let todo = Todo {
-            id: "".to_string(),
-            content: "Task".to_string(),
-            status: TodoStatus::Pending,
-            priority: TodoPriority::Low,
-        };
-        let result = write_todos(&state, vec![todo]);
-        assert!(matches!(result, Err(ToolError::Validation(_))));
-    }
-
-    #[test]
-    fn write_validates_empty_content() {
-        let state = TodoState::new();
-        let todo = Todo {
-            id: "1".to_string(),
-            content: "  ".to_string(),
-            status: TodoStatus::Pending,
-            priority: TodoPriority::Low,
-        };
-        let result = write_todos(&state, vec![todo]);
-        assert!(matches!(result, Err(ToolError::Validation(_))));
-    }
-
-    #[test]
-    fn status_icons_are_correct() {
-        assert_eq!(TodoStatus::Pending.icon(), "[ ]");
-        assert_eq!(TodoStatus::InProgress.icon(), "[>]");
-        assert_eq!(TodoStatus::Completed.icon(), "[x]");
-        assert_eq!(TodoStatus::Cancelled.icon(), "[-]");
     }
 
     #[test]
