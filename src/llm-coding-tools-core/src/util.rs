@@ -12,6 +12,12 @@ pub const MIN_LINE_LENGTH: usize = TRUNCATION_ELLIPSIS.len() + 1;
 /// A number of characters per line that's likely to not be exceeded in most files.
 pub const LIKELY_CHARS_PER_LINE_MAX: usize = ESTIMATED_CHARS_PER_LINE * 4;
 
+/// Minimum value for limit/count fields (e.g., read.limit, grep.limit, glob.limit).
+pub const MIN_LIMIT: usize = 1;
+
+/// Minimum value for timeout fields in milliseconds (e.g., bash.timeout_ms, webfetch.timeout_ms).
+pub const MIN_TIMEOUT_MS: u64 = 1000;
+
 /// Formats a line with its line number for output.
 ///
 /// Uses the format: `{spaces}{line_number}\t{content}` where spaces

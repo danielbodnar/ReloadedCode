@@ -28,7 +28,7 @@
 //! ```
 
 use llm_coding_tools_core::tool_metadata::{bash, glob, grep, read, webfetch};
-use llm_coding_tools_core::util::MIN_LINE_LENGTH;
+use llm_coding_tools_core::util::{MIN_LIMIT, MIN_LINE_LENGTH, MIN_TIMEOUT_MS};
 use serde::{Deserialize, Serialize};
 
 /// Per-agent tool settings controlling tool behaviour.
@@ -60,7 +60,10 @@ pub struct ReadToolSettings {
     #[serde(default = "default_line_numbers")]
     pub line_numbers: bool,
     /// Maximum lines to return per read (default: 2000, min: 1).
-    #[serde(default = "read_default_limit")]
+    #[serde(
+        default = "read_default_limit",
+        deserialize_with = "deserialize_min_limit"
+    )]
     pub limit: usize,
     /// Maximum characters per line before truncation (default: 2000, min: 4).
     #[serde(
@@ -88,7 +91,10 @@ pub struct GrepToolSettings {
     #[serde(default = "default_line_numbers")]
     pub line_numbers: bool,
     /// Maximum matches to return (default: 100, min: 1).
-    #[serde(default = "grep_default_limit")]
+    #[serde(
+        default = "grep_default_limit",
+        deserialize_with = "deserialize_min_limit"
+    )]
     pub limit: usize,
     /// Maximum characters per line before truncation (default: 2000, min: 4).
     #[serde(
@@ -113,7 +119,10 @@ impl Default for GrepToolSettings {
 #[serde(deny_unknown_fields)]
 pub struct GlobToolSettings {
     /// Maximum files to return (default: 1000, min: 1).
-    #[serde(default = "glob_default_limit")]
+    #[serde(
+        default = "glob_default_limit",
+        deserialize_with = "deserialize_min_limit"
+    )]
     pub limit: usize,
 }
 
@@ -130,7 +139,10 @@ impl Default for GlobToolSettings {
 #[serde(deny_unknown_fields)]
 pub struct BashToolSettings {
     /// Default timeout in milliseconds (default: 120000, min: 1000).
-    #[serde(default = "bash_default_timeout_ms")]
+    #[serde(
+        default = "bash_default_timeout_ms",
+        deserialize_with = "deserialize_min_timeout_ms"
+    )]
     pub timeout_ms: u64,
 }
 
@@ -147,10 +159,16 @@ impl Default for BashToolSettings {
 #[serde(deny_unknown_fields)]
 pub struct WebFetchToolSettings {
     /// Timeout in milliseconds (default: 30000, min: 1000).
-    #[serde(default = "webfetch_default_timeout_ms")]
+    #[serde(
+        default = "webfetch_default_timeout_ms",
+        deserialize_with = "deserialize_min_timeout_ms"
+    )]
     pub timeout_ms: u64,
     /// Maximum response size in MiB (default: 5, min: 1).
-    #[serde(default = "webfetch_default_max_response_size_mib")]
+    #[serde(
+        default = "webfetch_default_max_response_size_mib",
+        deserialize_with = "deserialize_min_limit"
+    )]
     pub max_response_size_mib: usize,
 }
 
@@ -235,6 +253,34 @@ where
         return Err(serde::de::Error::custom(format!(
             "{field_name} must be >= {}",
             MIN_LINE_LENGTH
+        )));
+    }
+    Ok(value)
+}
+
+fn deserialize_min_limit<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    if value < MIN_LIMIT {
+        return Err(serde::de::Error::custom(format!(
+            "value must be >= {}",
+            MIN_LIMIT
+        )));
+    }
+    Ok(value)
+}
+
+fn deserialize_min_timeout_ms<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value < MIN_TIMEOUT_MS {
+        return Err(serde::de::Error::custom(format!(
+            "value must be >= {}",
+            MIN_TIMEOUT_MS
         )));
     }
     Ok(value)
