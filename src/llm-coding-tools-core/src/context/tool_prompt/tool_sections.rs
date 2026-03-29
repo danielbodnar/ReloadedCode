@@ -217,7 +217,7 @@ fn write_todo_write_section(output: &mut String) {
 fn write_task_section(output: &mut String, facts: ToolPromptFacts) {
     push_block(
         output,
-        "- Use task for real delegation, custom slash commands, or independent sub-work you can run in parallel.\n",
+        "- Use task for real delegation or parallel sub-work. Tasks are stateless - include full context; do not rely on prior state.\n",
     );
 
     let mut tools = [""; 3];
