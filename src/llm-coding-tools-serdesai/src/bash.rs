@@ -119,7 +119,20 @@ impl BashTool {
     }
 
     /// Sets the maximum timeout allowed for LLM requests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `max_timeout_ms` is 0 or less than the current `default_timeout_ms`.
     pub fn with_max_timeout_ms(mut self, max_timeout_ms: u32) -> Self {
+        if max_timeout_ms == 0 {
+            panic!("max_timeout_ms must be at least 1");
+        }
+        if max_timeout_ms < self.default_timeout_ms {
+            panic!(
+                "max_timeout_ms ({}) must be >= default_timeout_ms ({})",
+                max_timeout_ms, self.default_timeout_ms
+            );
+        }
         self.max_timeout_ms = max_timeout_ms;
         self
     }

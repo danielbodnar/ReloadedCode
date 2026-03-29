@@ -146,8 +146,11 @@ pub struct BashToolSettings {
         deserialize_with = "deserialize_min_timeout_ms"
     )]
     pub timeout_ms: u32,
-    /// Maximum timeout allowed for LLM requests (default: 600000, min: timeout_ms).
-    #[serde(default = "bash_default_max_timeout_ms")]
+    /// Maximum timeout allowed for LLM requests (default: 600000, min: 1).
+    #[serde(
+        default = "bash_default_max_timeout_ms",
+        deserialize_with = "deserialize_min_max_timeout_ms"
+    )]
     pub max_timeout_ms: u32,
 }
 
@@ -170,8 +173,11 @@ pub struct WebFetchToolSettings {
         deserialize_with = "deserialize_min_timeout_ms"
     )]
     pub timeout_ms: u32,
-    /// Maximum timeout allowed for LLM requests (default: 600000, min: timeout_ms).
-    #[serde(default = "webfetch_default_max_timeout_ms")]
+    /// Maximum timeout allowed for LLM requests (default: 600000, min: 1).
+    #[serde(
+        default = "webfetch_default_max_timeout_ms",
+        deserialize_with = "deserialize_min_max_timeout_ms"
+    )]
     pub max_timeout_ms: u32,
     /// Maximum response size in MiB (default: 5, min: 1).
     #[serde(
@@ -302,6 +308,20 @@ where
             "value must be >= {}",
             MIN_TIMEOUT_MS
         )));
+    }
+    Ok(value)
+}
+
+/// Deserializes max_timeout_ms ensuring it's at least 1.
+fn deserialize_min_max_timeout_ms<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = u32::deserialize(deserializer)?;
+    if value == 0 {
+        return Err(serde::de::Error::custom(
+            "max_timeout_ms must be at least 1",
+        ));
     }
     Ok(value)
 }

@@ -18,7 +18,7 @@ struct WebFetchArgs {
     url: String,
     /// Timeout in milliseconds. If omitted, uses the tool's default timeout.
     #[serde(default)]
-    timeout_ms: Option<u64>,
+    timeout_ms: Option<u32>,
 }
 
 /// Tool for fetching web content.
@@ -80,6 +80,10 @@ impl WebFetchTool {
     ) -> Self {
         let max_timeout_ms = max_timeout_ms.unwrap_or(webfetch_meta::MAX_TIMEOUT_MS);
 
+        if max_timeout_ms == 0 {
+            panic!("max_timeout_ms must be at least 1");
+        }
+
         if default_timeout_ms == 0 {
             panic!("default_timeout_ms must be at least 1");
         }
@@ -112,10 +116,7 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
             .map_err(|e| ToolError::validation_error(webfetch_meta::NAME, None, e.to_string()))?;
 
         // Determine effective timeout: LLM-provided or default
-        let effective_timeout = args
-            .timeout_ms
-            .map(|t| t as u32)
-            .unwrap_or(self.default_timeout_ms);
+        let effective_timeout = args.timeout_ms.unwrap_or(self.default_timeout_ms);
 
         let result = fetch_url(
             &self.client,
