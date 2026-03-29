@@ -84,7 +84,7 @@ impl BashTool {
     /// to sandbox commands.
     pub fn host() -> Self {
         Self {
-            definition: build_definition(),
+            definition: build_definition(bash_meta::MAX_TIMEOUT_MS),
             mode: BashExecutionMode::Host,
             default_timeout_ms: bash_meta::DEFAULT_TIMEOUT_MS,
             max_timeout_ms: bash_meta::MAX_TIMEOUT_MS,
@@ -143,6 +143,10 @@ impl BashTool {
         }
         self.default_timeout_ms = new_default;
         self.max_timeout_ms = new_max;
+        // Regenerate schema if max_timeout changed to reflect new ceiling in TIMEOUT_MS parameter
+        if max_timeout_ms.is_some() {
+            self.definition = build_definition(new_max);
+        }
         self
     }
 
@@ -268,7 +272,7 @@ impl ToolContext for BashTool {
     }
 }
 
-fn build_definition() -> ToolDefinition {
+fn build_definition(max_timeout_ms: u32) -> ToolDefinition {
     ToolDefinition {
         name: bash_meta::NAME.to_owned(),
         description: bash_meta::DESCRIPTION.to_owned(),
@@ -291,7 +295,7 @@ fn build_definition() -> ToolDefinition {
                 bash_meta::param::TIMEOUT_MS.description,
                 bash_meta::param::TIMEOUT_MS.required,
                 Some(1),
-                None,
+                Some(i64::from(max_timeout_ms)),
             )
             .build()
             .expect("schema serialization should never fail"),
