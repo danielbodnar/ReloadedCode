@@ -19,6 +19,7 @@ use llm_coding_tools_agents::{
 use llm_coding_tools_core::{CredentialLookup, models::ModelCatalog};
 use serdes_ai::AgentBuilder;
 use serdes_ai_models::BoxedModel;
+use std::time::Duration;
 
 /// Resolved build parameters ready for agent construction.
 #[derive(Clone)]
@@ -27,7 +28,7 @@ pub(super) struct PreparedBuild {
     agent_name: Box<str>,
     /// Concrete SerdesAI model.
     model: BoxedModel,
-    /// Normalized SerdesAI `provider:model` specification for diagnostics.
+    /// Normalised SerdesAI `provider:model` specification for diagnostics.
     #[cfg_attr(not(test), allow(dead_code))]
     model_spec: Box<str>,
     /// Agent system prompt template.
@@ -121,27 +122,57 @@ where
     for entry in &prepared.tools {
         match entry.kind {
             ToolCatalogKind::Read => {
-                if prepared.tool_settings.read.line_numbers {
-                    builder = builder.tool(prompt_builder.track(ReadTool::<true>::new()));
+                let settings = &prepared.tool_settings.read;
+                if settings.line_numbers {
+                    builder = builder.tool(prompt_builder.track(ReadTool::<true>::with_settings(
+                        settings.limit,
+                        settings.max_line_length,
+                    )));
                 } else {
-                    builder = builder.tool(prompt_builder.track(ReadTool::<false>::new()));
+                    builder = builder.tool(prompt_builder.track(ReadTool::<false>::with_settings(
+                        settings.limit,
+                        settings.max_line_length,
+                    )));
                 }
             }
             ToolCatalogKind::Write => {
                 builder = builder.tool(prompt_builder.track(WriteTool::new()))
             }
             ToolCatalogKind::Edit => builder = builder.tool(prompt_builder.track(EditTool::new())),
-            ToolCatalogKind::Glob => builder = builder.tool(prompt_builder.track(GlobTool::new())),
+            ToolCatalogKind::Glob => {
+                let settings = &prepared.tool_settings.glob;
+                builder =
+                    builder.tool(prompt_builder.track(GlobTool::with_settings(settings.limit)));
+            }
             ToolCatalogKind::Grep => {
-                if prepared.tool_settings.grep.line_numbers {
-                    builder = builder.tool(prompt_builder.track(GrepTool::<true>::new()));
+                let settings = &prepared.tool_settings.grep;
+                if settings.line_numbers {
+                    builder = builder.tool(prompt_builder.track(GrepTool::<true>::with_settings(
+                        settings.max_line_length,
+                        settings.limit,
+                    )));
                 } else {
-                    builder = builder.tool(prompt_builder.track(GrepTool::<false>::new()));
+                    builder = builder.tool(prompt_builder.track(GrepTool::<false>::with_settings(
+                        settings.max_line_length,
+                        settings.limit,
+                    )));
                 }
             }
-            ToolCatalogKind::Bash => builder = builder.tool(prompt_builder.track(BashTool::new())),
+            ToolCatalogKind::Bash => {
+                let settings = &prepared.tool_settings.bash;
+                builder = builder.tool(
+                    prompt_builder.track(
+                        BashTool::new()
+                            .with_default_timeout(Duration::from_millis(settings.timeout_ms)),
+                    ),
+                );
+            }
             ToolCatalogKind::WebFetch => {
-                builder = builder.tool(prompt_builder.track(WebFetchTool::new()))
+                let settings = &prepared.tool_settings.webfetch;
+                builder = builder.tool(prompt_builder.track(WebFetchTool::with_settings(
+                    settings.timeout_ms,
+                    settings.max_response_size_mib,
+                )));
             }
             ToolCatalogKind::TodoRead => {
                 builder = builder.tool(prompt_builder.track(todo_read.clone()))
@@ -180,7 +211,7 @@ pub enum AgentBuildError {
         /// The missing agent name.
         name: Box<str>,
     },
-    /// The runtime contains a tool kind this adapter cannot materialize.
+    /// The runtime contains a tool kind this adapter cannot materialise.
     #[error("tool `{name}` is not supported")]
     UnsupportedToolKind {
         /// The unsupported tool name.
@@ -190,7 +221,7 @@ pub enum AgentBuildError {
     #[error(transparent)]
     ModelResolution(#[from] ModelResolutionError),
     /// Initializing the SerdesAI model failed.
-    #[error("failed to initialize model: {0}")]
+    #[error("failed to initialise model: {0}")]
     ModelInit(#[from] serdes_ai_models::ModelError),
 }
 

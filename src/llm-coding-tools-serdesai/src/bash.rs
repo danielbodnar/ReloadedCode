@@ -171,7 +171,7 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
             .or(self.default_timeout)
             .unwrap_or(Duration::from_millis(bash_meta::DEFAULT_TIMEOUT_MS));
 
-        // Route execution through mode-aware entrypoint to honor explicit mode selection
+        // Route execution through mode-aware entrypoint to honour explicit mode selection
         let result = execute_command_with_mode(&self.mode, &args.command, workdir, timeout).await;
 
         to_serdes_result(bash_meta::NAME, result.map(|output| output.format_output()))
@@ -244,7 +244,7 @@ fn build_definition() -> ToolDefinition {
                 bash_meta::param::TIMEOUT_MS.description,
                 bash_meta::param::TIMEOUT_MS.required,
                 Some(1),
-                Some(bash_meta::MAX_TIMEOUT_MS as i64),
+                None,
             )
             .build()
             .expect("schema serialization should never fail"),

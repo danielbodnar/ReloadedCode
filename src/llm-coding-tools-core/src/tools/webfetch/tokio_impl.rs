@@ -10,10 +10,12 @@ use std::time::Duration;
 /// - HTML is converted to markdown
 /// - JSON is pretty-printed
 /// - Other content types returned as-is
+/// - Response size is limited to `max_response_size` bytes
 pub async fn fetch_url(
     client: &reqwest::Client,
     url: &str,
     timeout_ms: u64,
+    max_response_size: usize,
 ) -> ToolResult<WebFetchOutput> {
     if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
         return Err(ToolError::Validation(format!(
@@ -55,7 +57,7 @@ pub async fn fetch_url(
         })
         .transpose()?;
     if let Some(len) = content_length {
-        check_size(len, url)?;
+        check_size(len, url, max_response_size)?;
     }
 
     // Stream response body with incremental size checks to avoid memory exhaustion
@@ -70,7 +72,7 @@ pub async fn fetch_url(
         total_len = total_len
             .checked_add(chunk.len())
             .ok_or_else(|| ToolError::Http(format!("Response size overflow for {}", url)))?;
-        check_size(total_len, url)?;
+        check_size(total_len, url, max_response_size)?;
         bytes.extend_from_slice(&chunk);
     }
 
@@ -111,9 +113,14 @@ mod tests {
             .await;
 
         let client = test_client();
-        let result = fetch_url(&client, &format!("{}/text", server.uri()), 5_000)
-            .await
-            .unwrap();
+        let result = fetch_url(
+            &client,
+            &format!("{}/text", server.uri()),
+            5_000,
+            5 * 1024 * 1024,
+        )
+        .await
+        .unwrap();
 
         assert!(result.content.contains("Hello, world!"));
         assert!(result.content_type.contains("text/plain"));
@@ -133,9 +140,14 @@ mod tests {
             .await;
 
         let client = test_client();
-        let result = fetch_url(&client, &format!("{}/html", server.uri()), 5_000)
-            .await
-            .unwrap();
+        let result = fetch_url(
+            &client,
+            &format!("{}/html", server.uri()),
+            5_000,
+            5 * 1024 * 1024,
+        )
+        .await
+        .unwrap();
 
         assert!(result.content.contains("Hello"));
         assert!(!result.content.contains("<h1>"));
@@ -153,9 +165,14 @@ mod tests {
             .await;
 
         let client = test_client();
-        let result = fetch_url(&client, &format!("{}/json", server.uri()), 5_000)
-            .await
-            .unwrap();
+        let result = fetch_url(
+            &client,
+            &format!("{}/json", server.uri()),
+            5_000,
+            5 * 1024 * 1024,
+        )
+        .await
+        .unwrap();
 
         assert!(result.content.contains("\"key\""));
     }
@@ -170,7 +187,13 @@ mod tests {
             .await;
 
         let client = test_client();
-        let result = fetch_url(&client, &format!("{}/notfound", server.uri()), 5_000).await;
+        let result = fetch_url(
+            &client,
+            &format!("{}/notfound", server.uri()),
+            5_000,
+            5 * 1024 * 1024,
+        )
+        .await;
 
         assert!(matches!(result, Err(ToolError::Http(_))));
     }
@@ -178,14 +201,20 @@ mod tests {
     #[tokio::test]
     async fn rejects_timeout_zero() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", 0).await;
+        let result = fetch_url(&client, "http://localhost:1", 0, 5 * 1024 * 1024).await;
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 
     #[tokio::test]
     async fn rejects_timeout_exceeding_max() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", MAX_TIMEOUT_MS + 1).await;
+        let result = fetch_url(
+            &client,
+            "http://localhost:1",
+            MAX_TIMEOUT_MS + 1,
+            5 * 1024 * 1024,
+        )
+        .await;
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 }

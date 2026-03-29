@@ -11,10 +11,12 @@ use std::time::Duration;
 /// - HTML is converted to markdown
 /// - JSON is pretty-printed
 /// - Other content types returned as-is
+/// - Response size is limited to `max_response_size` bytes
 pub fn fetch_url(
     client: &reqwest::blocking::Client,
     url: &str,
     timeout_ms: u64,
+    max_response_size: usize,
 ) -> ToolResult<WebFetchOutput> {
     if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
         return Err(ToolError::Validation(format!(
@@ -55,7 +57,7 @@ pub fn fetch_url(
         })
         .transpose()?;
     if let Some(len) = content_length {
-        check_size(len, url)?;
+        check_size(len, url, max_response_size)?;
     }
 
     // Stream response body with incremental size checks to avoid memory exhaustion
@@ -76,7 +78,7 @@ pub fn fetch_url(
         total_len = total_len
             .checked_add(n)
             .ok_or_else(|| ToolError::Http(format!("Response size overflow for {}", url)))?;
-        check_size(total_len, url)?;
+        check_size(total_len, url, max_response_size)?;
 
         bytes.extend_from_slice(chunk);
         reader.consume(n);
@@ -107,7 +109,12 @@ mod tests {
     fn fetches_plain_text() {
         // Use httpbin.org for blocking tests since wiremock is async-only
         let client = test_client();
-        let result = fetch_url(&client, "https://httpbin.org/robots.txt", 10_000);
+        let result = fetch_url(
+            &client,
+            "https://httpbin.org/robots.txt",
+            10_000,
+            5 * 1024 * 1024,
+        );
 
         // This test requires network access, so we just check it doesn't panic
         // In CI, this might fail due to network restrictions
@@ -120,7 +127,12 @@ mod tests {
     #[test]
     fn handles_404() {
         let client = test_client();
-        let result = fetch_url(&client, "https://httpbin.org/status/404", 10_000);
+        let result = fetch_url(
+            &client,
+            "https://httpbin.org/status/404",
+            10_000,
+            5 * 1024 * 1024,
+        );
 
         // In case of network issues, just verify we get some result
         if let Err(e) = result {
@@ -131,14 +143,19 @@ mod tests {
     #[test]
     fn rejects_timeout_zero() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", 0);
+        let result = fetch_url(&client, "http://localhost:1", 0, 5 * 1024 * 1024);
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 
     #[test]
     fn rejects_timeout_exceeding_max() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", MAX_TIMEOUT_MS + 1);
+        let result = fetch_url(
+            &client,
+            "http://localhost:1",
+            MAX_TIMEOUT_MS + 1,
+            5 * 1024 * 1024,
+        );
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 }

@@ -4,7 +4,6 @@ use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::output::ToolOutput;
 use crate::path::PathResolver;
-use crate::tool_metadata::read::MAX_LINE_LENGTH;
 use crate::util::{truncate_line, ESTIMATED_CHARS_PER_LINE};
 use memchr::memchr;
 use std::borrow::Cow;
@@ -23,10 +22,11 @@ fn process_line<const LINE_NUMBERS: bool>(
     line_number: usize,
     output: &mut String,
     lines_output: &mut usize,
+    max_line_length: usize,
 ) {
     let line_bytes = strip_cr(line_bytes);
     let content: Cow<'_, str> = String::from_utf8_lossy(line_bytes);
-    let (truncated_content, _) = truncate_line(&content, MAX_LINE_LENGTH);
+    let (truncated_content, _) = truncate_line(&content, max_line_length);
 
     if *lines_output > 0 {
         output.push('\n');
@@ -51,6 +51,7 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
     file_path: &str,
     offset: usize,
     limit: usize,
+    max_line_length: usize,
 ) -> ToolResult<ToolOutput> {
     // Conditional trait import for consume() method
     #[cfg(feature = "blocking")]
@@ -91,6 +92,7 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
                         line_number,
                         &mut output,
                         &mut lines_output,
+                        max_line_length,
                     );
                 }
             }
@@ -113,6 +115,7 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
                             line_number,
                             &mut output,
                             &mut lines_output,
+                            max_line_length,
                         );
                     } else {
                         // Slow path: prepend buffered fragment.
@@ -122,6 +125,7 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
                             line_number,
                             &mut output,
                             &mut lines_output,
+                            max_line_length,
                         );
                         overflow.clear();
                     }
@@ -173,7 +177,14 @@ mod tests {
         let mut temp = NamedTempFile::new().unwrap();
         temp.write_all(content).unwrap();
         let resolver = AbsolutePathResolver;
-        read_file::<_, LINE_NUMBERS>(&resolver, temp.path().to_str().unwrap(), offset, limit).await
+        read_file::<_, LINE_NUMBERS>(
+            &resolver,
+            temp.path().to_str().unwrap(),
+            offset,
+            limit,
+            2000, // max_line_length
+        )
+        .await
     }
 
     #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]

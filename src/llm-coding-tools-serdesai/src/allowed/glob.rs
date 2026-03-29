@@ -26,18 +26,34 @@ struct GlobArgs {
 pub struct GlobTool {
     definition: ToolDefinition,
     resolver: AllowedPathResolver,
+    limit: usize,
 }
 
 impl GlobTool {
-    /// Creates a new glob tool with a shared resolver.
+    /// Creates a new glob tool with a shared resolver and default settings.
+    ///
+    /// Uses `limit` of 1000 files.
     ///
     /// See [`ReadTool::new`] for usage example.
     ///
     /// [`ReadTool::new`]: super::ReadTool::new
     pub fn new(resolver: AllowedPathResolver) -> Self {
+        Self::with_settings(resolver, glob_meta::MAX_RESULTS)
+    }
+
+    /// Creates a new glob tool with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - The path resolver for allowed directory access.
+    /// * `limit` - Maximum number of files to return per glob call.
+    ///   Results are sorted by modification time (newest first) and truncated
+    ///   to this limit if more files match the pattern.
+    pub fn with_settings(resolver: AllowedPathResolver, limit: usize) -> Self {
         Self {
             definition: build_definition(),
             resolver,
+            limit,
         }
     }
 }
@@ -52,7 +68,7 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
         let args: GlobArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(glob_meta::NAME, None, e.to_string()))?;
 
-        let result = glob_files(&self.resolver, &args.pattern, &args.path);
+        let result = glob_files(&self.resolver, &args.pattern, &args.path, self.limit);
         match result {
             Err(e) => to_serdes_result(glob_meta::NAME, Err(e)),
             Ok(output) => Ok(glob_output_to_return(output)),
