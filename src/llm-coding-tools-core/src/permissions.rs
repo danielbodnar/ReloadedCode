@@ -560,7 +560,15 @@ mod tests {
         assert_eq!(ruleset.evaluate(permission, target), expected);
     }
 
-    /// Verifies that wildcards in permission keys do NOT match other keys.
+    /// Verifies that wildcards in the first parameter of Rule::new() (permission)
+    /// do NOT match other keys.
+    ///
+    /// The permission field requires exact match only - "*" is treated as a literal
+    /// string, not a wildcard. So a rule with permission="*" only matches when the
+    /// evaluated permission is exactly "*", not "bash" or any other value.
+    ///
+    /// This differs from the second parameter (pattern/target) which does support
+    /// wildcards.
     #[rstest]
     #[case::star_permission_not_bash(
         vec![("*", "*", PermissionAction::Allow)], // rules: allow all for permission="*" only
