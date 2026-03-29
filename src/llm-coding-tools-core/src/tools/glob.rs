@@ -2,7 +2,6 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
-use crate::tool_metadata::glob::MAX_RESULTS;
 use globset::Glob;
 use ignore::WalkBuilder;
 use serde::Serialize;
@@ -27,10 +26,12 @@ pub struct GlobOutput {
 /// Finds files matching a glob pattern in the given directory.
 ///
 /// Results are sorted by modification time (newest first) and respect `.gitignore`.
+/// The `limit` parameter controls the maximum number of files returned.
 pub fn glob_files<R: PathResolver>(
     resolver: &R,
     pattern: &str,
     search_path: &str,
+    limit: usize,
 ) -> ToolResult<GlobOutput> {
     let path = resolver.resolve(search_path)?;
 
@@ -39,6 +40,10 @@ pub fn glob_files<R: PathResolver>(
             "path is not a directory: {}",
             path.display()
         )));
+    }
+
+    if limit == 0 {
+        return Err(ToolError::Validation("limit must be >= 1".into()));
     }
 
     let matcher = Glob::new(pattern)?.compile_matcher();
@@ -82,7 +87,7 @@ pub fn glob_files<R: PathResolver>(
             }
         };
 
-        // Normalize Windows backslashes to forward slashes for glob pattern matching
+        // Normalise Windows backslashes to forward slashes for glob pattern matching
         #[cfg(windows)]
         let rel_path = rel_path.replace('\\', "/");
 
@@ -105,11 +110,11 @@ pub fn glob_files<R: PathResolver>(
 
     files_with_mtime.sort_by_key(|entry| std::cmp::Reverse(entry.1));
 
-    let truncated = files_with_mtime.len() > MAX_RESULTS;
+    let truncated = files_with_mtime.len() > limit;
 
     let files: Vec<String> = files_with_mtime
         .into_iter()
-        .take(MAX_RESULTS)
+        .take(limit)
         .map(|(path, _)| path)
         .collect();
 
@@ -148,7 +153,7 @@ mod tests {
     fn glob_matches_pattern() {
         let dir = create_test_tree();
         let resolver = AbsolutePathResolver;
-        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap()).unwrap();
+        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap(), 1000).unwrap();
         assert!(result.files.iter().any(|f| f.ends_with("lib.rs")));
     }
 
@@ -156,7 +161,7 @@ mod tests {
     fn glob_respects_gitignore() {
         let dir = create_test_tree();
         let resolver = AbsolutePathResolver;
-        let result = glob_files(&resolver, "**/*", dir.path().to_str().unwrap()).unwrap();
+        let result = glob_files(&resolver, "**/*", dir.path().to_str().unwrap(), 1000).unwrap();
         assert!(!result.files.iter().any(|f| f.contains("target")));
     }
 
@@ -180,7 +185,7 @@ mod tests {
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
 
-        let result = glob_files(&resolver, "**/*.txt", base.to_str().unwrap()).unwrap();
+        let result = glob_files(&resolver, "**/*.txt", base.to_str().unwrap(), 1000).unwrap();
 
         let newer_index = result
             .files
@@ -205,7 +210,7 @@ mod tests {
         // Patterns and returned paths use forward slashes on all platforms
         let dir = create_test_tree();
         let resolver = AbsolutePathResolver;
-        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap()).unwrap();
+        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap(), 1000).unwrap();
 
         // Verify matching works with forward-slash patterns
         assert_eq!(result.files.len(), 1);

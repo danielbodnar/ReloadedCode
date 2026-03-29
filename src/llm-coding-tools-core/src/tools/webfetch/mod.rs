@@ -3,9 +3,6 @@
 use crate::error::{ToolError, ToolResult};
 use html_to_markdown_rs::{convert, ConversionOptions, PreprocessingOptions, PreprocessingPreset};
 
-/// Maximum response size to accept (5MB).
-pub(crate) const MAX_RESPONSE_SIZE: usize = 5 * 1_024 * 1_024;
-
 /// Result from URL fetch operation.
 #[derive(Debug, Clone)]
 pub struct WebFetchOutput {
@@ -28,7 +25,7 @@ pub(crate) fn process_content(raw_content: &str, content_type: &str) -> String {
     }
 }
 
-/// Categorizes reqwest errors into appropriate [`ToolError`] variants.
+/// Categorises reqwest errors into appropriate [`ToolError`] variants.
 pub(crate) fn categorize_reqwest_error(e: reqwest::Error, url: &str) -> ToolError {
     if e.is_timeout() {
         ToolError::Timeout(format!("Request timed out for {}", url))
@@ -43,11 +40,11 @@ pub(crate) fn categorize_reqwest_error(e: reqwest::Error, url: &str) -> ToolErro
 
 /// Returns an error if the response size exceeds the maximum.
 #[inline]
-pub(crate) fn check_size(len: usize, url: &str) -> ToolResult<()> {
-    if len > MAX_RESPONSE_SIZE {
+pub(crate) fn check_size(len: usize, url: &str, max_size: usize) -> ToolResult<()> {
+    if len > max_size {
         return Err(ToolError::Http(format!(
             "Response too large: {} bytes (max {}) for {}",
-            len, MAX_RESPONSE_SIZE, url
+            len, max_size, url
         )));
     }
     Ok(())
@@ -119,11 +116,12 @@ mod tests {
 
     #[test]
     fn check_size_ok_for_small_content() {
-        assert!(check_size(1000, "http://example.com").is_ok());
+        assert!(check_size(1000, "http://example.com", 5 * 1024 * 1024).is_ok());
     }
 
     #[test]
     fn check_size_fails_for_large_content() {
-        assert!(check_size(MAX_RESPONSE_SIZE + 1, "http://example.com").is_err());
+        let max_size = 5 * 1024 * 1024;
+        assert!(check_size(max_size + 1, "http://example.com", max_size).is_err());
     }
 }

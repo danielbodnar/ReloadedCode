@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bash = BashTool::host()
         .with_linux_bwrap(profile)
-        .with_default_timeout(std::time::Duration::from_secs(20))
+        .with_timeouts(Some(20_000), None)
         .with_default_workdir(&workspace);
 
     let mut pb = SystemPromptBuilder::new().working_directory(workspace.display().to_string());

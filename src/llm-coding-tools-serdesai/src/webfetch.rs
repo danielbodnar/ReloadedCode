@@ -11,18 +11,14 @@ use llm_coding_tools_core::tools::fetch_url;
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 
-fn default_timeout_ms() -> u64 {
-    webfetch_meta::DEFAULT_TIMEOUT_MS
-}
-
 /// Arguments for the webfetch tool.
 #[derive(Debug, Clone, Deserialize)]
 struct WebFetchArgs {
     /// The URL to fetch.
     url: String,
-    /// Timeout in milliseconds (default: 30000).
-    #[serde(default = "default_timeout_ms")]
-    timeout_ms: u64,
+    /// Timeout in milliseconds. If omitted, uses the tool's default timeout.
+    #[serde(default)]
+    timeout_ms: Option<u32>,
 }
 
 /// Tool for fetching web content.
@@ -34,6 +30,9 @@ struct WebFetchArgs {
 pub struct WebFetchTool {
     client: reqwest::Client,
     definition: ToolDefinition,
+    default_timeout_ms: u32,
+    max_timeout_ms: u32,
+    max_response_size: usize,
 }
 
 impl Default for WebFetchTool {
@@ -43,19 +42,66 @@ impl Default for WebFetchTool {
 }
 
 impl WebFetchTool {
-    /// Creates a new webfetch tool with default client.
+    /// Creates a new webfetch tool with default client and settings.
     pub fn new() -> Self {
+        Self::with_settings(
+            webfetch_meta::DEFAULT_TIMEOUT_MS,
+            None,
+            webfetch_meta::MAX_RESPONSE_SIZE_MIB,
+        )
+    }
+
+    /// Creates a webfetch tool with a custom client and default settings.
+    pub fn with_client(client: reqwest::Client) -> Self {
+        let max_timeout_ms = webfetch_meta::MAX_TIMEOUT_MS;
         Self {
-            client: reqwest::Client::new(),
-            definition: build_definition(),
+            client,
+            definition: build_definition(max_timeout_ms),
+            default_timeout_ms: webfetch_meta::DEFAULT_TIMEOUT_MS,
+            max_timeout_ms,
+            max_response_size: webfetch_meta::MAX_RESPONSE_SIZE_MIB * 1024 * 1024,
         }
     }
 
-    /// Creates a webfetch tool with a custom client.
-    pub fn with_client(client: reqwest::Client) -> Self {
+    /// Creates a webfetch tool with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `default_timeout_ms` - Default timeout for web requests (must be >= 1)
+    /// * `max_timeout_ms` - Maximum timeout allowed for LLM requests (defaults to MAX_TIMEOUT_MS)
+    /// * `max_response_size_mib` - Maximum response size in mebibytes
+    ///
+    /// # Panics
+    ///
+    /// Panics if `default_timeout_ms` is 0 or exceeds `max_timeout_ms`.
+    pub fn with_settings(
+        default_timeout_ms: u32,
+        max_timeout_ms: Option<u32>,
+        max_response_size_mib: usize,
+    ) -> Self {
+        let max_timeout_ms = max_timeout_ms.unwrap_or(webfetch_meta::MAX_TIMEOUT_MS);
+
+        if max_timeout_ms == 0 {
+            panic!("max_timeout_ms must be at least 1");
+        }
+
+        if default_timeout_ms == 0 {
+            panic!("default_timeout_ms must be at least 1");
+        }
+        if default_timeout_ms > max_timeout_ms {
+            panic!(
+                "default_timeout_ms ({}) cannot exceed max_timeout_ms ({})",
+                default_timeout_ms, max_timeout_ms
+            );
+        }
+
+        let max_response_size = max_response_size_mib.saturating_mul(1024 * 1024);
         Self {
-            client,
-            definition: build_definition(),
+            client: reqwest::Client::new(),
+            definition: build_definition(max_timeout_ms),
+            default_timeout_ms,
+            max_timeout_ms,
+            max_response_size,
         }
     }
 }
@@ -70,7 +116,17 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
         let args: WebFetchArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(webfetch_meta::NAME, None, e.to_string()))?;
 
-        let result = fetch_url(&self.client, &args.url, args.timeout_ms).await;
+        // Determine effective timeout: LLM-provided or default
+        let effective_timeout = args.timeout_ms.unwrap_or(self.default_timeout_ms);
+
+        let result = fetch_url(
+            &self.client,
+            &args.url,
+            effective_timeout,
+            self.max_timeout_ms,
+            self.max_response_size,
+        )
+        .await;
 
         to_serdes_result(webfetch_meta::NAME, result.map(ToolOutput::from))
     }
@@ -84,7 +140,7 @@ impl ToolContext for WebFetchTool {
     }
 }
 
-fn build_definition() -> ToolDefinition {
+fn build_definition(max_timeout_ms: u32) -> ToolDefinition {
     ToolDefinition {
         name: webfetch_meta::NAME.to_owned(),
         description: webfetch_meta::DESCRIPTION.to_owned(),
@@ -99,7 +155,7 @@ fn build_definition() -> ToolDefinition {
                 webfetch_meta::param::TIMEOUT_MS.description,
                 webfetch_meta::param::TIMEOUT_MS.required,
                 Some(1),
-                Some(webfetch_meta::MAX_TIMEOUT_MS as i64),
+                Some(i64::from(max_timeout_ms)),
             )
             .build()
             .expect("schema serialization should never fail"),

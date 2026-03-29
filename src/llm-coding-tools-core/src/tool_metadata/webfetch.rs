@@ -6,10 +6,10 @@ use super::ParamMetadata;
 pub const NAME: &str = "webfetch";
 
 /// Default timeout in milliseconds.
-pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+pub const DEFAULT_TIMEOUT_MS: u32 = 30_000;
 
 /// Maximum timeout in milliseconds.
-pub const MAX_TIMEOUT_MS: u64 = 600_000;
+pub const MAX_TIMEOUT_MS: u32 = 600_000;
 
 /// Maximum response size in mebibytes (for display in prompts).
 pub const MAX_RESPONSE_SIZE_MIB: usize = 5;

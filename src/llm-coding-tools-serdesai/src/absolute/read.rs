@@ -19,9 +19,9 @@ struct ReadArgs {
     /// Line offset to start reading from (1-based). Defaults to 1.
     #[serde(default = "read_meta::default_offset")]
     offset: usize,
-    /// Maximum number of lines to return. Defaults to 2000.
-    #[serde(default = "read_meta::default_limit")]
-    limit: usize,
+    /// Maximum number of lines to return. Uses tool default if not specified.
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 /// Tool for reading file contents with optional line numbers.
@@ -32,6 +32,8 @@ struct ReadArgs {
 #[derive(Debug, Clone)]
 pub struct ReadTool<const LINE_NUMBERS: bool = true> {
     definition: ToolDefinition,
+    limit: usize,
+    max_line_length: usize,
 }
 
 impl<const LINE_NUMBERS: bool> Default for ReadTool<LINE_NUMBERS> {
@@ -41,11 +43,27 @@ impl<const LINE_NUMBERS: bool> Default for ReadTool<LINE_NUMBERS> {
 }
 
 impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
-    /// Creates a new read tool instance.
+    /// Creates a new read tool instance with default settings.
+    ///
+    /// Uses `limit` of 2000 lines and `max_line_length` of 2000 characters.
     #[inline]
     pub fn new() -> Self {
+        Self::with_settings(read_meta::DEFAULT_LIMIT, read_meta::MAX_LINE_LENGTH)
+    }
+
+    /// Creates a new read tool instance with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `limit` - Maximum number of lines to return per read call.
+    ///   This is the default used when the LLM doesn't specify a limit.
+    /// * `max_line_length` - Maximum characters per line before truncation.
+    ///   Longer lines will be truncated with "..." appended.
+    pub fn with_settings(limit: usize, max_line_length: usize) -> Self {
         Self {
             definition: build_definition::<LINE_NUMBERS>(),
+            limit,
+            max_line_length,
         }
     }
 }
@@ -61,9 +79,17 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_N
             .map_err(|e| ToolError::validation_error(read_meta::NAME, None, e.to_string()))?;
 
         let resolver = AbsolutePathResolver;
+        // Use provided limit or fall back to settings default
+        let effective_limit = args.limit.unwrap_or(self.limit);
         // Core uses 1-indexed offset directly; args.offset defaults to 1
-        let result =
-            read_file::<_, LINE_NUMBERS>(&resolver, &args.file_path, args.offset, args.limit).await;
+        let result = read_file::<_, LINE_NUMBERS>(
+            &resolver,
+            &args.file_path,
+            args.offset,
+            effective_limit,
+            self.max_line_length,
+        )
+        .await;
         to_serdes_result(read_meta::NAME, result)
     }
 }

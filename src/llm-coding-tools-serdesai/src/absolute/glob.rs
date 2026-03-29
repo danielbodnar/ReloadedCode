@@ -27,6 +27,7 @@ struct GlobArgs {
 #[derive(Debug, Clone)]
 pub struct GlobTool {
     definition: ToolDefinition,
+    limit: usize,
 }
 
 impl Default for GlobTool {
@@ -36,11 +37,25 @@ impl Default for GlobTool {
 }
 
 impl GlobTool {
-    /// Creates a new glob tool instance.
+    /// Creates a new glob tool instance with default settings.
+    ///
+    /// Uses `limit` of 1000 files.
     #[inline]
     pub fn new() -> Self {
+        Self::with_settings(glob_meta::MAX_RESULTS)
+    }
+
+    /// Creates a new glob tool instance with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `limit` - Maximum number of files to return per glob call.
+    ///   Results are sorted by modification time (newest first) and truncated
+    ///   to this limit if more files match the pattern.
+    pub fn with_settings(limit: usize) -> Self {
         Self {
             definition: build_definition(),
+            limit,
         }
     }
 }
@@ -56,7 +71,7 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
             .map_err(|e| ToolError::validation_error(glob_meta::NAME, None, e.to_string()))?;
 
         let resolver = AbsolutePathResolver;
-        let result = glob_files(&resolver, &args.pattern, &args.path);
+        let result = glob_files(&resolver, &args.pattern, &args.path, self.limit);
 
         match result {
             Err(e) => to_serdes_result(glob_meta::NAME, Err(e)),

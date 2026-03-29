@@ -35,6 +35,8 @@ struct GrepArgs {
 #[derive(Debug, Clone)]
 pub struct GrepTool<const LINE_NUMBERS: bool = true> {
     definition: ToolDefinition,
+    max_line_length: usize,
+    limit: usize,
 }
 
 impl<const LINE_NUMBERS: bool> Default for GrepTool<LINE_NUMBERS> {
@@ -44,11 +46,26 @@ impl<const LINE_NUMBERS: bool> Default for GrepTool<LINE_NUMBERS> {
 }
 
 impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
-    /// Creates a new grep tool instance.
+    /// Creates a new grep tool instance with default settings.
+    ///
+    /// Uses `max_line_length` of 2000 characters and `limit` of 100 matches.
     #[inline]
     pub fn new() -> Self {
+        Self::with_settings(DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT)
+    }
+
+    /// Creates a new grep tool instance with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_line_length` - Maximum characters per matching line before truncation.
+    ///   Longer lines will be truncated with "..." appended.
+    /// * `limit` - Maximum number of matches to return when not specified in args.
+    pub fn with_settings(max_line_length: usize, limit: usize) -> Self {
         Self {
             definition: build_definition::<LINE_NUMBERS>(),
+            max_line_length,
+            limit,
         }
     }
 }
@@ -72,10 +89,7 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
             ));
         }
 
-        let limit = args
-            .limit
-            .unwrap_or(grep_meta::DEFAULT_LIMIT)
-            .min(grep_meta::MAX_LIMIT);
+        let limit = args.limit.unwrap_or(self.limit);
         if limit == 0 {
             return Err(ToolError::validation_error(
                 grep_meta::NAME,
@@ -101,7 +115,7 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
             Ok(grep_output) => Ok(grep_output_to_return::<LINE_NUMBERS>(
                 grep_output,
                 limit,
-                DEFAULT_MAX_LINE_LENGTH,
+                self.max_line_length,
             )),
         }
     }
@@ -140,7 +154,7 @@ fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
             grep_meta::param::LIMIT.description,
             grep_meta::param::LIMIT.required,
             Some(1),
-            Some(grep_meta::MAX_LIMIT as i64),
+            None,
         )
         .build()
         .expect("schema build should not fail");
