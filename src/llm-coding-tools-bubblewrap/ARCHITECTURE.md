@@ -7,7 +7,7 @@ For the security model, see [SANDBOX-PROFILES.md](../../SANDBOX-PROFILES.md).
 
 ## File Map
 
-```
+```text
 llm-coding-tools-bubblewrap
 ├── lib.rs                  crate root, re-exports, Linux-only gate
 ├── error.rs                LinuxBwrapError
@@ -30,7 +30,7 @@ llm-coding-tools-bubblewrap
 
 ## Building a Profile
 
-```
+```text
    Builder::public_bot()          Builder::trusted_maintenance()         Builder::new()
    or any with_*() chain
            │
@@ -55,7 +55,7 @@ llm-coding-tools-bubblewrap
 
 Pass the `Profile` to `wrap_command` directly, or use an adapter:
 
-```
+```text
                 ┌──────────┐
                 │ Profile  │
                 └────┬─────┘
@@ -73,7 +73,7 @@ Pass the `Profile` to `wrap_command` directly, or use an adapter:
 
 ## What build() Does
 
-```
+```text
    ensure cache dirs ──► validate ──► find bwrap ──► find shell ──► build static args
           │                │              │               │                │
     validation.rs    validation.rs    probe.rs    builder.rs +      builder.rs
@@ -102,7 +102,7 @@ bwrap prefix (flags, mounts, env). `wrap_command` only appends `--chdir
 When `wrap_command` needs to translate a host working directory to a sandbox
 path, `SandboxLayout::classify` walks the mount tree:
 
-```
+```text
 host_path
  ├── under workspace?       → remap workspace → workspace_dest
  ├── under synthetic_home?  → remap home → home_dest
@@ -127,7 +127,7 @@ Shell search order: `bash` on PATH → `sh` on PATH → hardcoded candidates
 
 ## Error Model
 
-```
+```text
 LinuxBwrapError
 ├── InvalidPath(String)    bad path, bad env name/value, bad symlink,
 │                          bad credential mount, bad tmp backing,
@@ -140,7 +140,7 @@ per-call working directory.
 
 ## Feature Flags
 
-```
+```text
 (default)   → wrap_command only (no process-wrap dependency)
 tokio       → wrap::tokio::build_command_wrap   (process-wrap tokio1, process-group)
 blocking    → wrap::blocking::build_command_wrap (process-wrap std, process-group)

@@ -77,7 +77,7 @@ The process splits into two phases:
 
 Create a reusable build context once with shared resources:
 
-```
+```text
    Arc<AgentRuntime> + Arc<ModelCatalog> + Arc<Credentials>
                          │
                          ▼
@@ -98,7 +98,7 @@ Build individual SerdesAI agents from the context (can be called multiple times)
 Transforms the framework-agnostic [`AgentConfig`] into a runnable SerdesAI
 [`Agent`]:
 
-```
+```text
    AgentBuildContext::build("agent-name")
                          │
                          ▼
@@ -115,8 +115,8 @@ Transforms the framework-agnostic [`AgentConfig`] into a runnable SerdesAI
             └─────────────────────────┘
                          │
                          ▼
-              Depth guard check
-            (clears targets if at limit)
+               Depth guard check
+             (clears targets if at limit)
                          │
                          ▼
            attach_standard_tools()
@@ -136,7 +136,7 @@ recursively build each other at runtime.
 Central helper that gathers all configuration from the runtime catalog
 ([`AgentConfig`]) to construct a runnable SerdesAI [`Agent`].
 
-```
+```text
 prepare_build(runtime, name, model_catalog, credentials)
     │
     ▼
@@ -160,7 +160,7 @@ PreparedBuild {
 Resolves which model an agent should use by checking agent override, then
 runtime defaults, validating against the model catalog:
 
-```
+```text
    resolve_model_with_catalog(model_catalog, defaults, agent)
                 │
                 │  1. Check agent.model override
@@ -181,7 +181,7 @@ Precedence: **agent override** wins over **runtime default**.
 Connects framework-agnostic [`ResolvedModel`] to concrete SerdesAI
 [`BoxedModel`] implementations:
 
-```
+```text
    ResolvedModel { provider, model }
         │
         │  catalog.lookup_provider(provider)
@@ -227,7 +227,7 @@ user which flag to enable.
 How agents delegate work to sub-agents at runtime via the `task` tool.
 With depth limits and validation.
 
-```
+```text
    LLM emits tool_call("task", { subagent_type, prompt, description })
         │
         ▼
@@ -258,7 +258,7 @@ With depth limits and validation.
 
 `TaskSettings::max_depth` (default: 3) limits delegation hops:
 
-```
+```text
    depth 0  ->  orchestrator (has TaskTool)
    depth 1  ->  sub-agent-a  (has TaskTool if max_depth > 1)
    depth 2  ->  sub-agent-b  (has TaskTool if max_depth > 2)
@@ -282,7 +282,7 @@ max depth) or `ToolError::ExecutionFailed` (sub-agent build/run failure).
 
 ### File Map
 
-```
+```text
 llm-coding-tools-serdesai/src/
 ├── agent_runtime/
 │   ├── mod.rs              module root, re-exports from llm-coding-tools-agents

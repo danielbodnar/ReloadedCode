@@ -73,7 +73,7 @@ You are a careful code reviewer.
 
 ### Loading Pipeline
 
-```
+```text
     .md file / string / bytes
              │
              │  AgentLoader::add_directory / add_file / add_from_str
@@ -105,7 +105,7 @@ You are a careful code reviewer.
 `AgentLoader::add_directory` walks the given root with `.gitignore` support
 (`ignore` crate), keeping only files matching:
 
-```
+```text
 agent/**/*.md
 agents/**/*.md
 ```
@@ -113,7 +113,7 @@ agents/**/*.md
 Agent name is derived from the relative path by stripping the `agent/` or
 `agents/` prefix and `.md` suffix:
 
-```
+```text
 agent/code-reviewer.md      -> "code-reviewer"
 agents/nested/deep.md        -> "nested/deep"
 ```
@@ -147,7 +147,7 @@ settings, and the available tools.
 
 ### Building the Runtime
 
-```
+```text
    AgentRuntimeBuilder::new()
        .catalog(catalog)
        .defaults(AgentDefaults { model, temperature, top_p })
@@ -194,7 +194,7 @@ Fallback settings used when an individual agent doesn't specify them:
 
 When an agent needs to run, you resolve which model it should use:
 
-```
+```text
    resolve_model_with_catalog(model_catalog, defaults, agent)
                 │
                 │  1. agent.model set?  -> parse "provider/model-id"
@@ -238,7 +238,7 @@ permission:
 `RulesetExt::from_permission_config` converts this into a `Ruleset` (from
 `llm-coding-tools-core::permissions`):
 
-```
+```text
 PermissionRule::Action(Allow)    -> Rule { key: "read",   pattern: "*", action: Allow }
 PermissionRule::Action(Deny)     -> Rule { key: "bash",   pattern: "*", action: Deny  }
 PermissionRule::Pattern({ .. })  -> Rule { key: "task",   pattern: "*",        action: Deny  }
@@ -251,7 +251,7 @@ Evaluation uses **last-match-wins** semantics.
 
 `AgentRuntime::allowed_tools(caller_name)` filters the tool catalog:
 
-```
+```text
    runtime.tools()
         │
         │  for each entry:
@@ -266,7 +266,7 @@ Evaluation uses **last-match-wins** semantics.
 `callable_targets(catalog, caller_name)` returns agents the caller may delegate
 to via the Task tool:
 
-```
+```text
    all agents (sorted by name)
         │
         │  filter:
@@ -287,7 +287,7 @@ delegation to all non-Primary agents.
 
 ### Error Model
 
-```
+```text
 AgentLoadError
 ├── Io { path, source }              file read / directory scan failure
 ├── Parse { path, source }           frontmatter YAML parse failure
@@ -315,7 +315,7 @@ in-memory sources, displayed as `<memory>`).
 
 ### File Map
 
-```
+```text
 llm-coding-tools-agents
 ├── lib.rs                  crate root, re-exports
 ├── catalog.rs              AgentCatalog - in-memory name -> AgentConfig store
