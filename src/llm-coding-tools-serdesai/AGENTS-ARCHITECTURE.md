@@ -3,7 +3,7 @@
 SerdesAI adapter that builds runnable [`serdes_ai::Agent`] instances from the
 framework-agnostic [`AgentRuntime`] provided by `llm-coding-tools-agents`.
 
-The crate also contains standalone file tools (read, write, edit, glob, grep,
+The crate also contains standalone tools (read, write, edit, glob, grep,
 bash, webfetch, todo) and Linux bubblewrap sandboxing. This document focuses
 on the **agent runtime** subsystem.
 
@@ -23,8 +23,6 @@ For the foundation crate, see
   - [Depth Guard](#depth-guard)
 - [Reference](#reference)
   - [Error Model](#error-model)
-  - [Feature Flags](#feature-flags)
-  - [Testing](#testing)
   - [File Map](#file-map)
 
 ## Quick Start
@@ -195,15 +193,15 @@ Connects framework-agnostic [`ResolvedModel`] to concrete SerdesAI
    build_serdes_model()
         │
         │  credential resolution:
-        │    require_env_value()    finds first _API_KEY / _TOKEN
-        │    first_matching_env()   optional values (region, project_id)
+        │    require_env_value()          finds first _API_KEY / _TOKEN
+        │    first_matching_env_value()   optional values (region, project_id)
         ▼
    ResolvedSerdesModel { model: BoxedModel, spec: "provider:model" }
 ```
 
-Each provider function is gated behind a feature flag. When the feature is
-disabled, `feature_disabled_error()` returns a clear message telling the user
-which flag to enable.
+Each provider function is gated behind a feature flag. When a feature is
+disabled, model construction returns a clear configuration error telling the
+user which flag to enable.
 
 | ProviderType      | SerdesAI Model       | Notes               |
 | ----------------- | -------------------- | ------------------- |
@@ -244,7 +242,8 @@ With depth limits and validation.
         │    ├─ caller in catalog?       -> no  -> ExecutionFailed
         │    ├─ target in catalog?       -> no  -> ValidationFailed("unknown")
         │    ├─ target.mode == Primary?  -> yes -> ValidationFailed("primary")
-        │    └─ permission.task allows?  -> no  -> ValidationFailed("not allowed")
+        │    └─ permission.task configured + disallows?
+        │         └─ yes -> ValidationFailed("not allowed")
         │
         ├─ build_agent(context, target_name, depth+1)
         │    └─ recursive: builds sub-agent with its own tools

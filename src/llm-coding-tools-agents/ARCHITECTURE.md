@@ -38,7 +38,7 @@ use std::path::Path;
 // 1. Load agents from directory
 let loader = AgentLoader::new();
 let mut catalog = AgentCatalog::new();
-loader.add_directory(&mut catalog, Path::new("~/.opencode"))?;
+loader.add_directory(&mut catalog, Path::new("agents"))?;
 
 // 2. Build the runtime
 let runtime = AgentRuntimeBuilder::new()
@@ -46,7 +46,7 @@ let runtime = AgentRuntimeBuilder::new()
     .defaults(AgentDefaults::with_model("openai/gpt-4o"))
     .build();
 
-// 3. Use the runtime (e.g., resolve which model an agent should use)
+// 3. Use the runtime (e.g., look up agents by name)
 let agent = runtime.catalog().by_name("code-reviewer").unwrap();
 // ... pass to your framework's agent builder
 ```
@@ -78,15 +78,16 @@ You are a careful code reviewer.
              │
              │  AgentLoader::add_directory / add_file / add_from_str
              ▼
-    ┌────────────────────────────────────────────────────────────┐
-    │ 1. CRLF -> LF normalization             crlf-to-lf-inplace │
-    │ 2. Find frontmatter delimiters          parser/mod.rs      │
-    │ 3. Preprocess YAML                      preprocessor       │
-    │    Rewrites colon-containing values to block scalars       │
-    │ 4. Parse YAML -> RawFrontmatter         serde_yaml         │
-    │ 5. Validate headless compatibility      no "ask" perms     │
-    │ 6. Build AgentConfig                    from_raw           │
-    └──────────────────────────────┬─────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ 1. CRLF -> LF normalization             crlf-to-lf-inplace          │
+    │ 2. Find frontmatter delimiters          parser/mod.rs               │
+    │ 3. Preprocess YAML                      preprocessor                │
+    │    Rewrites colon-containing values to block scalars                │
+    │ 4. Parse YAML -> serde_yaml::Value      serde_yaml                  │
+    │ 5. Validate headless compatibility      no "ask" in permission.task │
+    │ 6. Deserialize Value -> RawFrontmatter  serde_yaml                  │
+    │ 7. Build AgentConfig                    from_raw                    │
+    └──────────────────────────────┬──────────────────────────────────────┘
                                    │
                                    ▼
                             ┌─────────────┐
@@ -294,7 +295,7 @@ AgentLoadError
 │                                       ├── MissingFrontmatter
 │                                       ├── InvalidYaml { message }
 │                                       └── SchemaValidation { message }
-└── SchemaValidation { path, msg }   invalid mode, empty name, "ask" permission
+└── SchemaValidation { path, message } invalid mode, empty name, "ask" permission
 
 ModelResolutionError
 ├── MalformedModelIdentifier          missing "/" or empty segments
