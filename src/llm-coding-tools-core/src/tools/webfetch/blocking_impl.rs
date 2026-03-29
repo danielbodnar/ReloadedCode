@@ -2,7 +2,6 @@
 
 use super::{categorize_reqwest_error, check_size, process_content, WebFetchOutput};
 use crate::error::{ToolError, ToolResult};
-use crate::tool_metadata::webfetch::MAX_TIMEOUT_MS;
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
@@ -12,20 +11,38 @@ use std::time::Duration;
 /// - JSON is pretty-printed
 /// - Other content types returned as-is
 /// - Response size is limited to `max_response_size` bytes
+///
+/// # Arguments
+///
+/// * `client` - The HTTP client to use
+/// * `url` - The URL to fetch
+/// * `timeout_ms` - Timeout in milliseconds (must be >= 1 and <= max_timeout_ms)
+/// * `max_timeout_ms` - Maximum allowed timeout in milliseconds
+/// * `max_response_size` - Maximum response size in bytes
+///
+/// # Errors
+///
+/// Returns `ToolError::Validation` if timeout_ms is 0 or exceeds max_timeout_ms.
 pub fn fetch_url(
     client: &reqwest::blocking::Client,
     url: &str,
-    timeout_ms: u64,
+    timeout_ms: u32,
+    max_timeout_ms: u32,
     max_response_size: usize,
 ) -> ToolResult<WebFetchOutput> {
-    if timeout_ms == 0 || timeout_ms > MAX_TIMEOUT_MS {
+    if timeout_ms == 0 {
+        return Err(ToolError::Validation(
+            "timeout_ms must be at least 1".to_string(),
+        ));
+    }
+    if timeout_ms > max_timeout_ms {
         return Err(ToolError::Validation(format!(
-            "timeout_ms must be between 1 and {}",
-            MAX_TIMEOUT_MS
+            "timeout_ms exceeds maximum allowed value of {}",
+            max_timeout_ms
         )));
     }
 
-    let timeout = Duration::from_millis(timeout_ms);
+    let timeout = Duration::from_millis(timeout_ms as u64);
     let response = client
         .get(url)
         .timeout(timeout)
@@ -113,6 +130,7 @@ mod tests {
             &client,
             "https://httpbin.org/robots.txt",
             10_000,
+            20_000,
             5 * 1024 * 1024,
         );
 
@@ -131,6 +149,7 @@ mod tests {
             &client,
             "https://httpbin.org/status/404",
             10_000,
+            20_000,
             5 * 1024 * 1024,
         );
 
@@ -143,7 +162,7 @@ mod tests {
     #[test]
     fn rejects_timeout_zero() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", 0, 5 * 1024 * 1024);
+        let result = fetch_url(&client, "http://localhost:1", 0, 10_000, 5 * 1024 * 1024);
         assert!(matches!(result, Err(ToolError::Validation(_))));
     }
 
@@ -153,7 +172,8 @@ mod tests {
         let result = fetch_url(
             &client,
             "http://localhost:1",
-            MAX_TIMEOUT_MS + 1,
+            11_000,
+            10_000,
             5 * 1024 * 1024,
         );
         assert!(matches!(result, Err(ToolError::Validation(_))));

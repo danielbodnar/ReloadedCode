@@ -143,7 +143,7 @@ pub struct BashToolSettings {
         default = "bash_default_timeout_ms",
         deserialize_with = "deserialize_min_timeout_ms"
     )]
-    pub timeout_ms: u64,
+    pub timeout_ms: u32,
 }
 
 impl Default for BashToolSettings {
@@ -163,7 +163,7 @@ pub struct WebFetchToolSettings {
         default = "webfetch_default_timeout_ms",
         deserialize_with = "deserialize_min_timeout_ms"
     )]
-    pub timeout_ms: u64,
+    pub timeout_ms: u32,
     /// Maximum response size in MiB (default: 5, min: 1).
     #[serde(
         default = "webfetch_default_max_response_size_mib",
@@ -213,12 +213,12 @@ const fn glob_default_limit() -> usize {
 }
 
 #[inline]
-const fn bash_default_timeout_ms() -> u64 {
+const fn bash_default_timeout_ms() -> u32 {
     bash::DEFAULT_TIMEOUT_MS
 }
 
 #[inline]
-const fn webfetch_default_timeout_ms() -> u64 {
+const fn webfetch_default_timeout_ms() -> u32 {
     webfetch::DEFAULT_TIMEOUT_MS
 }
 
@@ -272,11 +272,11 @@ where
     Ok(value)
 }
 
-fn deserialize_min_timeout_ms<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn deserialize_min_timeout_ms<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let value = u64::deserialize(deserializer)?;
+    let value = u32::deserialize(deserializer)?;
     if value < MIN_TIMEOUT_MS {
         return Err(serde::de::Error::custom(format!(
             "value must be >= {}",

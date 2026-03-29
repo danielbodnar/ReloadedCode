@@ -32,7 +32,6 @@ use llm_coding_tools_core::tools::{BashExecutionMode, execute_command_with_mode}
 use serde::Deserialize;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
 use llm_coding_tools_bubblewrap::profile::{NetworkPolicy, Profile};
@@ -45,7 +44,7 @@ struct BashArgs {
     /// Optional working directory (must be absolute path).
     workdir: Option<String>,
     /// Timeout in milliseconds. Optional - falls back to constructor default or 120000ms.
-    timeout_ms: Option<u64>,
+    timeout_ms: Option<u32>,
 }
 
 /// Tool for executing shell commands.
@@ -56,8 +55,10 @@ pub struct BashTool {
     definition: ToolDefinition,
     /// Explicit execution mode for this tool instance.
     mode: BashExecutionMode, // ZST. 0 bytes when all optionals disabled.
-    /// Default timeout for commands when not specified in args.
-    default_timeout: Option<Duration>,
+    /// Default timeout in milliseconds for commands when not specified in args.
+    default_timeout_ms: u32,
+    /// Maximum timeout allowed for LLM requests.
+    max_timeout_ms: u32,
     /// Default working directory when not specified in args.
     default_workdir: Option<PathBuf>,
 }
@@ -85,7 +86,8 @@ impl BashTool {
         Self {
             definition: build_definition(),
             mode: BashExecutionMode::Host,
-            default_timeout: None,
+            default_timeout_ms: bash_meta::DEFAULT_TIMEOUT_MS,
+            max_timeout_ms: bash_meta::MAX_TIMEOUT_MS,
             default_workdir: None,
         }
     }
@@ -95,11 +97,30 @@ impl BashTool {
         &self.mode
     }
 
-    /// Sets the default timeout for commands.
+    /// Sets the default timeout for commands in milliseconds.
     ///
     /// This timeout is used when `timeout_ms` is not provided in the tool arguments.
-    pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
-        self.default_timeout = Some(timeout);
+    ///
+    /// # Panics
+    ///
+    /// Panics if the timeout is 0 or exceeds `max_timeout_ms`.
+    pub fn with_default_timeout_ms(mut self, timeout_ms: u32) -> Self {
+        if timeout_ms == 0 {
+            panic!("default timeout must be at least 1ms");
+        }
+        if timeout_ms > self.max_timeout_ms {
+            panic!(
+                "default timeout ({}ms) cannot exceed max_timeout_ms ({}ms)",
+                timeout_ms, self.max_timeout_ms
+            );
+        }
+        self.default_timeout_ms = timeout_ms;
+        self
+    }
+
+    /// Sets the maximum timeout allowed for LLM requests.
+    pub fn with_max_timeout_ms(mut self, max_timeout_ms: u32) -> Self {
+        self.max_timeout_ms = max_timeout_ms;
         self
     }
 
@@ -149,7 +170,7 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
     ///
     /// # Errors
     ///
-    /// - [`ToolError::ValidationFailed`] if the JSON arguments fail deserialization.
+    /// - [`ToolError::ValidationFailed`] if the JSON arguments fail deserialization or timeout_ms is invalid.
     /// - [`ToolError::ExecutionFailed`] if the command cannot be spawned, the per-command
     ///   workdir is invalid, or a timeout or I/O failure occurs while collecting
     ///   output.
@@ -164,15 +185,19 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
             .map(|s| Path::new(s.as_str()))
             .or(self.default_workdir.as_deref());
 
-        // Priority: args.timeout_ms > self.default_timeout > DEFAULT_TIMEOUT_MS
-        let timeout = args
-            .timeout_ms
-            .map(Duration::from_millis)
-            .or(self.default_timeout)
-            .unwrap_or(Duration::from_millis(bash_meta::DEFAULT_TIMEOUT_MS));
+        // Priority: args.timeout_ms > self.default_timeout_ms
+        let timeout_ms = args.timeout_ms.unwrap_or(self.default_timeout_ms);
 
         // Route execution through mode-aware entrypoint to honour explicit mode selection
-        let result = execute_command_with_mode(&self.mode, &args.command, workdir, timeout).await;
+        // Core validates timeout_ms against max_timeout_ms
+        let result = execute_command_with_mode(
+            &self.mode,
+            &args.command,
+            workdir,
+            timeout_ms,
+            self.max_timeout_ms,
+        )
+        .await;
 
         to_serdes_result(bash_meta::NAME, result.map(|output| output.format_output()))
     }
@@ -335,7 +360,7 @@ mod tests {
     #[serial]
     async fn per_call_timeout_overrides_default() {
         // Constructor sets 10s default, but per-call arg specifies 100ms
-        let tool = BashTool::new().with_default_timeout(Duration::from_secs(10));
+        let tool = BashTool::new().with_default_timeout_ms(10_000);
         let cmd = if cfg!(target_os = "windows") {
             "ping -n 10 127.0.0.1"
         } else {
@@ -353,7 +378,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn default_timeout_used_when_arg_omitted() {
-        let tool = BashTool::new().with_default_timeout(Duration::from_millis(100));
+        let tool = BashTool::new().with_default_timeout_ms(100);
         let cmd = if cfg!(target_os = "windows") {
             "ping -n 10 127.0.0.1"
         } else {

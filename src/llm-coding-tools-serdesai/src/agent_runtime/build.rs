@@ -19,7 +19,6 @@ use llm_coding_tools_agents::{
 use llm_coding_tools_core::{CredentialLookup, models::ModelCatalog};
 use serdes_ai::AgentBuilder;
 use serdes_ai_models::BoxedModel;
-use std::time::Duration;
 
 /// Resolved build parameters ready for agent construction.
 #[derive(Clone)]
@@ -161,16 +160,15 @@ where
             ToolCatalogKind::Bash => {
                 let settings = &prepared.tool_settings.bash;
                 builder = builder.tool(
-                    prompt_builder.track(
-                        BashTool::new()
-                            .with_default_timeout(Duration::from_millis(settings.timeout_ms)),
-                    ),
+                    prompt_builder
+                        .track(BashTool::new().with_default_timeout_ms(settings.timeout_ms)),
                 );
             }
             ToolCatalogKind::WebFetch => {
                 let settings = &prepared.tool_settings.webfetch;
                 builder = builder.tool(prompt_builder.track(WebFetchTool::with_settings(
                     settings.timeout_ms,
+                    None, // Use default max_timeout_ms
                     settings.max_response_size_mib,
                 )));
             }

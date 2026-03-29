@@ -31,12 +31,30 @@ enum WaitOutcome {
 /// Uses bash on Unix, cmd on Windows. Process tree is killed on timeout via:
 /// - Windows: Job Objects
 /// - Unix: Process groups
+///
+/// # Arguments
+///
+/// * `command` - The shell command to execute
+/// * `workdir` - Optional working directory (must be absolute if provided)
+/// * `timeout_ms` - Timeout in milliseconds (must be >= 1 and <= max_timeout_ms)
+/// * `max_timeout_ms` - Maximum allowed timeout in milliseconds
+///
+/// # Errors
+///
+/// Returns `ToolError::Validation` if timeout_ms is 0 or exceeds max_timeout_ms.
 pub fn execute_command(
     command: &str,
     workdir: Option<&Path>,
-    timeout: Duration,
+    timeout_ms: u32,
+    max_timeout_ms: u32,
 ) -> ToolResult<BashOutput> {
-    execute_command_with_mode(&BashExecutionMode::Host, command, workdir, timeout)
+    execute_command_with_mode(
+        &BashExecutionMode::Host,
+        command,
+        workdir,
+        timeout_ms,
+        max_timeout_ms,
+    )
 }
 
 /// Executes a shell command with explicit mode selection.
@@ -45,9 +63,11 @@ pub fn execute_command(
 /// - `mode` - The execution mode (host or Linux sandbox).
 /// - `command` - The shell command to execute.
 /// - `workdir` - Optional working directory (must be absolute if provided).
-/// - `timeout` - Maximum time to wait for command completion.
+/// - `timeout_ms` - Timeout in milliseconds (must be >= 1 and <= max_timeout_ms).
+/// - `max_timeout_ms` - Maximum allowed timeout in milliseconds.
 ///
 /// # Errors
+/// - Returns `ToolError::Validation` if timeout_ms is 0 or exceeds max_timeout_ms.
 /// - Returns [`ToolError::InvalidPath`] if workdir is not absolute or doesn't exist.
 /// - Returns [`ToolError::Execution`] for sandbox mode when bwrap is missing or unusable.
 /// - Returns [`ToolError::Timeout`] or [`ToolError::TimeoutWithKillFailure`] on timeout.
@@ -55,8 +75,23 @@ pub fn execute_command_with_mode(
     mode: &BashExecutionMode,
     command: &str,
     workdir: Option<&Path>,
-    timeout: Duration,
+    timeout_ms: u32,
+    max_timeout_ms: u32,
 ) -> ToolResult<BashOutput> {
+    // Validate timeout_ms
+    if timeout_ms == 0 {
+        return Err(ToolError::Validation(
+            "timeout_ms must be at least 1".to_string(),
+        ));
+    }
+    if timeout_ms > max_timeout_ms {
+        return Err(ToolError::Validation(format!(
+            "timeout_ms exceeds maximum allowed value of {}",
+            max_timeout_ms
+        )));
+    }
+
+    let timeout = Duration::from_millis(timeout_ms as u64);
     let wrap = match mode {
         BashExecutionMode::Host => build_host_wrap(command, workdir),
         #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -188,7 +223,7 @@ mod tests {
 
     #[test]
     fn execute_echo_returns_output() {
-        let result = execute_command("echo hello", None, Duration::from_secs(5)).unwrap();
+        let result = execute_command("echo hello", None, 5000, 10000).unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("hello"));
@@ -203,7 +238,7 @@ mod tests {
             "pwd"
         };
 
-        let result = execute_command(cmd, Some(temp.path()), Duration::from_secs(5)).unwrap();
+        let result = execute_command(cmd, Some(temp.path()), 5000, 10000).unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         let temp_path = temp.path().to_string_lossy();
@@ -218,7 +253,7 @@ mod tests {
             "sleep 10"
         };
 
-        let result = execute_command(cmd, None, Duration::from_millis(100));
+        let result = execute_command(cmd, None, 100, 10000);
         assert!(matches!(
             result,
             Err(ToolError::Timeout(_) | ToolError::TimeoutWithKillFailure { .. })
@@ -230,7 +265,8 @@ mod tests {
         let result = execute_command(
             "echo hello",
             Some(Path::new("/nonexistent/path")),
-            Duration::from_secs(5),
+            5000,
+            10000,
         );
 
         assert!(matches!(result, Err(ToolError::InvalidPath(_))));
@@ -244,7 +280,7 @@ mod tests {
             "exit 42"
         };
 
-        let result = execute_command(cmd, None, Duration::from_secs(5)).unwrap();
+        let result = execute_command(cmd, None, 5000, 10000).unwrap();
 
         assert_eq!(result.exit_code, Some(42));
     }
@@ -278,7 +314,7 @@ mod tests {
             format!("cat {}", large_file.display())
         };
 
-        let result = execute_command(&cmd, None, Duration::from_secs(30)).unwrap();
+        let result = execute_command(&cmd, None, 30000, 60000).unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         // Verify we got all the output (102400 bytes written)
