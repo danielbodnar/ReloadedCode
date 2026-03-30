@@ -2067,6 +2067,7 @@ dependencies = [
  "llm-coding-tools-core",
  "maybe-async",
  "reqwest 0.13.1",
+ "rstest",
  "serde",
  "serde_json",
  "serial_test",

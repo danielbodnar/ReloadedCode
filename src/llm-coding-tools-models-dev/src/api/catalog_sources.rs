@@ -164,6 +164,7 @@ mod tests {
     use super::{cache_payload_from_api_json_bytes, provider_type_from_models_dev_npm};
     use crate::cache::payload::catalog_from_cache_payload;
     use llm_coding_tools_core::models::{Modality, ModelCatalog, ProviderIdx, ProviderType};
+    use rstest::rstest;
 
     fn catalog_from_api_json_bytes(json_bytes: &[u8]) -> crate::error::CatalogResult<ModelCatalog> {
         let payload = cache_payload_from_api_json_bytes(json_bytes)?;
@@ -542,75 +543,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn provider_type_mapping_handles_known_and_unknown_packages() {
+    /// Verifies that npm package names from AI SDK providers are correctly mapped
+    /// to their corresponding ProviderType variants. Tests both known provider
+    /// packages and the fallback case for unknown/missing packages.
+    #[rstest]
+    #[case::openai_package(Some("@ai-sdk/openai"), ProviderType::OpenAiCompletions)]
+    #[case::openai_compatible_package(
+        Some("@ai-sdk/openai-compatible"),
+        ProviderType::OpenAiCompletions
+    )]
+    #[case::openai_responses_package(
+        Some("@ai-sdk/openai-responses"),
+        ProviderType::OpenAiResponses
+    )]
+    #[case::anthropic_package(Some("@ai-sdk/anthropic"), ProviderType::Anthropic)]
+    #[case::google_package(Some("@ai-sdk/google"), ProviderType::Google)]
+    #[case::groq_package(Some("@ai-sdk/groq"), ProviderType::Groq)]
+    #[case::mistral_package(Some("@ai-sdk/mistral"), ProviderType::Mistral)]
+    #[case::ollama_package(Some("@ai-sdk/ollama"), ProviderType::Ollama)]
+    #[case::amazon_bedrock_package(Some("@ai-sdk/amazon-bedrock"), ProviderType::Bedrock)]
+    #[case::azure_package(Some("@ai-sdk/azure"), ProviderType::Azure)]
+    #[case::openrouter_provider_package(
+        Some("@openrouter/ai-sdk-provider"),
+        ProviderType::OpenRouter
+    )]
+    #[case::huggingface_package(Some("@ai-sdk/huggingface"), ProviderType::HuggingFace)]
+    #[case::cohere_package(Some("@ai-sdk/cohere"), ProviderType::Cohere)]
+    #[case::chatgpt_oauth_package(Some("@ai-sdk/chatgpt-oauth"), ProviderType::ChatGptOAuth)]
+    #[case::claude_code_oauth_package(
+        Some("@ai-sdk/claude-code-oauth"),
+        ProviderType::ClaudeCodeOAuth
+    )]
+    #[case::antigravity_package(Some("@ai-sdk/antigravity"), ProviderType::Antigravity)]
+    #[case::missing_package_unknown(None, ProviderType::Unknown)]
+    fn npm_package_maps_to_correct_provider_type(
+        #[case] npm_package: Option<&str>,
+        #[case] expected_provider_type: ProviderType,
+    ) {
         assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/openai")),
-            ProviderType::OpenAiCompletions
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/openai-compatible")),
-            ProviderType::OpenAiCompletions
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/openai-responses")),
-            ProviderType::OpenAiResponses
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/anthropic")),
-            ProviderType::Anthropic
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/google")),
-            ProviderType::Google
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/groq")),
-            ProviderType::Groq
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/mistral")),
-            ProviderType::Mistral
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/ollama")),
-            ProviderType::Ollama
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/amazon-bedrock")),
-            ProviderType::Bedrock
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/azure")),
-            ProviderType::Azure
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@openrouter/ai-sdk-provider")),
-            ProviderType::OpenRouter
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/huggingface")),
-            ProviderType::HuggingFace
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/cohere")),
-            ProviderType::Cohere
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/chatgpt-oauth")),
-            ProviderType::ChatGptOAuth
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/claude-code-oauth")),
-            ProviderType::ClaudeCodeOAuth
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(Some("@ai-sdk/antigravity")),
-            ProviderType::Antigravity
-        );
-        assert_eq!(
-            provider_type_from_models_dev_npm(None),
-            ProviderType::Unknown
+            provider_type_from_models_dev_npm(npm_package),
+            expected_provider_type
         );
     }
 }
