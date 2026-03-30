@@ -239,88 +239,100 @@ fn is_valid_key(key: &str) -> bool {
 mod tests {
     use super::*;
     use crlf_to_lf_inplace::crlf_to_lf_inplace;
+    use indoc::indoc;
+    use rstest::rstest;
 
-    #[test]
-    fn preprocess_handles_colons_in_value() {
-        let input = "model: provider/model:tag";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("model: |-"));
-        assert!(output.as_ref().contains("  provider/model:tag"));
+    /// Verifies that ambiguous YAML values are rewritten as block scalars.
+    #[rstest]
+    // Unquoted colon inside a plain scalar must become a block scalar.
+    #[case::colons_in_value(
+        indoc! {"
+            model: provider/model:tag
+        "},
+        false,
+        indoc! {"
+            model: |-
+              provider/model:tag
+        "},
+        None
+    )]
+    // Key spacing still normalizes to `key: |-`.
+    #[case::whitespace_around_key_separator(
+        indoc! {"
+            model : provider/model:tag
+        "},
+        false,
+        indoc! {"
+            model: |-
+              provider/model:tag
+        "},
+        None
+    )]
+    // CRLF input is normalized before rewrite and both ambiguous values still transform.
+    #[case::crlf_normalized_two_line_frontmatter(
+        "model: provider/model:tag\r\napi_url: http://localhost:8080",
+        true,
+        "model: |-\n  provider/model:tag\napi_url: |-\n  http://localhost:8080",
+        None
+    )]
+    // Transformed output drops the inline comment suffix from the scalar content.
+    #[case::strips_inline_comment_when_rewriting(
+        indoc! {"
+            model: provider/model:tag # inline comment
+        "},
+        false,
+        indoc! {"
+            model: |-
+              provider/model:tag
+        "},
+        Some("# inline comment")
+    )]
+    fn preprocess_transforms_to_block_scalar(
+        #[case] raw_input: &str,
+        #[case] normalize_crlf: bool,
+        #[case] expected_fragment: &str,
+        #[case] forbidden_fragment: Option<&str>,
+    ) {
+        let mut input = raw_input.to_string();
+        if normalize_crlf {
+            // Keep the explicit normalization path covered because the parser expects LF input.
+            crlf_to_lf_inplace(&mut input);
+        }
+
+        let output = preprocess_frontmatter_yaml(&input);
+        assert!(output.as_ref().contains(expected_fragment.trim_end()));
+
+        if let Some(forbidden_fragment) = forbidden_fragment {
+            assert!(!output.as_ref().contains(forbidden_fragment));
+        }
     }
 
-    #[test]
-    fn preprocess_preserves_quoted_values() {
-        let input = "model: \"provider/model:tag\"";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("model: \"provider/model:tag\""));
-    }
-
-    #[test]
-    fn preprocess_preserves_block_scalars() {
-        let input = "desc: |\n  multiline";
+    /// Verifies that safe YAML constructs are preserved unchanged.
+    #[rstest]
+    // Quoted scalars are already YAML-safe.
+    #[case::quoted_value("model: \"provider/model:tag\"")]
+    // Block scalar indicators must not be rewritten again.
+    #[case::existing_block_scalar(indoc! {"
+        desc: |
+          multiline
+    "})]
+    // Comment lines with colons are preserved verbatim.
+    #[case::comment_line_is_ignored(indoc! {"
+        # comment: with:colon
+        mode: subagent
+    "})]
+    // Flow syntax is already explicit YAML and must stay untouched.
+    #[case::flow_mapping("task: { \"*\": \"deny\" }")]
+    #[case::flow_array("items: [\"a:b\", \"c:d\"]")]
+    // Nested lines inside a block scalar are not treated as top-level keys.
+    #[case::indented_continuation_line(indoc! {"
+        desc: |
+          line:with:colons
+    "})]
+    // A colon inside the inline comment keeps the original line unchanged to avoid false positives.
+    #[case::ambiguous_inline_comment_with_colon("model: provider/model # note: keep")]
+    fn preprocess_preserves_unchanged(#[case] input: &str) {
         let output = preprocess_frontmatter_yaml(input);
         assert_eq!(input, output.as_ref());
-    }
-
-    #[test]
-    fn preprocess_skips_comments() {
-        let input = "# comment: with:colon\nmode: subagent";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("# comment: with:colon"));
-    }
-
-    #[test]
-    fn preprocess_skips_flow_mappings() {
-        let input = "task: { \"*\": \"deny\" }";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("task: { \"*\": \"deny\" }"));
-    }
-
-    #[test]
-    fn preprocess_skips_flow_arrays() {
-        let input = "items: [\"a:b\", \"c:d\"]";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("items: [\"a:b\", \"c:d\"]"));
-    }
-
-    #[test]
-    fn preprocess_handles_key_with_whitespace_around_colon() {
-        let input = "model : provider/model:tag";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("model: |-"));
-        assert!(output.as_ref().contains("  provider/model:tag"));
-    }
-
-    #[test]
-    fn preprocess_handles_crlf_line_endings() {
-        let mut input = "model: provider/model:tag\r\napi_url: http://localhost:8080".to_string();
-        crlf_to_lf_inplace(&mut input);
-        let output = preprocess_frontmatter_yaml(&input);
-        assert!(output.as_ref().contains("model: |-"));
-        assert!(output.as_ref().contains("  provider/model:tag"));
-    }
-
-    #[test]
-    fn preprocess_skips_indented_lines() {
-        let input = "desc: |\n  line:with:colons";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("  line:with:colons"));
-        assert!(!output.as_ref().contains("  line: |-"));
-    }
-
-    #[test]
-    fn preprocess_strips_inline_comments_when_rewriting() {
-        let input = "model: provider/model:tag # inline comment";
-        let output = preprocess_frontmatter_yaml(input);
-        assert!(output.as_ref().contains("model: |-"));
-        assert!(output.as_ref().contains("  provider/model:tag"));
-        assert!(!output.as_ref().contains("# inline comment"));
-    }
-
-    #[test]
-    fn preprocess_skips_ambiguous_inline_comment_with_colon() {
-        let input = "model: provider/model # note: keep";
-        let output = preprocess_frontmatter_yaml(input);
-        assert_eq!(output.as_ref(), input);
     }
 }
