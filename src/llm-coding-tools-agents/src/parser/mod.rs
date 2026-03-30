@@ -250,26 +250,31 @@ mod tests {
     use super::*;
     use crate::types::RawFrontmatter;
     use indoc::indoc;
+    use rstest::rstest;
 
-    #[test]
-    fn parse_extracts_frontmatter_and_content() {
-        let input: &str = indoc! {"
+    /// Expected error variant for parameterized error-case tests.
+    #[derive(Debug, Clone, Copy)]
+    enum ExpectedParseError {
+        MissingFrontmatter,
+        InvalidYaml,
+        SchemaValidation(&'static str),
+    }
+
+    #[rstest]
+    #[case::extracts_frontmatter_and_content(
+        indoc! {"
             ---
             mode: subagent
             description: Test agent
             ---
 
             Prompt body here."
-        };
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(&*result.data.description, "Test agent");
-        assert_eq!(result.content, "Prompt body here.");
-    }
-
-    #[test]
-    fn parse_trims_body_whitespace() {
-        let input = indoc! {"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "Prompt body here.", "Test agent", None, None
+    )]
+    #[case::trims_body_whitespace(
+        indoc! {"
             ---
             mode: primary
             description: Test
@@ -278,185 +283,178 @@ mod tests {
               indented
 
             trailing
-        "};
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(result.content, "indented\n\ntrailing");
-    }
-
-    #[test]
-    fn parse_trims_ascii_whitespace_with_multibyte_body() {
-        let input = indoc! {"
+        "},
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "indented\n\ntrailing", "Test", None, None
+    )]
+    #[case::trims_ascii_whitespace_with_multibyte_body(
+        indoc! {"
             ---
             mode: primary
             description: Test
             ---
 
               🙂 café 漢字  
-        "};
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(result.content, "🙂 café 漢字");
-    }
-
-    #[test]
-    fn parse_handles_empty_body() {
-        let input = indoc! {"
+        "},
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "🙂 café 漢字", "Test", None, None
+    )]
+    #[case::handles_empty_body(
+        indoc! {"
             ---
             mode: primary
             description: Test
             ---"
-        };
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert!(result.content.is_empty());
-    }
-
-    #[test]
-    fn parse_handles_empty_frontmatter() {
-        // Handle frontmatter with only whitespace - should error since
-        // RawFrontmatter requires description field
-        let input = indoc! {"
-            ---
-             
-            ---
-            body"
-        };
-        let result = parse_agent::<RawFrontmatter>(input.to_string());
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_trims_crlf_in_body() {
-        // Handle body should normalize CRLF to LF
-        let input = "---\nmode: subagent\ndescription: Test\n---\nline1\r\nline2\r\n";
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(result.content, "line1\nline2");
-    }
-
-    #[test]
-    fn parse_trims_crlf_body_with_crlf_frontmatter() {
-        // FIX #3: CRLF in frontmatter should normalize body
-        let input = "---\r\nmode: subagent\r\ndescription: Test\r\n---\r\nbody\r\nline2\r\n";
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(result.content, "body\nline2");
-    }
-
-    #[test]
-    fn parse_rejects_frontmatter_not_at_start() {
-        let input = indoc! {"
-            some text
-            ---
-            mode: subagent
-            ---
-            body"
-        };
-        let result: Result<AgentParseResult<RawFrontmatter>, AgentParseError> =
-            parse_agent(input.to_string());
-
-        assert!(matches!(result, Err(AgentParseError::MissingFrontmatter)));
-    }
-
-    #[test]
-    fn parse_handles_bom() {
-        let input = indoc! {"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "", "Test", None, None
+    )]
+    #[case::handles_bom(
+        indoc! {"
             ---
             mode: subagent
             description: Test
             ---
             body"
-        };
-        let input = format!("\u{FEFF}{}", input);
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-
-        assert_eq!(result.content, "body");
-    }
-
-    #[test]
-    fn parse_returns_error_for_missing_frontmatter() {
-        let input = "No frontmatter here";
-        let result: Result<AgentParseResult<RawFrontmatter>, AgentParseError> =
-            parse_agent(input.to_string());
-
-        assert!(matches!(result, Err(AgentParseError::MissingFrontmatter)));
-    }
-
-    #[test]
-    fn parse_returns_error_for_invalid_yaml() {
-        let input = indoc! {"
-            ---
-            [invalid yaml
-            ---
-            body"
-        };
-        let result: Result<AgentParseResult<RawFrontmatter>, AgentParseError> =
-            parse_agent(input.to_string());
-
-        assert!(matches!(result, Err(AgentParseError::InvalidYaml { .. })));
-    }
-
-    #[test]
-    fn block_scalar_no_trailing_newline() {
-        let input = indoc! {"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        true, "body", "Test", None, None
+    )]
+    #[case::block_scalar_no_trailing_newline(
+        indoc! {"
             ---
             model: provider/model:tag
             description: Test
             ---
             body"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "body", "Test", Some("provider/model:tag"), None
+    )]
+    #[case::accepts_permission_task_allow_scalar(
+        indoc! {"
+            ---
+            description: Test
+            permission:
+              task: allow
+            ---
+            body"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "body", "Test", None, None
+    )]
+    #[case::accepts_hidden_true_no_validation_failure(
+        indoc! {"
+            ---
+            description: Test
+            hidden: true
+            ---
+            body"
+        },
+        // prepend_bom, expected_content, expected_description, expected_model, expected_hidden
+        false, "body", "Test", None, Some(true)
+    )]
+    fn parse_agent_success_cases(
+        #[case] input: &str,
+        #[case] prepend_bom: bool,
+        #[case] expected_content: &str,
+        #[case] expected_description: &str,
+        #[case] expected_model: Option<&str>,
+        #[case] expected_hidden: Option<bool>,
+    ) {
+        let input = if prepend_bom {
+            format!("\u{FEFF}{input}")
+        } else {
+            input.to_string()
         };
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
+        let result: AgentParseResult<RawFrontmatter> = parse_agent(input).unwrap();
 
-        // Model should NOT have trailing newline
-        assert_eq!(result.data.model.as_deref(), Some("provider/model:tag"));
-    }
+        assert_eq!(result.content, expected_content);
+        assert_eq!(&*result.data.description, expected_description);
+        assert_eq!(result.data.model.as_deref(), expected_model);
 
-    #[test]
-    fn parse_error_display_messages() {
-        let cases = [
-            (AgentParseError::MissingFrontmatter, "missing frontmatter"),
-            (
-                AgentParseError::InvalidYaml {
-                    message: "bad".to_string(),
-                },
-                "invalid YAML frontmatter: bad",
-            ),
-            (
-                AgentParseError::SchemaValidation {
-                    message: "schema bad".to_string(),
-                },
-                "schema validation failed: schema bad",
-            ),
-        ];
-
-        for (err, expected) in cases {
-            assert_eq!(err.to_string(), expected);
+        if let Some(expected_hidden) = expected_hidden {
+            assert_eq!(result.data.hidden, expected_hidden);
         }
     }
 
-    #[test]
-    fn parse_rejects_permission_task_ask_scalar() {
-        let input = indoc! {"
+    #[rstest]
+    #[case::empty_frontmatter_schema_validation(
+        indoc! {"
+            ---
+             
+            ---
+            body"
+        },
+        ExpectedParseError::SchemaValidation("missing field `description`")
+    )]
+    #[case::frontmatter_not_at_start_returns_missing_frontmatter(
+        indoc! {"
+            some text
+            ---
+            mode: subagent
+            ---
+            body"
+        },
+        ExpectedParseError::MissingFrontmatter
+    )]
+    #[case::missing_frontmatter_returns_missing_frontmatter(
+        "No frontmatter here",
+        ExpectedParseError::MissingFrontmatter
+    )]
+    #[case::invalid_yaml_returns_invalid_yaml(
+        indoc! {"
+            ---
+            [invalid yaml
+            ---
+            body"
+        },
+        ExpectedParseError::InvalidYaml
+    )]
+    fn parse_agent_error_cases(#[case] input: &str, #[case] expected_error: ExpectedParseError) {
+        let result = parse_agent::<RawFrontmatter>(input.to_string());
+
+        match (result, expected_error) {
+            (Err(AgentParseError::MissingFrontmatter), ExpectedParseError::MissingFrontmatter) => {}
+            (Err(AgentParseError::InvalidYaml { .. }), ExpectedParseError::InvalidYaml) => {}
+            (
+                Err(AgentParseError::SchemaValidation { message }),
+                ExpectedParseError::SchemaValidation(expected_fragment),
+            ) => assert!(message.contains(expected_fragment)),
+            (other, expected) => panic!("expected {expected:?}, got {other:?}"),
+        }
+    }
+
+    // CRLF cases use inline string literals (not indoc!) because they need
+    // explicit \r\n escape sequences that indoc! cannot represent.
+    #[rstest]
+    #[case::body_only_crlf_normalizes_to_lf(
+        "---\nmode: subagent\ndescription: Test\n---\nline1\r\nline2\r\n",
+        "line1\nline2"
+    )]
+    #[case::frontmatter_and_body_crlf_normalize_to_lf(
+        "---\r\nmode: subagent\r\ndescription: Test\r\n---\r\nbody\r\nline2\r\n",
+        "body\nline2"
+    )]
+    fn parse_agent_crlf_normalization(#[case] input: &str, #[case] expected_content: &str) {
+        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
+
+        assert_eq!(result.content, expected_content);
+    }
+
+    #[rstest]
+    #[case::rejects_task_ask_scalar(
+        indoc! {"
             ---
             description: Test
             permission:
               task: ask
             ---
             body"
-        };
-        let result = parse_agent::<RawFrontmatter>(input.to_string());
-        assert!(matches!(
-            result,
-            Err(AgentParseError::SchemaValidation { message })
-                if message.contains("permission.task: ask is unsupported")
-        ));
-    }
-
-    #[test]
-    fn parse_rejects_permission_task_ask_pattern_map() {
-        let input = indoc! {"
+        }
+    )]
+    #[case::rejects_task_ask_pattern_map(
+        indoc! {"
             ---
             description: Test
             permission:
@@ -464,8 +462,11 @@ mod tests {
                 '*': ask
             ---
             body"
-        };
+        }
+    )]
+    fn parse_agent_permission_validation(#[case] input: &str) {
         let result = parse_agent::<RawFrontmatter>(input.to_string());
+
         assert!(matches!(
             result,
             Err(AgentParseError::SchemaValidation { message })
@@ -473,31 +474,23 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn parse_accepts_permission_task_allow_scalar() {
-        let input = indoc! {"
-            ---
-            description: Test
-            permission:
-              task: allow
-            ---
-            body"
-        };
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-        assert_eq!(&*result.data.description, "Test");
-    }
-
-    #[test]
-    fn parse_accepts_hidden_true_no_validation_failure() {
-        let input = indoc! {"
-            ---
-            description: Test
-            hidden: true
-            ---
-            body"
-        };
-        let result: AgentParseResult<RawFrontmatter> = parse_agent(input.to_string()).unwrap();
-        assert_eq!(&*result.data.description, "Test");
-        assert!(result.data.hidden);
+    #[rstest]
+    #[case::missing_frontmatter(
+        AgentParseError::MissingFrontmatter, // error: missing frontmatter variant
+        "missing frontmatter"                // expected: display message
+    )]
+    #[case::invalid_yaml(
+        AgentParseError::InvalidYaml { message: "bad".to_string() }, // error: yaml parse failure
+        "invalid YAML frontmatter: bad"                              // expected: includes error message
+    )]
+    #[case::schema_validation(
+        AgentParseError::SchemaValidation { message: "schema bad".to_string() }, // error: schema check failure
+        "schema validation failed: schema bad"                                   // expected: includes error message
+    )]
+    fn parse_error_display_messages(
+        #[case] error: AgentParseError,
+        #[case] expected_message: &str,
+    ) {
+        assert_eq!(error.to_string(), expected_message);
     }
 }
