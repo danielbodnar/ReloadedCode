@@ -73,6 +73,7 @@ pub fn task_tool_definition(targets: &[TaskTargetSummary]) -> ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::{task_meta, *};
+    use rstest::rstest;
 
     fn summary(name: &str, description: &str) -> TaskTargetSummary {
         TaskTargetSummary {
@@ -81,41 +82,35 @@ mod tests {
         }
     }
 
-    #[test]
-    fn render_task_targets_sorts_output_by_name() {
-        let targets = vec![
-            summary("zebra", "Last alphabetically"),
-            summary("alpha", "First alphabetically"),
-            summary("mike", "Middle"),
-        ];
-
+    #[rstest]
+    // Alphabetical ordering: zebra/alpha/mike → alpha/mike/zebra
+    #[case::sorts_alphabetically(
+        vec![summary("zebra", "Last alphabetically"), summary("alpha", "First alphabetically"), summary("mike", "Middle")],
+        None::<&str>,
+        "Available subagents:\n- alpha: First alphabetically\n- mike: Middle\n- zebra: Last alphabetically\n",
+    )]
+    // Format: only "- name: description" per line, no "tools:" leakage
+    #[case::shows_name_and_description(
+        vec![summary("with-task", "Can delegate"), summary("no-task", "Cannot delegate")],
+        Some("tools:"),
+        "Available subagents:\n- no-task: Cannot delegate\n- with-task: Can delegate\n",
+    )]
+    // Empty input falls back to the dedicated message
+    #[case::handles_empty_input(
+        vec![],
+        None::<&str>,
+        "No callable subagents are available.",
+    )]
+    fn render_task_targets_renders_expected_output(
+        #[case] targets: Vec<TaskTargetSummary>,
+        #[case] forbidden_fragment: Option<&str>,
+        #[case] expected_rendered: &str,
+    ) {
         let rendered = render_task_targets(&targets);
-        let lines: Vec<_> = rendered.lines().skip(1).collect(); // Skip "Available subagents:"
-
-        assert!(lines[0].starts_with("- alpha"));
-        assert!(lines[1].starts_with("- mike"));
-        assert!(lines[2].starts_with("- zebra"));
-    }
-
-    #[test]
-    fn render_task_targets_shows_only_name_and_description() {
-        let targets = vec![
-            summary("with-task", "Can delegate"),
-            summary("no-task", "Cannot delegate"),
-        ];
-
-        let rendered = render_task_targets(&targets);
-
-        assert!(rendered.contains("- with-task: Can delegate"));
-        assert!(rendered.contains("- no-task: Cannot delegate"));
-        assert!(!rendered.contains("tools:"));
-    }
-
-    #[test]
-    fn render_task_targets_handles_empty_input_cleanly() {
-        let targets: Vec<TaskTargetSummary> = vec![];
-        let rendered = render_task_targets(&targets);
-        assert_eq!(rendered, "No callable subagents are available.");
+        assert_eq!(rendered, expected_rendered);
+        if let Some(fragment) = forbidden_fragment {
+            assert!(!rendered.contains(fragment));
+        }
     }
 
     #[test]

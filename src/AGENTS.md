@@ -67,4 +67,4 @@ This is a high-performance library. Optimize aggressively.
 
 # Post-Change Verification
 
-After you make a change to source code, always run `.cargo/verify.sh` (`.cargo/verify.ps1` on Windows) before returning to the user.
+After code changes, always run `.cargo/verify` script before returning to the user. Search if not found.

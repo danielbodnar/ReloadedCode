@@ -2012,6 +2012,7 @@ version = "0.1.0"
 dependencies = [
  "parking_lot",
  "process-wrap",
+ "rstest",
  "serial_test",
  "tempfile",
  "thiserror 2.0.18",
@@ -2067,6 +2068,7 @@ dependencies = [
  "llm-coding-tools-core",
  "maybe-async",
  "reqwest 0.13.1",
+ "rstest",
  "serde",
  "serde_json",
  "serial_test",

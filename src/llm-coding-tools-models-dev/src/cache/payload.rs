@@ -146,6 +146,7 @@ pub(crate) fn catalog_from_cache_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     fn sample_payload() -> CatalogCachePayload {
         CatalogCachePayload {
@@ -231,46 +232,43 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn all_known_provider_types_round_trip() {
-        let types = [
-            ProviderType::Unknown,
-            ProviderType::OpenAiCompletions,
-            ProviderType::OpenAiResponses,
-            ProviderType::Anthropic,
-            ProviderType::Google,
-            ProviderType::Groq,
-            ProviderType::Mistral,
-            ProviderType::Ollama,
-            ProviderType::Bedrock,
-            ProviderType::Azure,
-            ProviderType::OpenRouter,
-            ProviderType::HuggingFace,
-            ProviderType::Cohere,
-            ProviderType::ChatGptOAuth,
-            ProviderType::ClaudeCodeOAuth,
-            ProviderType::Antigravity,
-        ];
+    #[rstest]
+    #[case::unknown(ProviderType::Unknown)]
+    #[case::openai_completions(ProviderType::OpenAiCompletions)]
+    #[case::openai_responses(ProviderType::OpenAiResponses)]
+    #[case::anthropic(ProviderType::Anthropic)]
+    #[case::google(ProviderType::Google)]
+    #[case::groq(ProviderType::Groq)]
+    #[case::mistral(ProviderType::Mistral)]
+    #[case::ollama(ProviderType::Ollama)]
+    #[case::bedrock(ProviderType::Bedrock)]
+    #[case::azure(ProviderType::Azure)]
+    #[case::openrouter(ProviderType::OpenRouter)]
+    #[case::hugging_face(ProviderType::HuggingFace)]
+    #[case::cohere(ProviderType::Cohere)]
+    #[case::chatgpt_oauth(ProviderType::ChatGptOAuth)]
+    #[case::claude_code_oauth(ProviderType::ClaudeCodeOAuth)]
+    #[case::antigravity(ProviderType::Antigravity)]
+    /// Verifies that all ProviderType variants serialize and deserialize correctly
+    /// through the cache payload conversion, ensuring no data loss on round-trip.
+    fn all_known_provider_types_round_trip(#[case] provider_type: ProviderType) {
+        let payload = CatalogCachePayload {
+            providers: vec![CachedProviderRow {
+                provider_key: "test".to_string(),
+                api_url: "".to_string(),
+                env_vars: vec![],
+                api_type: provider_type,
+            }],
+            models: vec![],
+        };
 
-        for provider_type in types {
-            let payload = CatalogCachePayload {
-                providers: vec![CachedProviderRow {
-                    provider_key: "test".to_string(),
-                    api_url: "".to_string(),
-                    env_vars: vec![],
-                    api_type: provider_type,
-                }],
-                models: vec![],
-            };
-
-            let catalog = catalog_from_cache_payload(payload).expect("should succeed");
-            let provider = catalog
-                .lookup_provider("test")
-                .expect("provider should exist");
-            assert_eq!(
-                provider.api_type, provider_type,
-                "provider type should round-trip correctly"
-            );
-        }
+        let catalog = catalog_from_cache_payload(payload).expect("should succeed");
+        let provider = catalog
+            .lookup_provider("test")
+            .expect("provider should exist");
+        assert_eq!(
+            provider.api_type, provider_type,
+            "provider type should round-trip correctly"
+        );
     }
 }

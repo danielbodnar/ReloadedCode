@@ -508,6 +508,7 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use std::borrow::Cow;
     use std::ffi::OsString;
 
@@ -561,8 +562,21 @@ mod tests {
         }
     }
 
-    #[test]
-    fn is_prevalidated_workdir_accepts_exact_profile_owned_roots() {
+    #[rstest]
+    #[case::workspace_root("/host/workspace", true)]
+    #[case::synthetic_home_root("/host/home", true)]
+    #[case::cache_root("/host/cache", true)]
+    #[case::tmp_bind_root("/host/tmp", true)]
+    #[case::read_only_mount_root("/host/ro", true)]
+    #[case::read_write_mount_root("/host/rw", true)]
+    #[case::nested_workspace_path("/host/workspace/subdir", false)]
+    #[case::nested_home_path("/host/home/subdir", false)]
+    #[case::nested_cache_path("/host/cache/subdir", false)]
+    #[case::outside_unmounted_path("/outside", false)]
+    fn is_prevalidated_workdir_matches_exact_owned_roots_only(
+        #[case] path: &str,
+        #[case] expected: bool,
+    ) {
         let profile = Profile {
             preset: None,
             workspace: Box::from(Path::new("/host/workspace")),
@@ -588,22 +602,6 @@ mod tests {
             shell: Box::from(Path::new("/bin/sh")),
             static_args: Arc::<[OsString]>::from([]),
         };
-
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/workspace")));
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/home")));
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/cache")));
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/tmp")));
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/ro")));
-        assert!(profile.is_prevalidated_workdir(Path::new("/host/rw")));
-    }
-
-    #[test]
-    fn is_prevalidated_workdir_rejects_nested_or_unmounted_paths() {
-        let profile = profile_with_workspace_dest("/workspace");
-
-        assert!(!profile.is_prevalidated_workdir(Path::new("/host/workspace/subdir")));
-        assert!(!profile.is_prevalidated_workdir(Path::new("/host/home/subdir")));
-        assert!(!profile.is_prevalidated_workdir(Path::new("/host/cache/subdir")));
-        assert!(!profile.is_prevalidated_workdir(Path::new("/outside")));
+        assert_eq!(profile.is_prevalidated_workdir(Path::new(path)), expected);
     }
 }

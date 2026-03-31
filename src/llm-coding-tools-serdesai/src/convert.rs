@@ -88,6 +88,7 @@ pub(crate) fn core_error_to_serdes(tool_name: &str, err: CoreError) -> SerdesErr
 mod tests {
     use super::*;
     use llm_coding_tools_core::{ToolError as CoreError, ToolOutput};
+    use rstest::rstest;
 
     #[test]
     fn tool_output_converts_to_text_when_not_truncated() {
@@ -105,63 +106,73 @@ mod tests {
         assert_eq!(json["truncated"], true);
     }
 
-    #[test]
-    fn invalid_path_error_maps_to_validation_error() {
-        let core_err = CoreError::InvalidPath("not absolute".into());
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
-        // Use pattern matching - is_validation_error() doesn't exist
+    #[rstest]
+    #[case::invalid_path(CoreError::InvalidPath("not absolute".into()), "test_tool")]
+    #[case::invalid_pattern(CoreError::InvalidPattern("bad regex".into()), "test_tool")]
+    #[case::out_of_bounds(CoreError::OutOfBounds("offset too large".into()), "test_tool")]
+    fn validation_errors_map_to_validation_failed(
+        #[case] core_err: CoreError,
+        #[case] tool_name: &str,
+    ) {
+        let serdes_err = core_error_to_serdes(tool_name, core_err);
         assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
     }
 
     #[test]
-    fn invalid_pattern_error_maps_to_validation_error() {
-        let core_err = CoreError::InvalidPattern("bad regex".into());
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
+    fn to_serdes_result_preserves_tool_name_in_validation_errors() {
+        let core_result: CoreResult<ToolOutput> = Err(CoreError::InvalidPath("bad path".into()));
+        let serdes_err = to_serdes_result("read_file", core_result).unwrap_err();
+
         assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
+        match serdes_err {
+            SerdesError::ValidationFailed { tool_name, errors } => {
+                assert_eq!(tool_name, "read_file");
+                assert!(!errors.is_empty());
+                assert!(errors[0].message.contains("bad path"));
+            }
+            _ => unreachable!(),
+        }
     }
 
-    #[test]
-    fn out_of_bounds_error_maps_to_validation_error() {
-        let core_err = CoreError::OutOfBounds("offset too large".into());
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
-        assert!(matches!(serdes_err, SerdesError::ValidationFailed { .. }));
-    }
-
-    #[test]
-    fn io_error_maps_to_execution_error() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let core_err: CoreError = io_err.into();
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
-        // ExecutionFailed is not a ValidationFailed
-        assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
-    }
-
-    #[test]
-    fn execution_error_maps_to_execution_failed() {
-        let core_err = CoreError::Execution("command failed".into());
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
-        assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
-        // Use message() which exists, and check the error content
-        assert!(serdes_err.message().contains("execution error"));
-    }
-
-    #[test]
-    fn timeout_error_maps_to_execution_failed() {
-        let core_err = CoreError::Timeout("timed out".into());
-        let serdes_err = core_error_to_serdes("test_tool", core_err);
-        assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
-    }
-
-    #[test]
-    fn timeout_with_kill_failure_maps_to_execution_failed() {
-        let core_err = CoreError::TimeoutWithKillFailure {
+    /// Ensure execution/runtime errors (Io, Execution, Timeout, etc.) are NOT
+    /// converted to validation errors. They must stay on the runtime failure path.
+    #[rstest]
+    #[case::io_error(
+        CoreError::from(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found")),
+        None,
+        None
+    )]
+    #[case::execution_error(
+        CoreError::Execution("command failed".into()),
+        Some("execution error"),
+        None,
+    )]
+    #[case::timeout(CoreError::Timeout("timed out".into()), None, None)]
+    #[case::timeout_with_kill_failure(
+        CoreError::TimeoutWithKillFailure {
             message: "timed out".into(),
             kill_error: "operation not permitted".into(),
-        };
+        },
+        Some("timed out"),
+        Some("operation not permitted"),
+    )]
+    fn execution_errors_stay_on_runtime_failure_path(
+        #[case] core_err: CoreError,
+        #[case] expected_msg: Option<&str>,
+        #[case] expected_extra: Option<&str>,
+    ) {
         let serdes_err = core_error_to_serdes("test_tool", core_err);
-        assert!(!matches!(serdes_err, SerdesError::ValidationFailed { .. }));
-        assert!(serdes_err.message().contains("timed out"));
-        assert!(serdes_err.message().contains("operation not permitted"));
+        let is_validation_error = matches!(serdes_err, SerdesError::ValidationFailed { .. });
+        assert!(
+            !is_validation_error,
+            "execution errors must not be validation errors"
+        );
+        if let Some(msg) = expected_msg {
+            assert!(serdes_err.message().contains(msg));
+        }
+        if let Some(msg) = expected_extra {
+            assert!(serdes_err.message().contains(msg));
+        }
     }
 
     #[test]
@@ -178,22 +189,5 @@ mod tests {
             Err(CoreError::Execution("command failed".into()));
         let serdes_result = to_serdes_result("test_tool", core_result);
         assert!(serdes_result.is_err());
-    }
-
-    #[test]
-    fn to_serdes_result_includes_tool_name_in_validation_error() {
-        let core_result: CoreResult<ToolOutput> = Err(CoreError::InvalidPath("bad path".into()));
-        let serdes_result = to_serdes_result("read_file", core_result);
-        let err = serdes_result.unwrap_err();
-        assert!(matches!(err, SerdesError::ValidationFailed { .. }));
-        // Validation error should include the error details
-        match err {
-            SerdesError::ValidationFailed { tool_name, errors } => {
-                assert_eq!(tool_name, "read_file");
-                assert!(!errors.is_empty());
-                assert!(errors[0].message.contains("bad path"));
-            }
-            _ => panic!("Expected ValidationFailed"),
-        }
     }
 }
