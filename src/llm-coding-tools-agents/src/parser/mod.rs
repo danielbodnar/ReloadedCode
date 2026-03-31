@@ -372,10 +372,7 @@ mod tests {
         assert_eq!(result.content, expected_content);
         assert_eq!(&*result.data.description, expected_description);
         assert_eq!(result.data.model.as_deref(), expected_model);
-
-        if let Some(expected_hidden) = expected_hidden {
-            assert_eq!(result.data.hidden, expected_hidden);
-        }
+        assert_eq!(result.data.hidden, expected_hidden.unwrap_or(false));
     }
 
     #[rstest]

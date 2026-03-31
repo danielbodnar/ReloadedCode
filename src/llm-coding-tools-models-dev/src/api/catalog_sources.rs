@@ -575,6 +575,7 @@ mod tests {
         ProviderType::ClaudeCodeOAuth
     )]
     #[case::antigravity_package(Some("@ai-sdk/antigravity"), ProviderType::Antigravity)]
+    #[case::unknown_package(Some("@unknown/package"), ProviderType::Unknown)]
     #[case::missing_package_unknown(None, ProviderType::Unknown)]
     fn npm_package_maps_to_correct_provider_type(
         #[case] npm_package: Option<&str>,
