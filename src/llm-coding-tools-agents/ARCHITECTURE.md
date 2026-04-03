@@ -226,6 +226,9 @@ and which other agents it can delegate to.
 
 Agent frontmatter may include a `permission` map:
 
+In these patterns, `*` means any number of characters (including none),
+and `?` means exactly one character.
+
 ```yaml
 permission:
   read: allow
@@ -243,6 +246,9 @@ PermissionRule::Action(Allow)    -> Rule { key: "read",   pattern: "*", action: 
 PermissionRule::Action(Deny)     -> Rule { key: "bash",   pattern: "*", action: Deny  }
 PermissionRule::Pattern({ .. })  -> Rule { key: "task",   pattern: "*",        action: Deny  }
                                     Rule { key: "task",   pattern: "review-*", action: Allow }
+
+# Wildcard permission keys are also supported
+PermissionRule::Action(Allow)    -> Rule { key: "*",      pattern: "*", action: Allow }  # matches any tool
 ```
 
 Evaluation uses **last-match-wins** semantics.

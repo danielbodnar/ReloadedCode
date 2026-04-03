@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use llm_coding_tools_core::permissions::{Rule, Ruleset};
 
 /// Extension trait for building [`Ruleset`] from agent permission configs.
-pub trait RulesetExt: Sized {
+pub trait RulesetExt {
     /// Creates a [`Ruleset`] from frontmatter permission configuration.
     ///
     /// The config maps permission keys to either:
@@ -37,21 +37,21 @@ pub trait RulesetExt: Sized {
     /// let ruleset = Ruleset::from_permission_config(&config);
     /// assert!(ruleset.is_allowed("bash", "*"));
     /// ```
-    fn from_permission_config(config: &IndexMap<String, PermissionRule>) -> Self;
+    fn from_permission_config<'a>(config: &'a IndexMap<String, PermissionRule>) -> Ruleset<'a>;
 }
 
-impl RulesetExt for Ruleset {
-    fn from_permission_config(config: &IndexMap<String, PermissionRule>) -> Self {
-        let mut ruleset = Self::with_capacity(config.len() * 2);
+impl RulesetExt for Ruleset<'_> {
+    fn from_permission_config<'a>(config: &'a IndexMap<String, PermissionRule>) -> Ruleset<'a> {
+        let mut ruleset = Ruleset::with_capacity(config.len() * 2);
 
         for (key, rule) in config {
             match rule {
                 PermissionRule::Action(action) => {
-                    ruleset.push(Rule::new(key, "*", *action));
+                    ruleset.push(Rule::new(key.as_str(), "*", *action));
                 }
                 PermissionRule::Pattern(patterns) => {
                     for (pattern, action) in patterns {
-                        ruleset.push(Rule::new(key, pattern, *action));
+                        ruleset.push(Rule::new(key.as_str(), pattern.as_str(), *action));
                     }
                 }
             }
@@ -100,6 +100,62 @@ mod tests {
         assert_eq!(
             ruleset.evaluate("task", "other-agent"),
             PermissionAction::Deny
+        );
+    }
+
+    /// Verifies that wildcard permission keys in config are correctly converted
+    /// to rules and match various permissions at runtime.
+    #[test]
+    fn from_permission_config_wildcard_permission_key() {
+        let mut config = IndexMap::new();
+        // "*": allow - wildcard permission key matches any tool
+        config.insert(
+            "*".to_string(),
+            PermissionRule::Action(PermissionAction::Allow),
+        );
+        // "bash": deny - specific tool denied (should override via last-match-wins if ordered after)
+        config.insert(
+            "bash".to_string(),
+            PermissionRule::Action(PermissionAction::Deny),
+        );
+
+        let ruleset = Ruleset::from_permission_config(&config);
+
+        // Rules are added in IndexMap iteration order (preserved)
+        // Rule 0: ("*", "*", Allow) - wildcard
+        // Rule 1: ("bash", "*", Deny) - exact
+
+        // "*" matches any permission key
+        assert!(
+            ruleset.is_allowed("read", "*"),
+            "wildcard should allow read"
+        );
+        assert!(
+            ruleset.is_allowed("task", "*"),
+            "wildcard should allow task"
+        );
+
+        // "bash" exact rule comes last and wins over "*" wildcard
+        assert!(
+            !ruleset.is_allowed("bash", "*"),
+            "exact bash deny should win"
+        );
+
+        // Verify wildcard actually works (reverse order)
+        let mut config2 = IndexMap::new();
+        config2.insert(
+            "bash".to_string(),
+            PermissionRule::Action(PermissionAction::Deny),
+        );
+        config2.insert(
+            "*".to_string(),
+            PermissionRule::Action(PermissionAction::Allow),
+        );
+        let ruleset2 = Ruleset::from_permission_config(&config2);
+        // Now "*" comes last and wins, so bash is allowed
+        assert!(
+            ruleset2.is_allowed("bash", "*"),
+            "wildcard last should allow bash"
         );
     }
 }
