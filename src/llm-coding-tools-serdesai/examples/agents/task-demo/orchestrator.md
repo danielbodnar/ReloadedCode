@@ -13,6 +13,7 @@ permission:
   todoread: deny
   todowrite: deny
   task:
+    # `*` means any delegate name; "reader" is an exact name.
     "*": deny
     "reader": allow
 ---

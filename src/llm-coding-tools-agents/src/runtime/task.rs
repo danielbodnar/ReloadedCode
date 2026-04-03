@@ -90,7 +90,7 @@ fn sorted_agents(catalog: &AgentCatalog) -> Vec<&AgentConfig> {
 
 fn target_is_callable(
     target: &AgentConfig,
-    task_rules: &Ruleset,
+    task_rules: &Ruleset<'_>,
     has_explicit_task_permission: bool,
 ) -> bool {
     matches!(target.mode, AgentMode::All | AgentMode::Subagent)
@@ -124,7 +124,7 @@ pub(super) fn resolve_allowed_tools(
 
 fn collect_allowed_tools(
     tools: &[ToolCatalogEntry],
-    task_rules: &Ruleset,
+    task_rules: &Ruleset<'_>,
     task_is_callable: bool,
 ) -> Vec<ToolCatalogEntry> {
     let mut allowed = Vec::with_capacity(tools.len());

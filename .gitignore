@@ -5,4 +5,5 @@ PROMPT.MD
 PROMPT-*.MD
 
 # Local Code Review
-src/.vscode/local-reviews/
+.vscode/local-reviews
+src/.vscode/local-reviews

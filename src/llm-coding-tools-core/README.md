@@ -233,16 +233,20 @@ Currently uses ~2000 tokens for full toolset, ~560 tokens for search-only.
 
 - [`Rule`] stores `(permission_key, subject_pattern, action)`.
 - [`Ruleset`] uses last-match-wins; no match defaults to [`PermissionAction::Deny`].
-- Permission keys are exact-match and case-sensitive; wildcard matching (`*`, `?`) applies to subject patterns.
+- Both fields support patterns:
+  - `*` means any number of characters (including none)
+  - `?` means exactly one character
+  - **Permission keys** (exact or wildcard): `bash`, `task`, `webfetch-*`
+  - **Subject patterns** (wildcard only): `*`, `orchestrator-*`, `agent-?`
 
 Frontmatter-style config is typically translated into this model:
 
 ```yaml
 permission:
-  bash: allow
+  bash: allow              # → ("bash", "*", allow)
   task:
-    orchestrator-*: allow
-    "*": deny
+    orchestrator-*: allow  # → ("task", "orchestrator-*", allow)
+    "*": deny              # → ("task", "*", deny)
 ```
 
 With last-match-wins, the final `"*": deny` rule overrides earlier `task` matches.
