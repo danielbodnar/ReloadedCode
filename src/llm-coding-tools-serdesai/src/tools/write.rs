@@ -13,19 +13,11 @@ use async_trait::async_trait;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::write as write_meta;
-use llm_coding_tools_core::tools::write_file;
+use llm_coding_tools_core::tools::{WriteRequest, write_file};
 use llm_coding_tools_core::{ToolContext, ToolOutput};
-use serde::Deserialize;
-use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
 
-use crate::convert::to_serdes_result;
-
-/// Internal args for JSON deserialization.
-#[derive(Debug, Deserialize)]
-struct WriteArgs {
-    file_path: String,
-    content: String,
-}
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 
 /// Tool for writing content to files.
 ///
@@ -66,10 +58,10 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Wr
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: WriteArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(write_meta::NAME, None, e.to_string()))?;
+        let args =
+            WriteRequest::parse(args).map_err(|e| core_error_to_serdes(write_meta::NAME, e))?;
 
-        let result = write_file(&self.resolver, &args.file_path, &args.content).await;
+        let result = write_file(&self.resolver, args).await;
         to_serdes_result(write_meta::NAME, result.map(ToolOutput::new))
     }
 }

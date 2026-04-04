@@ -4,6 +4,7 @@ use crate::error::{ToolError, ToolResult};
 use parking_lot::RwLock;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -65,6 +66,31 @@ pub struct TodoState {
     todos: Arc<RwLock<Vec<Todo>>>,
 }
 
+/// Serde-friendly todo-write request owned by the core crate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TodoWriteRequest {
+    /// The complete list of todos to set.
+    pub todos: Vec<Todo>,
+}
+
+impl TodoWriteRequest {
+    /// Parses a raw JSON tool payload into a todo-write request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Serde-friendly todo-read request owned by the core crate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TodoReadRequest {}
+
+impl TodoReadRequest {
+    /// Parses a raw JSON tool payload into a todo-read request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
 impl TodoState {
     /// Creates a new empty todo state.
     #[inline]
@@ -76,24 +102,30 @@ impl TodoState {
 /// Writes/replaces the todo list with new items.
 ///
 /// Validates that all todos have non-empty id and content.
-pub fn write_todos(state: &TodoState, todos: Vec<Todo>) -> ToolResult<String> {
-    for todo in &todos {
+pub fn write_todos(state: &TodoState, request: TodoWriteRequest) -> ToolResult<String> {
+    for todo in &request.todos {
         if todo.id.trim().is_empty() {
-            return Err(ToolError::Validation("todo id cannot be empty".into()));
+            return Err(ToolError::validation_for(
+                "todos",
+                "todo id cannot be empty",
+            ));
         }
         if todo.content.trim().is_empty() {
-            return Err(ToolError::Validation("todo content cannot be empty".into()));
+            return Err(ToolError::validation_for(
+                "todos",
+                "todo content cannot be empty",
+            ));
         }
     }
 
-    let count = todos.len();
-    *state.todos.write() = todos;
+    let count = request.todos.len();
+    *state.todos.write() = request.todos;
     Ok(format!("Updated todo list with {count} task(s)."))
 }
 
 /// Reads and formats the current todo list.
-pub fn read_todos(state: &TodoState) -> String {
-    let todos = state.todos.read();
+pub fn read_todos(_state: &TodoState, _request: TodoReadRequest) -> String {
+    let todos = _state.todos.read();
 
     if todos.is_empty() {
         return "No tasks.".to_string();
@@ -145,8 +177,8 @@ mod tests {
             status: TodoStatus::Pending,
             priority: TodoPriority::Low,
         };
-        let result = write_todos(&state, vec![todo]);
-        assert!(matches!(result, Err(ToolError::Validation(_))));
+        let result = write_todos(&state, TodoWriteRequest { todos: vec![todo] });
+        assert!(matches!(result, Err(ToolError::Validation { .. })));
     }
 
     /// Verifies that each status variant returns the correct icon string.
@@ -169,10 +201,10 @@ mod tests {
             make_todo("3", TodoStatus::Pending),
         ];
 
-        let result = write_todos(&state, todos).unwrap();
+        let result = write_todos(&state, TodoWriteRequest { todos }).unwrap();
         assert!(result.contains("3 task(s)"));
 
-        let output = read_todos(&state);
+        let output = read_todos(&state, TodoReadRequest {});
         assert!(output.contains("[x]"));
         assert!(output.contains("[>]"));
         assert!(output.contains("[ ]"));
@@ -181,7 +213,7 @@ mod tests {
     #[test]
     fn read_empty_list() {
         let state = TodoState::new();
-        let output = read_todos(&state);
+        let output = read_todos(&state, TodoReadRequest {});
         assert_eq!(output, "No tasks.");
     }
 
@@ -189,10 +221,22 @@ mod tests {
     fn write_replaces_existing() {
         let state = TodoState::new();
 
-        write_todos(&state, vec![make_todo("a", TodoStatus::Pending)]).unwrap();
-        write_todos(&state, vec![make_todo("b", TodoStatus::Completed)]).unwrap();
+        write_todos(
+            &state,
+            TodoWriteRequest {
+                todos: vec![make_todo("a", TodoStatus::Pending)],
+            },
+        )
+        .unwrap();
+        write_todos(
+            &state,
+            TodoWriteRequest {
+                todos: vec![make_todo("b", TodoStatus::Completed)],
+            },
+        )
+        .unwrap();
 
-        let output = read_todos(&state);
+        let output = read_todos(&state, TodoReadRequest {});
         assert!(!output.contains("Task a"));
         assert!(output.contains("Task b"));
     }

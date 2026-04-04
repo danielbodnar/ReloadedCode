@@ -43,8 +43,13 @@ pub enum ToolError {
     },
 
     /// Validation failed.
-    #[error("validation error: {0}")]
-    Validation(String),
+    #[error("validation error: {message}")]
+    Validation {
+        /// Field that failed validation, if applicable.
+        field: Option<String>,
+        /// Validation error message.
+        message: String,
+    },
 
     /// JSON serialization/deserialization failed.
     #[error("JSON error: {0}")]
@@ -57,5 +62,25 @@ pub type ToolResult<T> = Result<T, ToolError>;
 impl From<globset::Error> for ToolError {
     fn from(e: globset::Error) -> Self {
         ToolError::InvalidPattern(e.to_string())
+    }
+}
+
+impl ToolError {
+    /// Create a validation error without a specific field.
+    #[must_use]
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self::Validation {
+            field: None,
+            message: message.into(),
+        }
+    }
+
+    /// Create a validation error for a specific field.
+    #[must_use]
+    pub fn validation_for(field: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Validation {
+            field: Some(field.into()),
+            message: message.into(),
+        }
     }
 }

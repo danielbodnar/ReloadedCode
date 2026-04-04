@@ -71,16 +71,30 @@ pub(crate) fn core_error_to_serdes(tool_name: &str, err: CoreError) -> SerdesErr
             SerdesError::validation_error(tool_name, Some("pattern".to_string()), msg.clone())
         }
         CoreError::OutOfBounds(msg) => {
-            SerdesError::validation_error(tool_name, Some("offset".to_string()), msg.clone())
+            SerdesError::validation_error(tool_name, field_for_out_of_bounds(msg), msg.clone())
         }
-        CoreError::Validation(msg) => SerdesError::validation_error(tool_name, None, msg.clone()),
+        CoreError::Validation { field, message } => {
+            SerdesError::validation_error(tool_name, field.clone(), message.clone())
+        }
+        CoreError::Json(msg) => SerdesError::validation_error(tool_name, None, msg.to_string()),
         // Execution errors - runtime failures
         CoreError::Io(_)
         | CoreError::Http(_)
         | CoreError::Execution(_)
         | CoreError::Timeout(_)
-        | CoreError::TimeoutWithKillFailure { .. }
-        | CoreError::Json(_) => SerdesError::execution_failed(err.to_string()),
+        | CoreError::TimeoutWithKillFailure { .. } => {
+            SerdesError::execution_failed(err.to_string())
+        }
+    }
+}
+
+fn field_for_out_of_bounds(msg: &str) -> Option<String> {
+    if msg.starts_with("offset ") || msg.starts_with("offset must") {
+        Some("offset".to_string())
+    } else if msg.starts_with("limit ") || msg.starts_with("limit must") {
+        Some("limit".to_string())
+    } else {
+        None
     }
 }
 
@@ -110,6 +124,7 @@ mod tests {
     #[case::invalid_path(CoreError::InvalidPath("not absolute".into()), "test_tool")]
     #[case::invalid_pattern(CoreError::InvalidPattern("bad regex".into()), "test_tool")]
     #[case::out_of_bounds(CoreError::OutOfBounds("offset too large".into()), "test_tool")]
+    #[case::json(serde_json::from_str::<serde_json::Value>("{").unwrap_err().into(), "test_tool")]
     fn validation_errors_map_to_validation_failed(
         #[case] core_err: CoreError,
         #[case] tool_name: &str,
@@ -189,5 +204,33 @@ mod tests {
             Err(CoreError::Execution("command failed".into()));
         let serdes_result = to_serdes_result("test_tool", core_result);
         assert!(serdes_result.is_err());
+    }
+
+    #[test]
+    fn out_of_bounds_limit_maps_to_limit_field() {
+        let serdes_err =
+            core_error_to_serdes("read", CoreError::OutOfBounds("limit must be >= 1".into()));
+
+        match serdes_err {
+            SerdesError::ValidationFailed { errors, .. } => {
+                assert_eq!(errors[0].field.as_deref(), Some("limit"));
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn validation_old_string_maps_to_old_string_field() {
+        let serdes_err = core_error_to_serdes(
+            "edit",
+            CoreError::validation_for("old_string", "old_string must not be empty"),
+        );
+
+        match serdes_err {
+            SerdesError::ValidationFailed { errors, .. } => {
+                assert_eq!(errors[0].field.as_deref(), Some("old_string"));
+            }
+            _ => unreachable!(),
+        }
     }
 }

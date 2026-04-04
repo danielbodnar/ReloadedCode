@@ -9,33 +9,19 @@
 //! - [`create_todo_tools`] - create a linked read/write pair with shared state
 //! - [`Todo`], [`TodoPriority`], [`TodoStatus`], [`TodoState`] - core types
 
-use crate::convert::to_serdes_result;
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::{
     todo_read as todo_read_meta, todo_write as todo_write_meta,
 };
-use llm_coding_tools_core::tools::{read_todos, write_todos};
-use serde::Deserialize;
-use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
+use llm_coding_tools_core::tools::{TodoReadRequest, TodoWriteRequest, read_todos, write_todos};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
+
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 
 // Re-export core types
 pub use llm_coding_tools_core::{Todo, TodoPriority, TodoState, TodoStatus};
-
-/// Arguments for writing todos.
-#[derive(Debug, Clone, Deserialize)]
-struct TodoWriteArgs {
-    /// The complete list of todos to set.
-    todos: Vec<Todo>,
-}
-
-/// Arguments for reading todos.
-///
-/// Empty struct required for consistent JSON validation via [`serde_json::from_value`].
-/// Ensures the input is a valid JSON object even when no parameters are needed.
-#[derive(Debug, Clone, Deserialize)]
-struct TodoReadArgs {}
 
 /// Tool for writing/replacing the todo list.
 #[derive(Debug, Clone)]
@@ -61,9 +47,9 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoWriteTool {
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: TodoWriteArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(todo_write_meta::NAME, None, e.to_string()))?;
-        let result = write_todos(&self.state, args.todos);
+        let args = TodoWriteRequest::parse(args)
+            .map_err(|e| core_error_to_serdes(todo_write_meta::NAME, e))?;
+        let result = write_todos(&self.state, args);
         to_serdes_result(todo_write_meta::NAME, result.map(ToolOutput::new))
     }
 }
@@ -100,11 +86,10 @@ impl<Deps: Send + Sync> Tool<Deps> for TodoReadTool {
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        // Validate JSON is a proper object (empty struct validates this)
-        let _args: TodoReadArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(todo_read_meta::NAME, None, e.to_string()))?;
-        let content = read_todos(&self.state);
-        Ok(crate::convert::output_to_return(ToolOutput::new(content)))
+        let args = TodoReadRequest::parse(args)
+            .map_err(|e| core_error_to_serdes(todo_read_meta::NAME, e))?;
+        let output = read_todos(&self.state, args);
+        Ok(ToolReturn::text(output))
     }
 }
 

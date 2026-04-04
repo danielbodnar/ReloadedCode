@@ -11,47 +11,46 @@ use std::time::Duration;
 /// - Other content types returned as-is
 /// - Response size is limited to `max_response_size` bytes
 ///
-/// # Arguments
-///
-/// * `client` - The HTTP client to use
-/// * `url` - The URL to fetch
-/// * `timeout_ms` - Timeout in milliseconds (must be >= 1 and <= max_timeout_ms)
-/// * `max_timeout_ms` - Maximum allowed timeout in milliseconds
-/// * `max_response_size` - Maximum response size in bytes
-///
 /// # Errors
 ///
 /// Returns `ToolError::Validation` if timeout_ms is 0 or exceeds max_timeout_ms.
 pub async fn fetch_url(
     client: &reqwest::Client,
-    url: &str,
-    timeout_ms: u32,
-    max_timeout_ms: u32,
-    max_response_size: usize,
+    request: super::WebFetchRequest,
+    settings: super::WebFetchSettings,
 ) -> ToolResult<WebFetchOutput> {
+    let timeout_ms = request.timeout_ms.unwrap_or(settings.default_timeout_ms);
+
     if timeout_ms == 0 {
-        return Err(ToolError::Validation(
-            "timeout_ms must be at least 1".to_string(),
+        return Err(ToolError::validation_for(
+            "timeout_ms",
+            "timeout_ms must be at least 1",
         ));
     }
-    if timeout_ms > max_timeout_ms {
-        return Err(ToolError::Validation(format!(
-            "timeout_ms exceeds maximum allowed value of {}",
-            max_timeout_ms
-        )));
+    if timeout_ms > settings.max_timeout_ms {
+        return Err(ToolError::validation_for(
+            "timeout_ms",
+            format!(
+                "timeout_ms exceeds maximum allowed value of {}",
+                settings.max_timeout_ms
+            ),
+        ));
     }
 
     let timeout = Duration::from_millis(timeout_ms as u64);
     let mut response = client
-        .get(url)
+        .get(&request.url)
         .timeout(timeout)
         .send()
         .await
-        .map_err(|e| categorize_reqwest_error(e, url))?;
+        .map_err(|e| categorize_reqwest_error(e, &request.url))?;
 
     let status = response.status();
     if !status.is_success() {
-        return Err(ToolError::Http(format!("HTTP {} for {}", status, url)));
+        return Err(ToolError::Http(format!(
+            "HTTP {} for {}",
+            status, request.url
+        )));
     }
 
     let content_type = response
@@ -68,13 +67,13 @@ pub async fn fetch_url(
             usize::try_from(len).map_err(|_| {
                 ToolError::Http(format!(
                     "Content-Length {} exceeds platform limits for {}",
-                    len, url
+                    len, request.url
                 ))
             })
         })
         .transpose()?;
     if let Some(len) = content_length {
-        check_size(len, url, max_response_size)?;
+        check_size(len, &request.url, settings.max_response_size)?;
     }
 
     // Stream response body with incremental size checks to avoid memory exhaustion
@@ -86,10 +85,10 @@ pub async fn fetch_url(
         .await
         .map_err(|e| ToolError::Http(e.to_string()))?
     {
-        total_len = total_len
-            .checked_add(chunk.len())
-            .ok_or_else(|| ToolError::Http(format!("Response size overflow for {}", url)))?;
-        check_size(total_len, url, max_response_size)?;
+        total_len = total_len.checked_add(chunk.len()).ok_or_else(|| {
+            ToolError::Http(format!("Response size overflow for {}", request.url))
+        })?;
+        check_size(total_len, &request.url, settings.max_response_size)?;
         bytes.extend_from_slice(&chunk);
     }
 
@@ -107,6 +106,7 @@ pub async fn fetch_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::webfetch::{WebFetchRequest, WebFetchSettings};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -132,10 +132,15 @@ mod tests {
         let client = test_client();
         let result = fetch_url(
             &client,
-            &format!("{}/text", server.uri()),
-            5_000,
-            10_000,
-            5 * 1024 * 1024,
+            WebFetchRequest {
+                url: format!("{}/text", server.uri()),
+                timeout_ms: None,
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
         )
         .await
         .unwrap();
@@ -160,10 +165,15 @@ mod tests {
         let client = test_client();
         let result = fetch_url(
             &client,
-            &format!("{}/html", server.uri()),
-            5_000,
-            10_000,
-            5 * 1024 * 1024,
+            WebFetchRequest {
+                url: format!("{}/html", server.uri()),
+                timeout_ms: None,
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
         )
         .await
         .unwrap();
@@ -186,10 +196,15 @@ mod tests {
         let client = test_client();
         let result = fetch_url(
             &client,
-            &format!("{}/json", server.uri()),
-            5_000,
-            10_000,
-            5 * 1024 * 1024,
+            WebFetchRequest {
+                url: format!("{}/json", server.uri()),
+                timeout_ms: None,
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
         )
         .await
         .unwrap();
@@ -209,10 +224,15 @@ mod tests {
         let client = test_client();
         let result = fetch_url(
             &client,
-            &format!("{}/notfound", server.uri()),
-            5_000,
-            10_000,
-            5 * 1024 * 1024,
+            WebFetchRequest {
+                url: format!("{}/notfound", server.uri()),
+                timeout_ms: None,
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
         )
         .await;
 
@@ -222,8 +242,20 @@ mod tests {
     #[tokio::test]
     async fn rejects_timeout_zero() {
         let client = test_client();
-        let result = fetch_url(&client, "http://localhost:1", 0, 10_000, 5 * 1024 * 1024).await;
-        assert!(matches!(result, Err(ToolError::Validation(_))));
+        let result = fetch_url(
+            &client,
+            WebFetchRequest {
+                url: "http://localhost:1".to_string(),
+                timeout_ms: Some(0),
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(ToolError::Validation { .. })));
     }
 
     #[tokio::test]
@@ -231,12 +263,17 @@ mod tests {
         let client = test_client();
         let result = fetch_url(
             &client,
-            "http://localhost:1",
-            11_000,
-            10_000,
-            5 * 1024 * 1024,
+            WebFetchRequest {
+                url: "http://localhost:1".to_string(),
+                timeout_ms: Some(11_000),
+            },
+            WebFetchSettings {
+                default_timeout_ms: 5_000,
+                max_timeout_ms: 10_000,
+                max_response_size: 5 * 1024 * 1024,
+            },
         )
         .await;
-        assert!(matches!(result, Err(ToolError::Validation(_))));
+        assert!(matches!(result, Err(ToolError::Validation { .. })));
     }
 }

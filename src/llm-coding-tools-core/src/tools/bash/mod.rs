@@ -34,7 +34,8 @@
 use crate::error::{ToolError, ToolResult};
 use crate::ToolOutput;
 use core::fmt::Write;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::borrow::Cow;
 use std::path::Path;
 use std::time::Duration;
@@ -60,6 +61,35 @@ pub enum BashExecutionMode {
     Host,
     #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
     LinuxBwrap(std::sync::Arc<Profile>),
+}
+
+/// Serde-friendly bash request owned by the core crate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BashRequest {
+    /// The shell command to execute.
+    pub command: String,
+    /// Optional working directory.
+    pub workdir: Option<String>,
+    /// Timeout in milliseconds. If omitted, uses the tool's default timeout.
+    pub timeout_ms: Option<u32>,
+}
+
+impl BashRequest {
+    /// Parses a raw JSON tool payload into a bash request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Runtime settings applied to bash requests.
+#[derive(Debug, Clone, Copy)]
+pub struct BashSettings<'a> {
+    /// Default timeout when omitted from the request.
+    pub default_timeout_ms: u32,
+    /// Maximum allowed timeout.
+    pub max_timeout_ms: u32,
+    /// Default working directory when omitted from the request.
+    pub default_workdir: Option<&'a Path>,
 }
 
 /// Default buffer capacity for stdout/stderr pipe reads.

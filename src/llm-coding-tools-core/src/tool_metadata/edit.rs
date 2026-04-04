@@ -8,6 +8,12 @@ pub const NAME: &str = "edit";
 /// Default value for `replace_all`.
 pub const DEFAULT_REPLACE_ALL: bool = false;
 
+/// Serde-friendly default helper for `replace_all`.
+#[must_use]
+pub const fn default_replace_all() -> bool {
+    DEFAULT_REPLACE_ALL
+}
+
 /// Tool descriptions.
 pub mod description {
     /// Absolute-path variant.

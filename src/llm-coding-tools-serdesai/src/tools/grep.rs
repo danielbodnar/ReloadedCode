@@ -15,25 +15,13 @@ use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::grep as grep_meta;
-use llm_coding_tools_core::tools::{DEFAULT_MAX_LINE_LENGTH, GrepOutput, grep_search};
-use serde::Deserialize;
-use serde_json::json;
-use serdes_ai::tools::{
-    RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult, ToolReturn,
+use llm_coding_tools_core::tools::{
+    DEFAULT_MAX_LINE_LENGTH, GrepOutput, GrepRequest, GrepSettings, grep_search,
 };
+use serde_json::json;
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
 
-use crate::convert::to_serdes_result;
-
-/// Internal args for JSON deserialization.
-#[derive(Debug, Deserialize)]
-struct GrepArgs {
-    pattern: String,
-    path: String,
-    #[serde(default)]
-    include: Option<String>,
-    #[serde(default)]
-    limit: Option<usize>,
-}
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 
 /// Tool for searching file contents using regex patterns.
 ///
@@ -105,44 +93,22 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Gr
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: GrepArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(grep_meta::NAME, None, e.to_string()))?;
+        let args =
+            GrepRequest::parse(args).map_err(|e| core_error_to_serdes(grep_meta::NAME, e))?;
 
-        let pattern = args.pattern.trim();
-        if pattern.is_empty() {
-            return Err(ToolError::validation_error(
-                grep_meta::NAME,
-                Some("pattern".to_string()),
-                "pattern must not be empty".to_string(),
-            ));
-        }
-
-        let limit = args.limit.unwrap_or(self.limit).min(self.limit);
-        if limit == 0 {
-            return Err(ToolError::validation_error(
-                grep_meta::NAME,
-                Some("limit".to_string()),
-                "limit must be greater than zero".to_string(),
-            ));
-        }
-
-        let include = args.include.as_deref().and_then(|s| {
-            let trimmed = s.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        });
-
-        let result = grep_search(&self.resolver, pattern, include, &args.path, limit);
+        let result = grep_search(
+            &self.resolver,
+            args,
+            GrepSettings {
+                max_limit: self.limit,
+            },
+        );
 
         match result {
             Err(e) => to_serdes_result(grep_meta::NAME, Err(e)),
             Ok(grep_output) => Ok(grep_output_to_return(
                 grep_output,
                 self.line_numbers,
-                limit,
                 self.max_line_length,
             )),
         }
@@ -154,11 +120,10 @@ const NO_MATCHES_FOUND: &str = "No matches found.";
 fn grep_output_to_return(
     output: GrepOutput,
     line_numbers: bool,
-    limit: usize,
     max_line_len: usize,
 ) -> ToolReturn {
     if output.partial {
-        let content = output.format(line_numbers, limit, max_line_len);
+        let content = output.format(line_numbers, max_line_len);
         return ToolReturn::json(json!({
             "content": content,
             "partial": true,
@@ -172,7 +137,7 @@ fn grep_output_to_return(
         return ToolReturn::text(NO_MATCHES_FOUND);
     }
 
-    ToolReturn::text(output.format(line_numbers, limit, max_line_len))
+    ToolReturn::text(output.format(line_numbers, max_line_len))
 }
 
 impl<R: PathResolver + Clone> ToolContext for GrepTool<R> {
@@ -235,7 +200,7 @@ mod tests {
     use llm_coding_tools_core::path::AbsolutePathResolver;
     use llm_coding_tools_core::path::AllowedPathResolver;
     use serde_json::json;
-    use serdes_ai::tools::RunContext;
+    use serdes_ai::tools::{RunContext, ToolError};
     use tempfile::TempDir;
 
     fn mock_ctx() -> RunContext<()> {

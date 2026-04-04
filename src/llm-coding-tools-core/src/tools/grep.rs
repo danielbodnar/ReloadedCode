@@ -8,7 +8,8 @@ use grep_regex::RegexMatcher;
 use grep_searcher::sinks::UTF8;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder};
 use ignore::WalkBuilder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt::Write;
 use std::path::Path;
 use std::time::SystemTime;
@@ -18,6 +19,31 @@ pub const DEFAULT_MAX_LINE_LENGTH: usize = 2000;
 
 /// Estimated characters per grep match for buffer pre-allocation.
 const ESTIMATED_CHARS_PER_MATCH: usize = 128;
+
+/// Serde-friendly grep request owned by the core crate.
+#[derive(Debug, Deserialize)]
+pub struct GrepRequest {
+    pub pattern: String,
+    pub path: String,
+    #[serde(default)]
+    pub include: Option<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+impl GrepRequest {
+    /// Parses a raw JSON tool payload into a grep request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Runtime settings applied to grep requests.
+#[derive(Debug, Clone, Copy)]
+pub struct GrepSettings {
+    /// Maximum number of matches returned for a request.
+    pub max_limit: usize,
+}
 
 /// A single line match within a file.
 #[derive(Debug, Clone, Serialize)]
@@ -54,6 +80,9 @@ pub struct GrepOutput {
     /// Per-file traversal/search errors encountered while collecting matches.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<String>,
+    /// Effective match limit applied to the search.
+    #[serde(skip)]
+    pub effective_limit: usize,
 }
 
 impl GrepOutput {
@@ -62,9 +91,8 @@ impl GrepOutput {
     /// # Arguments
     ///
     /// * `line_numbers` - When `true`, prefixes each match with `L{num}: `
-    /// * `limit` - The original match limit (used in truncation message)
     /// * `max_line_len` - Truncate lines exceeding this character length and append `...`
-    pub fn format(&self, line_numbers: bool, limit: usize, max_line_len: usize) -> String {
+    pub fn format(&self, line_numbers: bool, max_line_len: usize) -> String {
         let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_MATCH;
         let mut output = String::with_capacity(estimated_capacity);
 
@@ -91,7 +119,11 @@ impl GrepOutput {
         }
 
         if self.truncated {
-            let _ = write!(&mut output, "\n(Results truncated at {} matches)", limit);
+            let _ = write!(
+                &mut output,
+                "\n(Results truncated at {} matches)",
+                self.effective_limit
+            );
         }
 
         if self.partial {
@@ -112,12 +144,35 @@ impl GrepOutput {
 /// Binary files are automatically skipped.
 pub fn grep_search<R: PathResolver>(
     resolver: &R,
-    pattern: &str,
-    include: Option<&str>,
-    search_path: &str,
-    limit: usize,
+    request: GrepRequest,
+    settings: GrepSettings,
 ) -> ToolResult<GrepOutput> {
-    let path = resolver.resolve(search_path)?;
+    let pattern = request.pattern.trim();
+    if pattern.is_empty() {
+        return Err(ToolError::validation_for(
+            "pattern",
+            "pattern must not be empty",
+        ));
+    }
+
+    let limit = request
+        .limit
+        .unwrap_or(settings.max_limit)
+        .min(settings.max_limit);
+    if limit == 0 {
+        return Err(ToolError::validation_for("limit", "limit must be >= 1"));
+    }
+
+    let include = request.include.as_deref().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+
+    let path = resolver.resolve(&request.path)?;
 
     let matcher =
         RegexMatcher::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
@@ -220,6 +275,7 @@ pub fn grep_search<R: PathResolver>(
         truncated,
         partial: !errors.is_empty(),
         errors,
+        effective_limit: limit,
     })
 }
 
@@ -314,10 +370,13 @@ mod tests {
 
         let result = grep_search(
             &resolver,
-            pattern,
-            include,
-            temp.path().to_str().unwrap(),
-            10,
+            GrepRequest {
+                pattern: pattern.to_string(),
+                path: temp.path().to_str().unwrap().to_string(),
+                include: include.map(|s| s.to_string()),
+                limit: None,
+            },
+            GrepSettings { max_limit: 10 },
         )
         .unwrap();
 
@@ -359,9 +418,10 @@ mod tests {
             truncated,
             partial,
             errors,
+            effective_limit: 10,
         };
 
-        let formatted = output.format(true, 10, DEFAULT_MAX_LINE_LENGTH);
+        let formatted = output.format(true, DEFAULT_MAX_LINE_LENGTH);
 
         assert_eq!(formatted.contains("Partial results"), expect_partial_msg);
         assert_eq!(
@@ -448,9 +508,10 @@ mod tests {
             truncated: false,
             partial: false,
             errors: Vec::new(),
+            effective_limit: 10,
         };
 
-        let formatted = output.format(with_line_numbers, 10, max_len);
+        let formatted = output.format(with_line_numbers, max_len);
 
         assert!(
             formatted.contains(expected),
@@ -466,13 +527,70 @@ mod tests {
         let missing_root = temp.path().join("missing-root");
         let resolver = AbsolutePathResolver;
 
-        let result =
-            grep_search(&resolver, "hello", None, missing_root.to_str().unwrap(), 10).unwrap();
+        let result = grep_search(
+            &resolver,
+            GrepRequest {
+                pattern: "hello".to_string(),
+                path: missing_root.to_str().unwrap().to_string(),
+                include: None,
+                limit: None,
+            },
+            GrepSettings { max_limit: 10 },
+        )
+        .unwrap();
 
         // Walker errors should mark results as partial but not truncated
         assert!(result.partial);
         assert!(!result.truncated);
         assert!(!result.errors.is_empty());
         assert_eq!(result.match_count, 0);
+    }
+
+    #[test]
+    fn grep_request_rejects_empty_pattern() {
+        let temp = tempdir().unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let err = grep_search(
+            &resolver,
+            GrepRequest {
+                pattern: "   ".into(),
+                path: temp.path().to_string_lossy().into_owned(),
+                include: None,
+                limit: None,
+            },
+            GrepSettings { max_limit: 10 },
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, ToolError::Validation { .. }));
+        assert_eq!(
+            err.to_string(),
+            "validation error: pattern must not be empty"
+        );
+    }
+
+    #[test]
+    fn grep_request_ignores_blank_include_and_caps_limit() {
+        let temp = tempdir().unwrap();
+        std::fs::write(temp.path().join("a.rs"), "hello\nworld\n").unwrap();
+        std::fs::write(temp.path().join("b.txt"), "hello\nhello\n").unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let result = grep_search(
+            &resolver,
+            GrepRequest {
+                pattern: " hello ".into(),
+                path: temp.path().to_string_lossy().into_owned(),
+                include: Some("   ".into()),
+                limit: Some(1),
+            },
+            GrepSettings { max_limit: 1 },
+        )
+        .unwrap();
+
+        assert_eq!(result.match_count, 1);
+        assert!(result.truncated);
+        assert_eq!(result.effective_limit, 1);
     }
 }

@@ -2,6 +2,36 @@
 
 use crate::error::{ToolError, ToolResult};
 use html_to_markdown_rs::{convert, ConversionOptions, PreprocessingOptions, PreprocessingPreset};
+use serde::Deserialize;
+use serde_json::Value;
+
+/// Serde-friendly webfetch request owned by the core crate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebFetchRequest {
+    /// The URL to fetch.
+    pub url: String,
+    /// Timeout in milliseconds. If omitted, uses the tool's default timeout.
+    #[serde(default)]
+    pub timeout_ms: Option<u32>,
+}
+
+impl WebFetchRequest {
+    /// Parses a raw JSON tool payload into a webfetch request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Runtime settings applied to webfetch requests.
+#[derive(Debug, Clone, Copy)]
+pub struct WebFetchSettings {
+    /// Default timeout when omitted from the request.
+    pub default_timeout_ms: u32,
+    /// Maximum allowed timeout.
+    pub max_timeout_ms: u32,
+    /// Maximum response size in bytes.
+    pub max_response_size: usize,
+}
 
 /// Result from URL fetch operation.
 #[derive(Debug, Clone)]

@@ -28,21 +28,10 @@ use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::read as read_meta;
-use llm_coding_tools_core::tools::read_file;
-use serde::Deserialize;
-use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
+use llm_coding_tools_core::tools::{ReadRequest, ReadSettings, read_file};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
 
-use crate::convert::to_serdes_result;
-
-/// Internal args for JSON deserialization.
-#[derive(Debug, Deserialize)]
-struct ReadArgs {
-    file_path: String,
-    #[serde(default = "read_meta::default_offset")]
-    offset: usize,
-    #[serde(default)]
-    limit: Option<usize>,
-}
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 
 /// Tool for reading file contents with optional line ranges and numbers.
 ///
@@ -117,17 +106,18 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Re
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: ReadArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(read_meta::NAME, None, e.to_string()))?;
+        let args =
+            ReadRequest::parse(args).map_err(|e| core_error_to_serdes(read_meta::NAME, e))?;
 
-        let effective_limit = args.limit.unwrap_or(self.limit).min(self.limit);
         let result = read_file(
             &self.resolver,
-            &args.file_path,
-            args.offset,
-            effective_limit,
-            self.max_line_length,
-            self.line_numbers,
+            args,
+            ReadSettings {
+                default_limit: self.limit,
+                max_limit: self.limit,
+                max_line_length: self.max_line_length,
+                line_numbers: self.line_numbers,
+            },
         )
         .await;
         to_serdes_result(read_meta::NAME, result)
