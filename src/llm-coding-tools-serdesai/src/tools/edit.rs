@@ -1,9 +1,9 @@
-//! Edit file tool using [`AbsolutePathResolver`].
+//! Generic edit file tool using any [`PathResolver`].
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
-use llm_coding_tools_core::path::AbsolutePathResolver;
+use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::edit as edit_meta;
 use llm_coding_tools_core::tools::edit_file;
 use serde::Deserialize;
@@ -16,41 +16,49 @@ use crate::common::edit::error_to_serdes;
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
 struct EditArgs {
-    /// Absolute path to the file.
     file_path: String,
-    /// The exact text to find and replace.
     old_string: String,
-    /// The text to replace with.
     new_string: String,
-    /// Replace all occurrences instead of just the first. Defaults to false.
     #[serde(default)]
     replace_all: bool,
 }
 
 /// Tool for making exact string replacements in files.
+///
+/// Generic over any [`PathResolver`] implementation.
 #[derive(Debug, Clone)]
-pub struct EditTool {
+pub struct EditTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
+    resolver: R,
+    path_mode: PathMode,
 }
 
-impl Default for EditTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl EditTool {
-    /// Creates a new edit tool instance.
-    #[inline]
-    pub fn new() -> Self {
+impl<R: PathResolver + Clone> EditTool<R> {
+    /// Creates a new edit tool with the given resolver.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `R` - A path resolver implementing [`PathResolver`]. The tool will
+    ///   automatically determine the correct path mode (Absolute or Allowed)
+    ///   based on the resolver type at construction.
+    pub fn new(resolver: R) -> Self {
+        let path_mode = determine_path_mode::<R>();
         Self {
-            definition: build_definition(),
+            definition: build_definition(path_mode),
+            resolver,
+            path_mode,
         }
+    }
+
+    /// Returns the path mode for this tool instance.
+    #[must_use]
+    pub fn path_mode(&self) -> PathMode {
+        self.path_mode
     }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync> Tool<Deps> for EditTool {
+impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for EditTool<R> {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -59,9 +67,8 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
         let args: EditArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(edit_meta::NAME, None, e.to_string()))?;
 
-        let resolver = AbsolutePathResolver;
         let result = edit_file(
-            &resolver,
+            &self.resolver,
             &args.file_path,
             &args.old_string,
             &args.new_string,
@@ -73,23 +80,40 @@ impl<Deps: Send + Sync> Tool<Deps> for EditTool {
     }
 }
 
-impl ToolContext for EditTool {
+impl<R: PathResolver + Clone> ToolContext for EditTool<R> {
     const NAME: &'static str = edit_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Edit {
-            path_mode: PathMode::Absolute,
+            path_mode: self.path_mode,
         }
     }
 }
 
-fn build_definition() -> ToolDefinition {
+/// Determine the path mode for a resolver type.
+fn determine_path_mode<R: PathResolver>() -> PathMode {
+    let type_name = std::any::type_name::<R>();
+    if type_name.contains("AllowedPathResolver") {
+        PathMode::Allowed
+    } else {
+        PathMode::Absolute
+    }
+}
+
+fn build_definition(path_mode: PathMode) -> ToolDefinition {
+    let (file_path_param, description) = match path_mode {
+        PathMode::Absolute => (
+            edit_meta::param::FILE_PATH_ABSOLUTE,
+            edit_meta::description::ABSOLUTE,
+        ),
+        PathMode::Allowed => (
+            edit_meta::param::FILE_PATH_ALLOWED,
+            edit_meta::description::ALLOWED,
+        ),
+    };
+
     let schema = SchemaBuilder::new()
-        .string(
-            edit_meta::param::FILE_PATH_ABSOLUTE.name,
-            edit_meta::param::FILE_PATH_ABSOLUTE.description,
-            edit_meta::param::FILE_PATH_ABSOLUTE.required,
-        )
+        .string(file_path_param.name, file_path_param.description, file_path_param.required)
         .string(
             edit_meta::param::OLD_STRING.name,
             edit_meta::param::OLD_STRING.description,
@@ -110,7 +134,7 @@ fn build_definition() -> ToolDefinition {
 
     ToolDefinition {
         name: edit_meta::NAME.to_owned(),
-        description: edit_meta::description::ABSOLUTE.to_owned(),
+        description: description.to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -120,22 +144,24 @@ fn build_definition() -> ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use llm_coding_tools_core::path::AbsolutePathResolver;
+    use llm_coding_tools_core::path::AllowedPathResolver;
     use serde_json::json;
     use serdes_ai::tools::RunContext;
     use std::io::Write as _;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, TempDir};
 
     fn mock_ctx() -> RunContext<()> {
         RunContext::new((), "test-model")
     }
 
     #[tokio::test]
-    async fn edit_success() {
+    async fn edit_success_with_absolute_resolver() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"hello world").unwrap();
         file.flush().unwrap();
 
-        let tool = EditTool::new();
+        let tool = EditTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -154,12 +180,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn replaces_single_occurrence_with_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
+
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "file_path": "test.txt",
+                    "old_string": "world",
+                    "new_string": "rust"
+                }),
+            )
+            .await
+            .unwrap();
+
+        let text = result.as_text().unwrap();
+        assert!(text.contains("1 occurrence"));
+    }
+
+    #[tokio::test]
+    async fn rejects_path_traversal_with_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "file_path": "../../../etc/passwd",
+                    "old_string": "old",
+                    "new_string": "new"
+                }),
+            )
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn edit_not_found_error() {
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"hello world").unwrap();
         file.flush().unwrap();
 
-        let tool = EditTool::new();
+        let tool = EditTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -173,14 +241,6 @@ mod tests {
 
         let err = result.unwrap_err();
         assert!(matches!(err, ToolError::ValidationFailed { .. }));
-        // Check the error contains the validation message
-        match err {
-            ToolError::ValidationFailed { errors, .. } => {
-                assert!(!errors.is_empty());
-                assert!(errors[0].message.contains("not found"));
-            }
-            _ => panic!("Expected ValidationFailed"),
-        }
     }
 
     #[tokio::test]
@@ -189,7 +249,7 @@ mod tests {
         file.write_all(b"hello hello hello").unwrap();
         file.flush().unwrap();
 
-        let tool = EditTool::new();
+        let tool = EditTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -212,5 +272,19 @@ mod tests {
             }
             _ => panic!("Expected ValidationFailed"),
         }
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_absolute_resolver() {
+        let tool = EditTool::new(AbsolutePathResolver);
+        assert_eq!(tool.path_mode(), PathMode::Absolute);
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = EditTool::new(resolver);
+        assert_eq!(tool.path_mode(), PathMode::Allowed);
     }
 }

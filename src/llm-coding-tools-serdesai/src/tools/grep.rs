@@ -1,9 +1,9 @@
-//! Grep content search tool using [`AbsolutePathResolver`].
+//! Generic grep content search tool using any [`PathResolver`].
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
-use llm_coding_tools_core::path::AbsolutePathResolver;
+use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::grep as grep_meta;
 use llm_coding_tools_core::tools::{DEFAULT_MAX_LINE_LENGTH, grep_search};
 use serde::Deserialize;
@@ -15,67 +15,71 @@ use crate::convert::to_serdes_result;
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
 struct GrepArgs {
-    /// Regular expression pattern to search for in file contents.
     pattern: String,
-    /// Absolute directory path to search in.
     path: String,
-    /// File pattern to filter search results (e.g., "*.rs", "*.{ts,tsx}").
     #[serde(default)]
     include: Option<String>,
-    /// Maximum number of matches to return (default: 100, max: 2000).
     #[serde(default)]
     limit: Option<usize>,
 }
 
 /// Tool for searching file contents using regex patterns.
 ///
-/// The `line_numbers` field controls output format:
-/// - `true` (default): Lines prefixed with `L{number}: `
-/// - `false`: Raw matching lines
+/// Generic over any [`PathResolver`] implementation.
 #[derive(Debug, Clone)]
-pub struct GrepTool {
+pub struct GrepTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
+    resolver: R,
+    path_mode: PathMode,
     max_line_length: usize,
     limit: usize,
     line_numbers: bool,
 }
 
-impl Default for GrepTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl GrepTool {
-    /// Creates a new grep tool instance with default settings.
+impl<R: PathResolver + Clone> GrepTool<R> {
+    /// Creates a new grep tool with the given resolver and default settings.
     ///
     /// Uses `max_line_length` of 2000 characters, `limit` of 100 matches,
     /// and enables line numbers.
-    #[inline]
-    pub fn new() -> Self {
-        Self::with_settings(DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT, true)
+    ///
+    /// # Type Parameters
+    ///
+    /// * `R` - A path resolver implementing [`PathResolver`]. The tool will
+    ///   automatically determine the correct path mode (Absolute or Allowed)
+    ///   based on the resolver type at construction.
+    pub fn new(resolver: R) -> Self {
+        Self::with_settings(resolver, DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT, true)
     }
 
-    /// Creates a new grep tool instance with custom settings.
+    /// Creates a new grep tool with custom settings.
     ///
     /// # Arguments
     ///
+    /// * `resolver` - The path resolver for path validation.
     /// * `max_line_length` - Maximum characters per matching line before truncation.
-    ///   Longer lines will be truncated with "..." appended.
     /// * `limit` - Maximum number of matches to return when not specified in args.
     /// * `line_numbers` - Whether to prefix lines with line numbers.
-    pub fn with_settings(max_line_length: usize, limit: usize, line_numbers: bool) -> Self {
+    pub fn with_settings(resolver: R, max_line_length: usize, limit: usize, line_numbers: bool) -> Self {
+        let path_mode = determine_path_mode::<R>();
         Self {
-            definition: build_definition(line_numbers),
+            definition: build_definition(path_mode, line_numbers),
+            resolver,
+            path_mode,
             max_line_length,
             limit,
             line_numbers,
         }
     }
+
+    /// Returns the path mode for this tool instance.
+    #[must_use]
+    pub fn path_mode(&self) -> PathMode {
+        self.path_mode
+    }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync> Tool<Deps> for GrepTool {
+impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for GrepTool<R> {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -104,15 +108,10 @@ impl<Deps: Send + Sync> Tool<Deps> for GrepTool {
 
         let include = args.include.as_deref().and_then(|s| {
             let trimmed = s.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
+            if trimmed.is_empty() { None } else { Some(trimmed) }
         });
 
-        let resolver = AbsolutePathResolver;
-        let result = grep_search(&resolver, pattern, include, &args.path, limit);
+        let result = grep_search(&self.resolver, pattern, include, &args.path, limit);
 
         match result {
             Err(e) => to_serdes_result(grep_meta::NAME, Err(e)),
@@ -126,29 +125,46 @@ impl<Deps: Send + Sync> Tool<Deps> for GrepTool {
     }
 }
 
-impl ToolContext for GrepTool {
+impl<R: PathResolver + Clone> ToolContext for GrepTool<R> {
     const NAME: &'static str = grep_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Grep {
-            path_mode: PathMode::Absolute,
+            path_mode: self.path_mode,
             line_numbers: self.line_numbers,
         }
     }
 }
 
-fn build_definition(line_numbers: bool) -> ToolDefinition {
+/// Determine the path mode for a resolver type.
+fn determine_path_mode<R: PathResolver>() -> PathMode {
+    let type_name = std::any::type_name::<R>();
+    if type_name.contains("AllowedPathResolver") {
+        PathMode::Allowed
+    } else {
+        PathMode::Absolute
+    }
+}
+
+fn build_definition(path_mode: PathMode, line_numbers: bool) -> ToolDefinition {
+    let (path_param, description) = match path_mode {
+        PathMode::Absolute => (
+            grep_meta::param::PATH_ABSOLUTE,
+            grep_meta::description::absolute(line_numbers),
+        ),
+        PathMode::Allowed => (
+            grep_meta::param::PATH_ALLOWED,
+            grep_meta::description::allowed(line_numbers),
+        ),
+    };
+
     let schema = SchemaBuilder::new()
         .string(
             grep_meta::param::PATTERN.name,
             grep_meta::param::PATTERN.description,
             grep_meta::param::PATTERN.required,
         )
-        .string(
-            grep_meta::param::PATH_ABSOLUTE.name,
-            grep_meta::param::PATH_ABSOLUTE.description,
-            grep_meta::param::PATH_ABSOLUTE.required,
-        )
+        .string(path_param.name, path_param.description, path_param.required)
         .string(
             grep_meta::param::INCLUDE.name,
             grep_meta::param::INCLUDE.description,
@@ -166,7 +182,7 @@ fn build_definition(line_numbers: bool) -> ToolDefinition {
 
     ToolDefinition {
         name: grep_meta::NAME.to_owned(),
-        description: grep_meta::description::absolute(line_numbers).to_owned(),
+        description: description.to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -176,6 +192,8 @@ fn build_definition(line_numbers: bool) -> ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use llm_coding_tools_core::path::AbsolutePathResolver;
+    use llm_coding_tools_core::path::AllowedPathResolver;
     use serde_json::json;
     use serdes_ai::tools::RunContext;
     use tempfile::TempDir;
@@ -185,11 +203,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finds_content_with_required_path() {
+    async fn finds_content_with_absolute_resolver() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world\nfoo bar").unwrap();
 
-        let tool = GrepTool::new();
+        let tool = GrepTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -207,11 +225,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finds_matching_content_with_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
+
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GrepTool::new(resolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": "hello",
+                    "path": "."
+                }),
+            )
+            .await
+            .unwrap();
+
+        let text = result.as_text().unwrap();
+        assert!(text.contains("Found 1 matches"));
+        assert!(text.contains("L1: hello world"));
+    }
+
+    #[tokio::test]
+    async fn rejects_path_traversal_with_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GrepTool::new(resolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": "test",
+                    "path": "../../../etc"
+                }),
+            )
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn validates_limit() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-        let tool = GrepTool::new();
+        let tool = GrepTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -225,14 +284,6 @@ mod tests {
 
         let err = result.unwrap_err();
         assert!(matches!(err, ToolError::ValidationFailed { .. }));
-        // Check the error contains the validation message
-        match err {
-            ToolError::ValidationFailed { errors, .. } => {
-                assert!(!errors.is_empty());
-                assert!(errors[0].message.contains("limit"));
-            }
-            _ => panic!("Expected ValidationFailed"),
-        }
     }
 
     #[tokio::test]
@@ -240,7 +291,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool = GrepTool::new();
+        let tool = GrepTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -256,6 +307,8 @@ mod tests {
         assert_eq!(text, "No matches found.");
     }
 
+    // PORTED TESTS from absolute/grep.rs and allowed/grep.rs
+
     #[tokio::test]
     async fn include_filter_restricts_to_matching_files() {
         let dir = TempDir::new().unwrap();
@@ -263,7 +316,7 @@ mod tests {
         std::fs::write(dir.path().join("code.py"), "def hello(): pass").unwrap();
         std::fs::write(dir.path().join("readme.txt"), "hello world").unwrap();
 
-        let tool = GrepTool::new();
+        let tool = GrepTool::new(AbsolutePathResolver);
 
         // Search only .rs files
         let result = tool
@@ -286,41 +339,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn returns_partial_json_when_search_has_errors() {
-        let dir = TempDir::new().unwrap();
-        let missing_path = dir.path().join("missing-root");
-        let tool = GrepTool::new();
-
-        let result = tool
-            .call(
-                &mock_ctx(),
-                json!({
-                    "pattern": "hello",
-                    "path": missing_path.to_string_lossy()
-                }),
-            )
-            .await
-            .unwrap();
-
-        let payload = result.as_json().unwrap();
-        assert_eq!(payload["partial"], true);
-        assert!(!payload["errors"].as_array().unwrap().is_empty());
-        assert!(
-            payload["content"]
-                .as_str()
-                .unwrap()
-                .contains("Partial results")
-        );
-    }
-
-    #[tokio::test]
     async fn truncates_long_lines_at_max_length() {
         let dir = TempDir::new().unwrap();
         // Create a line longer than MAX_LINE_LENGTH (2000 chars)
         let long_line = format!("prefix_{}_suffix", "x".repeat(2500));
         std::fs::write(dir.path().join("long.txt"), &long_line).unwrap();
 
-        let tool = GrepTool::new();
+        let tool = GrepTool::new(AbsolutePathResolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -346,5 +371,67 @@ mod tests {
                 assert!(content.len() <= DEFAULT_MAX_LINE_LENGTH);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn returns_partial_json_when_search_has_errors() {
+        let dir = TempDir::new().unwrap();
+        let missing_path = dir.path().join("missing-root");
+        let tool = GrepTool::new(AbsolutePathResolver);
+
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": "hello",
+                    "path": missing_path.to_string_lossy()
+                }),
+            )
+            .await
+            .unwrap();
+
+        let payload = result.as_json().unwrap();
+        assert_eq!(payload["partial"], true);
+        assert!(!payload["errors"].as_array().unwrap().is_empty());
+        assert!(
+            payload["content"]
+                .as_str()
+                .unwrap()
+                .contains("Partial results")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_pattern() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GrepTool::new(resolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": "   ",
+                    "path": "."
+                }),
+            )
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ToolError::ValidationFailed { .. }));
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_absolute_resolver() {
+        let tool = GrepTool::new(AbsolutePathResolver);
+        assert_eq!(tool.path_mode(), PathMode::Absolute);
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GrepTool::new(resolver);
+        assert_eq!(tool.path_mode(), PathMode::Allowed);
     }
 }

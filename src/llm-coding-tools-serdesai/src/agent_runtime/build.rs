@@ -9,8 +9,8 @@ use super::provider_bridge::build_serdes_model;
 use crate::agent_ext::AgentBuilderExt;
 use crate::task::{TaskHandle, TaskTool};
 use crate::{
-    BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder, WebFetchTool, WriteTool,
-    create_todo_tools,
+    AbsolutePathResolver, BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder,
+    WebFetchTool, WriteTool, create_todo_tools,
 };
 use llm_coding_tools_agents::{
     AgentRuntime, AgentToolSettings, ModelResolutionError, TaskTargetSummary, ToolCatalogEntry,
@@ -123,23 +123,29 @@ where
             ToolCatalogKind::Read => {
                 let settings = &prepared.tool_settings.read;
                 builder = builder.tool(prompt_builder.track(ReadTool::with_settings(
+                    AbsolutePathResolver,
                     settings.limit,
                     settings.max_line_length,
                     settings.line_numbers,
                 )));
             }
             ToolCatalogKind::Write => {
-                builder = builder.tool(prompt_builder.track(WriteTool::new()))
+                builder = builder.tool(prompt_builder.track(WriteTool::new(AbsolutePathResolver)))
             }
-            ToolCatalogKind::Edit => builder = builder.tool(prompt_builder.track(EditTool::new())),
+            ToolCatalogKind::Edit => {
+                builder = builder.tool(prompt_builder.track(EditTool::new(AbsolutePathResolver)))
+            }
             ToolCatalogKind::Glob => {
                 let settings = &prepared.tool_settings.glob;
-                builder =
-                    builder.tool(prompt_builder.track(GlobTool::with_settings(settings.limit)));
+                builder = builder.tool(prompt_builder.track(GlobTool::with_settings(
+                    AbsolutePathResolver,
+                    settings.limit,
+                )));
             }
             ToolCatalogKind::Grep => {
                 let settings = &prepared.tool_settings.grep;
                 builder = builder.tool(prompt_builder.track(GrepTool::with_settings(
+                    AbsolutePathResolver,
                     settings.max_line_length,
                     settings.limit,
                     settings.line_numbers,

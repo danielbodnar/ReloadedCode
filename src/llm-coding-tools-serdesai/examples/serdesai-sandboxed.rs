@@ -13,7 +13,7 @@ use futures::StreamExt;
 use llm_coding_tools_serdesai::AllowedPathResolver;
 use llm_coding_tools_serdesai::SystemPromptBuilder;
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
-use llm_coding_tools_serdesai::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
+use llm_coding_tools_serdesai::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 use serdes_ai::prelude::*;
 use serdes_ai_models::OpenAIChatModel;
 use std::fmt::Write;
@@ -45,7 +45,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // More efficient and ensures consistency.
     let resolver = AllowedPathResolver::new(allowed_paths)?;
 
-    let read: ReadTool = ReadTool::new(resolver.clone());
+    let read = ReadTool::new(resolver.clone());
     let write = WriteTool::new(resolver.clone());
     let edit = EditTool::new(resolver.clone());
     let glob = GlobTool::new(resolver.clone());

@@ -1,9 +1,9 @@
-//! Glob pattern file finding tool using [`AllowedPathResolver`].
+//! Generic glob file finding tool using any [`PathResolver`].
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
-use llm_coding_tools_core::path::AllowedPathResolver;
+use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::glob_files;
 use serde::Deserialize;
@@ -15,29 +15,32 @@ use crate::convert::to_serdes_result;
 /// Internal args for JSON deserialization.
 #[derive(Debug, Deserialize)]
 struct GlobArgs {
-    /// Glob pattern to match files (e.g., "**/*.rs", "src/**/*.ts").
     pattern: String,
-    /// Directory path to search in (relative to allowed directories).
     path: String,
 }
 
-/// Tool for finding files matching glob patterns within allowed directories.
+/// Tool for finding files matching glob patterns.
+///
+/// Generic over any [`PathResolver`] implementation.
 #[derive(Debug, Clone)]
-pub struct GlobTool {
+pub struct GlobTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
-    resolver: AllowedPathResolver,
+    resolver: R,
+    path_mode: PathMode,
     limit: usize,
 }
 
-impl GlobTool {
-    /// Creates a new glob tool with a shared resolver and default settings.
+impl<R: PathResolver + Clone> GlobTool<R> {
+    /// Creates a new glob tool with the given resolver and default settings.
     ///
     /// Uses `limit` of 1000 files.
     ///
-    /// See [`ReadTool::new`] for usage example.
+    /// # Type Parameters
     ///
-    /// [`ReadTool::new`]: super::ReadTool::new
-    pub fn new(resolver: AllowedPathResolver) -> Self {
+    /// * `R` - A path resolver implementing [`PathResolver`]. The tool will
+    ///   automatically determine the correct path mode (Absolute or Allowed)
+    ///   based on the resolver type at construction.
+    pub fn new(resolver: R) -> Self {
         Self::with_settings(resolver, glob_meta::MAX_RESULTS)
     }
 
@@ -45,21 +48,27 @@ impl GlobTool {
     ///
     /// # Arguments
     ///
-    /// * `resolver` - The path resolver for allowed directory access.
+    /// * `resolver` - The path resolver for path validation.
     /// * `limit` - Maximum number of files to return per glob call.
-    ///   Results are sorted by modification time (newest first) and truncated
-    ///   to this limit if more files match the pattern.
-    pub fn with_settings(resolver: AllowedPathResolver, limit: usize) -> Self {
+    pub fn with_settings(resolver: R, limit: usize) -> Self {
+        let path_mode = determine_path_mode::<R>();
         Self {
-            definition: build_definition(),
+            definition: build_definition(path_mode),
             resolver,
+            path_mode,
             limit,
         }
+    }
+
+    /// Returns the path mode for this tool instance.
+    #[must_use]
+    pub fn path_mode(&self) -> PathMode {
+        self.path_mode
     }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
+impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for GlobTool<R> {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -69,6 +78,7 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
             .map_err(|e| ToolError::validation_error(glob_meta::NAME, None, e.to_string()))?;
 
         let result = glob_files(&self.resolver, &args.pattern, &args.path, self.limit);
+
         match result {
             Err(e) => to_serdes_result(glob_meta::NAME, Err(e)),
             Ok(output) => Ok(glob_output_to_return(output)),
@@ -76,34 +86,51 @@ impl<Deps: Send + Sync> Tool<Deps> for GlobTool {
     }
 }
 
-impl ToolContext for GlobTool {
+impl<R: PathResolver + Clone> ToolContext for GlobTool<R> {
     const NAME: &'static str = glob_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Glob {
-            path_mode: PathMode::Allowed,
+            path_mode: self.path_mode,
         }
     }
 }
 
-fn build_definition() -> ToolDefinition {
+/// Determine the path mode for a resolver type.
+fn determine_path_mode<R: PathResolver>() -> PathMode {
+    let type_name = std::any::type_name::<R>();
+    if type_name.contains("AllowedPathResolver") {
+        PathMode::Allowed
+    } else {
+        PathMode::Absolute
+    }
+}
+
+fn build_definition(path_mode: PathMode) -> ToolDefinition {
+    let (path_param, description) = match path_mode {
+        PathMode::Absolute => (
+            glob_meta::param::PATH_ABSOLUTE,
+            glob_meta::description::ABSOLUTE,
+        ),
+        PathMode::Allowed => (
+            glob_meta::param::PATH_ALLOWED,
+            glob_meta::description::ALLOWED,
+        ),
+    };
+
     let schema = SchemaBuilder::new()
         .string(
             glob_meta::param::PATTERN.name,
             glob_meta::param::PATTERN.description,
             glob_meta::param::PATTERN.required,
         )
-        .string(
-            glob_meta::param::PATH_ALLOWED.name,
-            glob_meta::param::PATH_ALLOWED.description,
-            glob_meta::param::PATH_ALLOWED.required,
-        )
+        .string(path_param.name, path_param.description, path_param.required)
         .build()
         .expect("schema build should not fail");
 
     ToolDefinition {
         name: glob_meta::NAME.to_owned(),
-        description: glob_meta::description::ALLOWED.to_owned(),
+        description: description.to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -113,6 +140,8 @@ fn build_definition() -> ToolDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use llm_coding_tools_core::path::AbsolutePathResolver;
+    use llm_coding_tools_core::path::AllowedPathResolver;
     use llm_coding_tools_core::tools::GlobOutput;
     use serde_json::json;
     use serdes_ai::tools::RunContext;
@@ -124,7 +153,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finds_matching_files() {
+    async fn finds_files_with_absolute_resolver() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        File::create(dir.path().join("src/lib.rs")).unwrap();
+        File::create(dir.path().join("src/main.rs")).unwrap();
+
+        let tool = GlobTool::new(AbsolutePathResolver);
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": "**/*.rs",
+                    "path": dir.path().to_string_lossy()
+                }),
+            )
+            .await
+            .unwrap();
+
+        let text = result.as_text().unwrap();
+        assert!(text.contains("lib.rs"));
+        assert!(text.contains("main.rs"));
+    }
+
+    #[tokio::test]
+    async fn finds_matching_files_with_allowed_resolver() {
         let dir = TempDir::new().unwrap();
         fs::create_dir_all(dir.path().join("src")).unwrap();
         File::create(dir.path().join("src/lib.rs")).unwrap();
@@ -147,7 +200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_path_traversal() {
+    async fn rejects_path_traversal_with_allowed_resolver() {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
         let tool = GlobTool::new(resolver);
@@ -176,5 +229,19 @@ mod tests {
         let json = payload.as_json().unwrap();
         assert_eq!(json["partial"], true);
         assert_eq!(json["errors"][0], "walk error: denied");
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_absolute_resolver() {
+        let tool = GlobTool::new(AbsolutePathResolver);
+        assert_eq!(tool.path_mode(), PathMode::Absolute);
+    }
+
+    #[test]
+    fn determines_correct_path_mode_for_allowed_resolver() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
+        let tool = GlobTool::new(resolver);
+        assert_eq!(tool.path_mode(), PathMode::Allowed);
     }
 }

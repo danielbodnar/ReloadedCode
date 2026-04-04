@@ -1,15 +1,14 @@
 #![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 #![warn(missing_docs)]
 
-pub mod absolute;
 pub mod agent_ext;
 pub mod agent_runtime;
-pub mod allowed;
 pub mod bash;
 mod common;
 pub mod convert;
 pub mod task;
 pub mod todo;
+pub mod tools;  // New generic tools module
 pub mod webfetch;
 
 /// Re-export core types for convenience.
@@ -32,20 +31,8 @@ pub use llm_coding_tools_core::SystemPromptBuilder;
 /// Re-export path resolvers from core.
 pub use llm_coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
 
-// Re-export absolute path tools
-pub use absolute::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-
-/// Re-export allowed module tool types (namespaced to avoid conflicts).
-///
-/// Use this module when you need both absolute and allowed tools:
-///
-/// ```no_run
-/// use llm_coding_tools_serdesai::{ReadTool, WriteTool};  // absolute
-/// use llm_coding_tools_serdesai::allowed_tools::{ReadTool as SandboxedReadTool};
-/// ```
-pub mod allowed_tools {
-    pub use crate::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-}
+// Re-export generic file tools from the new tools module
+pub use tools::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
 
 // Re-export core operation types used by tools
 pub use llm_coding_tools_core::{
