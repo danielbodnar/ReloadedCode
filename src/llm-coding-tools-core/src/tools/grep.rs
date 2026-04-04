@@ -593,4 +593,33 @@ mod tests {
         assert!(result.truncated);
         assert_eq!(result.effective_limit, 1);
     }
+
+    #[test]
+    fn grep_request_caps_limit_when_request_limit_exceeds_max() {
+        let temp = tempdir().unwrap();
+        // Create file with 5 matching lines
+        std::fs::write(
+            temp.path().join("test.txt"),
+            "hello\nhello\nhello\nhello\nhello\n",
+        )
+        .unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let result = grep_search(
+            &resolver,
+            GrepRequest {
+                pattern: "hello".into(),
+                path: temp.path().to_string_lossy().into_owned(),
+                include: None,
+                limit: Some(100), // Request asks for 100 matches
+            },
+            GrepSettings { max_limit: 2 }, // But max_limit is only 2
+        )
+        .unwrap();
+
+        // Verify that the limit is capped to max_limit
+        assert_eq!(result.effective_limit, 2);
+        assert_eq!(result.match_count, 2);
+        assert!(result.truncated);
+    }
 }
