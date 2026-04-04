@@ -24,28 +24,16 @@
         for full profile configuration and setup instructions."
 )]
 
-use crate::convert::to_serdes_result;
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 use async_trait::async_trait;
 use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::bash as bash_meta;
-use llm_coding_tools_core::tools::{BashExecutionMode, execute_command_with_mode};
-use serde::Deserialize;
-use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-use std::path::{Path, PathBuf};
+use llm_coding_tools_core::tools::{BashExecutionMode, BashRequest, BashSettings, execute_command};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
+use std::path::PathBuf;
 
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
 use llm_coding_tools_bubblewrap::profile::{NetworkPolicy, Profile};
-
-/// Arguments for the bash tool.
-#[derive(Debug, Clone, Deserialize)]
-struct BashArgs {
-    /// The shell command to execute.
-    command: String,
-    /// Optional working directory (must be absolute path).
-    workdir: Option<String>,
-    /// Timeout in milliseconds. Optional - falls back to constructor default or 120000ms.
-    timeout_ms: Option<u32>,
-}
 
 /// Tool for executing shell commands.
 ///
@@ -196,32 +184,23 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
     ///
     /// # Errors
     ///
-    /// - [`ToolError::ValidationFailed`] if the JSON arguments fail deserialization or timeout_ms is invalid.
-    /// - [`ToolError::ExecutionFailed`] if the command cannot be spawned, the per-command
+    /// - `ToolError::ValidationFailed` if the JSON arguments fail deserialization or timeout_ms is invalid.
+    /// - `ToolError::ExecutionFailed` if the command cannot be spawned, the per-command
     ///   workdir is invalid, or a timeout or I/O failure occurs while collecting
     ///   output.
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: BashArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(bash_meta::NAME, None, e.to_string()))?;
-
-        // Use arg workdir, falling back to default_workdir
-        let workdir: Option<&Path> = args
-            .workdir
-            .as_ref()
-            .map(|s| Path::new(s.as_str()))
-            .or(self.default_workdir.as_deref());
-
-        // Priority: args.timeout_ms > self.default_timeout_ms
-        let timeout_ms = args.timeout_ms.unwrap_or(self.default_timeout_ms);
+        let args =
+            BashRequest::parse(args).map_err(|e| core_error_to_serdes(bash_meta::NAME, e))?;
 
         // Route execution through mode-aware entrypoint to honour explicit mode selection
-        // Core validates timeout_ms against max_timeout_ms
-        let result = execute_command_with_mode(
+        let result = execute_command(
             &self.mode,
-            &args.command,
-            workdir,
-            timeout_ms,
-            self.max_timeout_ms,
+            args,
+            BashSettings {
+                default_timeout_ms: self.default_timeout_ms,
+                max_timeout_ms: self.max_timeout_ms,
+                default_workdir: self.default_workdir.as_deref(),
+            },
         )
         .await;
 

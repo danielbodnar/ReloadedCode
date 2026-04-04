@@ -4,8 +4,30 @@ use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
 use globset::Glob;
 use ignore::WalkBuilder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::time::SystemTime;
+
+/// Serde-friendly glob request owned by the core crate.
+#[derive(Debug, Deserialize)]
+pub struct GlobRequest {
+    pub pattern: String,
+    pub path: String,
+}
+
+impl GlobRequest {
+    /// Parses a raw JSON tool payload into a glob request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Runtime settings applied to glob requests.
+#[derive(Debug, Clone, Copy)]
+pub struct GlobSettings {
+    /// Maximum number of files to return.
+    pub limit: usize,
+}
 
 /// Output from glob file matching.
 #[derive(Debug, Serialize)]
@@ -29,11 +51,10 @@ pub struct GlobOutput {
 /// The `limit` parameter controls the maximum number of files returned.
 pub fn glob_files<R: PathResolver>(
     resolver: &R,
-    pattern: &str,
-    search_path: &str,
-    limit: usize,
+    request: GlobRequest,
+    settings: GlobSettings,
 ) -> ToolResult<GlobOutput> {
-    let path = resolver.resolve(search_path)?;
+    let path = resolver.resolve(&request.path)?;
 
     if !path.is_dir() {
         return Err(ToolError::InvalidPath(format!(
@@ -42,11 +63,12 @@ pub fn glob_files<R: PathResolver>(
         )));
     }
 
+    let limit = settings.limit;
     if limit == 0 {
-        return Err(ToolError::Validation("limit must be >= 1".into()));
+        return Err(ToolError::validation_for("limit", "limit must be >= 1"));
     }
 
-    let matcher = Glob::new(pattern)?.compile_matcher();
+    let matcher = Glob::new(&request.pattern)?.compile_matcher();
 
     let mut files_with_mtime: Vec<(String, SystemTime)> = Vec::new();
     let mut errors: Vec<String> = Vec::with_capacity(8);
@@ -163,7 +185,15 @@ mod tests {
         let dir = create_test_tree();
         let resolver = AbsolutePathResolver;
 
-        let result = glob_files(&resolver, pattern, dir.path().to_str().unwrap(), 1000).unwrap();
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: pattern.to_string(),
+                path: dir.path().to_str().unwrap().to_string(),
+            },
+            GlobSettings { limit: 1000 },
+        )
+        .unwrap();
 
         let found = result.files.iter().any(|f| f.contains(needle));
 
@@ -246,7 +276,15 @@ mod tests {
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
 
-        let result = glob_files(&resolver, "**/*.txt", base.to_str().unwrap(), 1000).unwrap();
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: "**/*.txt".to_string(),
+                path: base.to_str().unwrap().to_string(),
+            },
+            GlobSettings { limit: 1000 },
+        )
+        .unwrap();
 
         let newer_index = result
             .files
@@ -272,7 +310,15 @@ mod tests {
         // Patterns and returned paths use forward slashes on all platforms
         let dir = create_test_tree();
         let resolver = AbsolutePathResolver;
-        let result = glob_files(&resolver, "**/*.rs", dir.path().to_str().unwrap(), 1000).unwrap();
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: "**/*.rs".to_string(),
+                path: dir.path().to_str().unwrap().to_string(),
+            },
+            GlobSettings { limit: 1000 },
+        )
+        .unwrap();
 
         // The only .rs file in our test tree is src/lib.rs
         assert_eq!(result.files.len(), 1);

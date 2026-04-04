@@ -1,8 +1,11 @@
 //! File editing tool with exact string replacement.
 
-use crate::error::ToolError;
+use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::path::PathResolver;
+use crate::tool_metadata::edit as edit_meta;
+use serde::Deserialize;
+use serde_json::Value;
 use thiserror::Error;
 
 /// Errors specific to edit tools.
@@ -30,9 +33,47 @@ pub enum EditError {
     AmbiguousMatch,
 }
 
+/// Serde-friendly edit request owned by the core crate.
+#[derive(Debug, Deserialize)]
+pub struct EditRequest {
+    pub file_path: String,
+    pub old_string: String,
+    pub new_string: String,
+    #[serde(default = "edit_meta::default_replace_all")]
+    pub replace_all: bool,
+}
+
+impl EditRequest {
+    /// Parses a raw JSON tool payload into an edit request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
 impl From<std::io::Error> for EditError {
     fn from(e: std::io::Error) -> Self {
         EditError::Tool(ToolError::from(e))
+    }
+}
+
+impl From<EditError> for ToolError {
+    fn from(err: EditError) -> Self {
+        match err {
+            EditError::NotFound => {
+                ToolError::validation_for("old_string", "old_string not found in file content")
+            }
+            EditError::AmbiguousMatch => ToolError::validation_for(
+                "old_string",
+                "old_string found multiple times and requires more code context to uniquely identify the intended match",
+            ),
+            EditError::EmptyOldString => {
+                ToolError::validation_for("old_string", "old_string must not be empty")
+            }
+            EditError::IdenticalStrings => {
+                ToolError::validation_for("old_string", "old_string and new_string must be different")
+            }
+            EditError::Tool(tool_err) => tool_err,
+        }
     }
 }
 
@@ -42,34 +83,34 @@ impl From<std::io::Error> for EditError {
 #[maybe_async::maybe_async]
 pub async fn edit_file<R: PathResolver>(
     resolver: &R,
-    file_path: &str,
-    old_string: &str,
-    new_string: &str,
-    replace_all: bool,
+    request: EditRequest,
 ) -> Result<String, EditError> {
-    if old_string.is_empty() {
+    if request.old_string.is_empty() {
         return Err(EditError::EmptyOldString);
     }
-    if old_string == new_string {
+    if request.old_string == request.new_string {
         return Err(EditError::IdenticalStrings);
     }
 
-    let path = resolver.resolve(file_path)?;
+    let path = resolver.resolve(&request.file_path)?;
     let content = fs::read_to_string(&path).await?;
 
-    let (new_content, replacement_count) = if replace_all {
+    let (new_content, replacement_count) = if request.replace_all {
         // replace_all reports the exact number of replacements, so this path
         // counts every match.
-        let count = content.matches(old_string).count();
+        let count = content.matches(&request.old_string).count();
         if count == 0 {
             return Err(EditError::NotFound);
         }
 
-        (content.replace(old_string, new_string), count)
+        (
+            content.replace(&request.old_string, &request.new_string),
+            count,
+        )
     } else {
         // Fast path for single replacement: advance a single non-overlapping
         // matcher until the second match (if any), then stop.
-        let mut matches = content.match_indices(old_string);
+        let mut matches = content.match_indices(&request.old_string);
         let Some((first_idx, _)) = matches.next() else {
             return Err(EditError::NotFound);
         };
@@ -77,13 +118,14 @@ pub async fn edit_file<R: PathResolver>(
             return Err(EditError::AmbiguousMatch);
         }
 
-        let tail_start = first_idx + old_string.len();
+        let tail_start = first_idx + request.old_string.len();
 
         // Build the edited string directly from slices to avoid rescanning.
-        let mut replaced =
-            String::with_capacity(content.len() - old_string.len() + new_string.len());
+        let mut replaced = String::with_capacity(
+            content.len() - request.old_string.len() + request.new_string.len(),
+        );
         replaced.push_str(&content[..first_idx]);
-        replaced.push_str(new_string);
+        replaced.push_str(&request.new_string);
         replaced.push_str(&content[tail_start..]);
         (replaced, 1)
     };
@@ -117,10 +159,12 @@ mod tests {
 
         let result = edit_file(
             &resolver,
-            file.path().to_str().unwrap(),
-            "world",
-            "rust",
-            false,
+            EditRequest {
+                file_path: file.path().to_str().unwrap().to_string(),
+                old_string: "world".to_string(),
+                new_string: "rust".to_string(),
+                replace_all: false,
+            },
         )
         .await
         .unwrap();
@@ -137,10 +181,12 @@ mod tests {
 
         let err = edit_file(
             &resolver,
-            file.path().to_str().unwrap(),
-            "missing",
-            "x",
-            false,
+            EditRequest {
+                file_path: file.path().to_str().unwrap().to_string(),
+                old_string: "missing".to_string(),
+                new_string: "x".to_string(),
+                replace_all: false,
+            },
         )
         .await
         .unwrap_err();

@@ -7,24 +7,13 @@
 //!
 //! - [`WebFetchTool`] - fetch and convert web content from URLs
 
-use crate::convert::to_serdes_result;
+use crate::convert::{core_error_to_serdes, to_serdes_result};
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolOutput;
 use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
 use llm_coding_tools_core::tool_metadata::webfetch as webfetch_meta;
-use llm_coding_tools_core::tools::fetch_url;
-use serde::Deserialize;
-use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolError, ToolResult};
-
-/// Arguments for the webfetch tool.
-#[derive(Debug, Clone, Deserialize)]
-struct WebFetchArgs {
-    /// The URL to fetch.
-    url: String,
-    /// Timeout in milliseconds. If omitted, uses the tool's default timeout.
-    #[serde(default)]
-    timeout_ms: Option<u32>,
-}
+use llm_coding_tools_core::tools::{WebFetchRequest, WebFetchSettings, fetch_url};
+use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
 
 /// Tool for fetching web content.
 ///
@@ -118,18 +107,17 @@ impl<Deps: Send + Sync> Tool<Deps> for WebFetchTool {
     }
 
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
-        let args: WebFetchArgs = serde_json::from_value(args)
-            .map_err(|e| ToolError::validation_error(webfetch_meta::NAME, None, e.to_string()))?;
-
-        // Determine effective timeout: LLM-provided or default
-        let effective_timeout = args.timeout_ms.unwrap_or(self.default_timeout_ms);
+        let args = WebFetchRequest::parse(args)
+            .map_err(|e| core_error_to_serdes(webfetch_meta::NAME, e))?;
 
         let result = fetch_url(
             &self.client,
-            &args.url,
-            effective_timeout,
-            self.max_timeout_ms,
-            self.max_response_size,
+            args,
+            WebFetchSettings {
+                default_timeout_ms: self.default_timeout_ms,
+                max_timeout_ms: self.max_timeout_ms,
+                max_response_size: self.max_response_size,
+            },
         )
         .await;
 

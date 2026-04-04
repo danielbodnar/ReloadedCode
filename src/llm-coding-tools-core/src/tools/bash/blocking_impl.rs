@@ -32,28 +32,29 @@ enum WaitOutcome {
 /// - Windows: Job Objects
 /// - Unix: Process groups
 ///
-/// # Arguments
-///
-/// * `command` - The shell command to execute
-/// * `workdir` - Optional working directory (must be absolute if provided)
-/// * `timeout_ms` - Timeout in milliseconds (must be >= 1 and <= max_timeout_ms)
-/// * `max_timeout_ms` - Maximum allowed timeout in milliseconds
-///
 /// # Errors
-///
-/// Returns `ToolError::Validation` if timeout_ms is 0 or exceeds max_timeout_ms.
+/// - Returns `ToolError::Validation` if timeout is 0 or exceeds max_timeout_ms.
+/// - Returns [`ToolError::InvalidPath`] if workdir is not absolute or doesn't exist.
+/// - Returns [`ToolError::Execution`] for sandbox mode when bwrap is missing or unusable.
+/// - Returns [`ToolError::Timeout`] or [`ToolError::TimeoutWithKillFailure`] on timeout.
 pub fn execute_command(
-    command: &str,
-    workdir: Option<&Path>,
-    timeout_ms: u32,
-    max_timeout_ms: u32,
+    mode: &BashExecutionMode,
+    request: super::BashRequest,
+    settings: super::BashSettings<'_>,
 ) -> ToolResult<BashOutput> {
+    let workdir = request
+        .workdir
+        .as_deref()
+        .map(Path::new)
+        .or(settings.default_workdir);
+    let timeout_ms = request.timeout_ms.unwrap_or(settings.default_timeout_ms);
+
     execute_command_with_mode(
-        &BashExecutionMode::Host,
-        command,
+        mode,
+        &request.command,
         workdir,
         timeout_ms,
-        max_timeout_ms,
+        settings.max_timeout_ms,
     )
 }
 
@@ -80,15 +81,19 @@ pub fn execute_command_with_mode(
 ) -> ToolResult<BashOutput> {
     // Validate timeout_ms
     if timeout_ms == 0 {
-        return Err(ToolError::Validation(
-            "timeout_ms must be at least 1".to_string(),
+        return Err(ToolError::validation_for(
+            "timeout_ms",
+            "timeout_ms must be at least 1",
         ));
     }
     if timeout_ms > max_timeout_ms {
-        return Err(ToolError::Validation(format!(
-            "timeout_ms exceeds maximum allowed value of {}",
-            max_timeout_ms
-        )));
+        return Err(ToolError::validation_for(
+            "timeout_ms",
+            format!(
+                "timeout_ms exceeds maximum allowed value of {}",
+                max_timeout_ms
+            ),
+        ));
     }
 
     let timeout = Duration::from_millis(timeout_ms as u64);
@@ -219,11 +224,25 @@ fn build_host_wrap(command: &str, workdir: Option<&Path>) -> ToolResult<CommandW
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::{BashRequest, BashSettings};
     use tempfile::TempDir;
 
     #[test]
     fn execute_echo_returns_output() {
-        let result = execute_command("echo hello", None, 5000, 10000).unwrap();
+        let result = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: "echo hello".to_string(),
+                workdir: None,
+                timeout_ms: None,
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+            },
+        )
+        .unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("hello"));
@@ -238,7 +257,20 @@ mod tests {
             "pwd"
         };
 
-        let result = execute_command(cmd, Some(temp.path()), 5000, 10000).unwrap();
+        let result = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: cmd.to_string(),
+                workdir: Some(temp.path().to_str().unwrap().to_string()),
+                timeout_ms: None,
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+            },
+        )
+        .unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         let temp_path = temp.path().to_string_lossy();
@@ -253,7 +285,19 @@ mod tests {
             "sleep 10"
         };
 
-        let result = execute_command(cmd, None, 100, 10000);
+        let result = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: cmd.to_string(),
+                workdir: None,
+                timeout_ms: Some(100),
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+            },
+        );
         assert!(matches!(
             result,
             Err(ToolError::Timeout(_) | ToolError::TimeoutWithKillFailure { .. })
@@ -263,10 +307,17 @@ mod tests {
     #[test]
     fn invalid_workdir_returns_error() {
         let result = execute_command(
-            "echo hello",
-            Some(Path::new("/nonexistent/path")),
-            5000,
-            10000,
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: "echo hello".to_string(),
+                workdir: Some("/nonexistent/path".to_string()),
+                timeout_ms: None,
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+            },
         );
 
         assert!(matches!(result, Err(ToolError::InvalidPath(_))));
@@ -280,7 +331,20 @@ mod tests {
             "exit 42"
         };
 
-        let result = execute_command(cmd, None, 5000, 10000).unwrap();
+        let result = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: cmd.to_string(),
+                workdir: None,
+                timeout_ms: None,
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+            },
+        )
+        .unwrap();
 
         assert_eq!(result.exit_code, Some(42));
     }
@@ -314,7 +378,20 @@ mod tests {
             format!("cat {}", large_file.display())
         };
 
-        let result = execute_command(&cmd, None, 30000, 60000).unwrap();
+        let result = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: cmd,
+                workdir: None,
+                timeout_ms: Some(30000),
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 60000,
+                default_workdir: None,
+            },
+        )
+        .unwrap();
 
         assert_eq!(result.exit_code, Some(0));
         // Verify we got all the output (102400 bytes written)

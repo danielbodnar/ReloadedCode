@@ -4,10 +4,13 @@ use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::output::ToolOutput;
 use crate::path::PathResolver;
+use crate::tool_metadata::read as read_meta;
 use crate::util::{
     truncate_line_with_ellipsis, ESTIMATED_CHARS_PER_LINE, MIN_LINE_LENGTH, TRUNCATION_ELLIPSIS,
 };
 use memchr::memchr;
+use serde::Deserialize;
+use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::Write;
 
@@ -48,6 +51,36 @@ fn process_line(
     *lines_output += 1;
 }
 
+/// Serde-friendly read request owned by the core crate.
+#[derive(Debug, Deserialize)]
+pub struct ReadRequest {
+    pub file_path: String,
+    #[serde(default = "read_meta::default_offset")]
+    pub offset: usize,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+impl ReadRequest {
+    /// Parses a raw JSON tool payload into a read request.
+    pub fn parse(args: Value) -> ToolResult<Self> {
+        serde_json::from_value(args).map_err(ToolError::from)
+    }
+}
+
+/// Runtime settings applied to read requests.
+#[derive(Debug, Clone, Copy)]
+pub struct ReadSettings {
+    /// Default line limit when the request omits one.
+    pub default_limit: usize,
+    /// Maximum line limit the caller may request.
+    pub max_limit: usize,
+    /// Maximum characters per output line before truncation.
+    pub max_line_length: usize,
+    /// Whether line numbers should be included in output.
+    pub line_numbers: bool,
+}
+
 /// Reads a file and returns formatted content, optionally with line numbers.
 ///
 /// When `line_numbers` is `true`, each line is prefixed with `L{number}: `.
@@ -55,11 +88,8 @@ fn process_line(
 #[maybe_async::maybe_async]
 pub async fn read_file<R: PathResolver>(
     resolver: &R,
-    file_path: &str,
-    offset: usize,
-    limit: usize,
-    max_line_length: usize,
-    line_numbers: bool,
+    request: ReadRequest,
+    settings: ReadSettings,
 ) -> ToolResult<ToolOutput> {
     // Conditional trait import for consume() method
     #[cfg(feature = "blocking")]
@@ -67,22 +97,31 @@ pub async fn read_file<R: PathResolver>(
     #[cfg(feature = "tokio")]
     use tokio::io::AsyncBufReadExt as _;
 
+    let limit = request
+        .limit
+        .unwrap_or(settings.default_limit)
+        .min(settings.max_limit);
+    if limit == 0 {
+        return Err(ToolError::validation_for("limit", "limit must be >= 1"));
+    }
+
+    let offset = request.offset;
+    let max_line_length = settings.max_line_length;
+    let line_numbers = settings.line_numbers;
+
     if offset == 0 {
         return Err(ToolError::OutOfBounds(
             "offset must be >= 1 (1-indexed)".into(),
         ));
     }
-    if limit == 0 {
-        return Err(ToolError::OutOfBounds("limit must be >= 1".into()));
-    }
     if max_line_length < MIN_LINE_LENGTH {
-        return Err(ToolError::Validation(format!(
-            "max_line_length must be >= {}",
-            MIN_LINE_LENGTH
-        )));
+        return Err(ToolError::validation_for(
+            "max_line_length",
+            format!("max_line_length must be >= {}", MIN_LINE_LENGTH),
+        ));
     }
 
-    let path = resolver.resolve(file_path)?;
+    let path = resolver.resolve(&request.file_path)?;
     let buf_capacity = (limit * ESTIMATED_CHARS_PER_LINE).next_power_of_two();
     let mut reader = fs::open_buffered(&path, buf_capacity).await?;
 
@@ -197,11 +236,17 @@ mod tests {
         let resolver = AbsolutePathResolver;
         read_file::<_>(
             &resolver,
-            temp.path().to_str().unwrap(),
-            offset,
-            limit,
-            2000, // max_line_length
-            line_numbers,
+            ReadRequest {
+                file_path: temp.path().to_str().unwrap().to_string(),
+                offset,
+                limit: Some(limit),
+            },
+            ReadSettings {
+                default_limit: limit,
+                max_limit: limit,
+                max_line_length: 2000,
+                line_numbers,
+            },
         )
         .await
     }
@@ -236,16 +281,22 @@ mod tests {
 
         let err = read_file::<_>(
             &resolver,
-            temp.path().to_str().unwrap(),
-            1,
-            10,
-            3, // below MIN_LINE_LENGTH of 4
-            true,
+            ReadRequest {
+                file_path: temp.path().to_str().unwrap().to_string(),
+                offset: 1,
+                limit: Some(10),
+            },
+            ReadSettings {
+                default_limit: 10,
+                max_limit: 10,
+                max_line_length: 3, // below MIN_LINE_LENGTH of 4
+                line_numbers: true,
+            },
         )
         .await
         .unwrap_err();
 
-        assert!(matches!(err, ToolError::Validation(_)));
+        assert!(matches!(err, ToolError::Validation { .. }));
         assert!(err.to_string().contains("max_line_length must be >= 4"));
     }
 
@@ -257,15 +308,73 @@ mod tests {
 
         let result = read_file::<_>(
             &resolver,
-            temp.path().to_str().unwrap(),
-            1,
-            10,
-            6, // keep 3 chars + "..."
-            false,
+            ReadRequest {
+                file_path: temp.path().to_str().unwrap().to_string(),
+                offset: 1,
+                limit: Some(10),
+            },
+            ReadSettings {
+                default_limit: 10,
+                max_limit: 10,
+                max_line_length: 6, // keep 3 chars + "..."
+                line_numbers: false,
+            },
         )
         .await
         .unwrap();
 
         assert_eq!(result.content, "abc...");
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn read_request_caps_requested_limit_at_max_limit() {
+        let mut temp = NamedTempFile::new().unwrap();
+        temp.write_all(b"line1\nline2\nline3\n").unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let result = read_file(
+            &resolver,
+            ReadRequest {
+                file_path: temp.path().to_string_lossy().into_owned(),
+                offset: 1,
+                limit: Some(3),
+            },
+            ReadSettings {
+                default_limit: 2,
+                max_limit: 1,
+                max_line_length: 2000,
+                line_numbers: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.content, "L1: line1");
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn read_request_rejects_zero_effective_limit() {
+        let mut temp = NamedTempFile::new().unwrap();
+        temp.write_all(b"line1\n").unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let err = read_file(
+            &resolver,
+            ReadRequest {
+                file_path: temp.path().to_string_lossy().into_owned(),
+                offset: 1,
+                limit: None,
+            },
+            ReadSettings {
+                default_limit: 0,
+                max_limit: 0,
+                max_line_length: 2000,
+                line_numbers: true,
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, ToolError::Validation { .. }));
     }
 }
