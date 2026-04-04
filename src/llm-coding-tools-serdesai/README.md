@@ -18,7 +18,7 @@ llm-coding-tools-serdesai = "0.2"
 Minimal runnable agent (requires `OPENAI_API_KEY`).
 
 ```rust,no_run
-use llm_coding_tools_serdesai::absolute::{EditTool, GlobTool, GrepTool, ReadTool};
+use llm_coding_tools_serdesai::{ReadTool, GlobTool, GrepTool, EditTool, AbsolutePathResolver};
 use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 use llm_coding_tools_serdesai::{BashTool, SystemPromptBuilder, WebFetchTool, create_todo_tools};
 use serdes_ai::prelude::*;
@@ -30,10 +30,10 @@ let mut pb = SystemPromptBuilder::new();
 
 // Build agent with tools - call .system_prompt() last
 let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-    .tool(pb.track(ReadTool::new()))
-    .tool(pb.track(GlobTool::new()))
-    .tool(pb.track(GrepTool::new()))
-    .tool(pb.track(EditTool::new()))
+    .tool(pb.track(ReadTool::new(AbsolutePathResolver)))
+    .tool(pb.track(GlobTool::new(AbsolutePathResolver)))
+    .tool(pb.track(GrepTool::new(AbsolutePathResolver)))
+    .tool(pb.track(EditTool::new(AbsolutePathResolver)))
     .tool(pb.track(BashTool::host()))
     .tool(pb.track(WebFetchTool::new()))
     .tool(pb.track(todo_read))
@@ -55,33 +55,39 @@ See the [serdesai-basic example](examples/serdesai-basic.rs) for a complete work
 
 For named agents and subagent Task delegation, see [Build and Run Agents](#build-and-run-agents).
 
-## Tool Variants
+## File Tools
 
-File tools come in two variants with identical APIs:
-
-- **`absolute::*`** - Unrestricted filesystem access using absolute paths
-- **`allowed::*`** - Sandboxed to configured directories via `AllowedPathResolver`
+File tools work with any [`PathResolver`] implementation:
+- [`AbsolutePathResolver`] - Unrestricted filesystem access using absolute paths
+- [`AllowedPathResolver`] - Sandboxed to configured directories
 
 ```rust,no_run
-use llm_coding_tools_serdesai::absolute::{EditTool, ReadTool, WriteTool};
-use llm_coding_tools_serdesai::allowed::{EditTool as AllowedEditTool, ReadTool as AllowedReadTool, WriteTool as AllowedWriteTool};
-use llm_coding_tools_serdesai::AllowedPathResolver;
+use llm_coding_tools_serdesai::{ReadTool, WriteTool, AbsolutePathResolver};
+
+// Unrestricted access with absolute paths
+let read = ReadTool::new(AbsolutePathResolver);
+let write = WriteTool::new(AbsolutePathResolver);
+```
+
+### Sandboxed File Access
+
+Restrict file operations to specific directories using [`AllowedPathResolver`]:
+
+```rust,no_run
+use llm_coding_tools_serdesai::{ReadTool, WriteTool, EditTool, AllowedPathResolver};
 use std::path::PathBuf;
 
-// Unrestricted access
-let read = ReadTool::new();
-
-// Sandboxed access
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
 let resolver = AllowedPathResolver::new(allowed_paths).unwrap();
-let sandboxed_read: AllowedReadTool = AllowedReadTool::new(resolver.clone());
-let sandboxed_edit = AllowedEditTool::new(resolver.clone());
-let sandboxed_write = AllowedWriteTool::new(resolver);
+
+let read = ReadTool::new(resolver.clone());
+let write = WriteTool::new(resolver.clone());
+let edit = EditTool::new(resolver);
 ```
 
 Use `SystemPromptBuilder` to track tools and generate context-aware prompts.
 Context strings are re-exported in `llm_coding_tools_serdesai::context`
-(e.g., `BASH`, `READ_ABSOLUTE`).
+(e.g., `BASH`, `READ_ABSOLUTE`, `READ_ALLOWED`).
 
 ## Build and Run Agents
 

@@ -6,14 +6,14 @@
 //! # Example
 //!
 //! ```no_run
-//! use llm_coding_tools_serdesai::absolute::{ReadTool, GlobTool};
+//! use llm_coding_tools_serdesai::{ReadTool, GlobTool, AbsolutePathResolver};
 //! use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
 //! use serdes_ai::prelude::*;
 //!
 //! # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 //! let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-//!     .tool(ReadTool::new())
-//!     .tool(GlobTool::new())
+//!     .tool(ReadTool::new(AbsolutePathResolver))
+//!     .tool(GlobTool::new(AbsolutePathResolver))
 //!     .system_prompt("You are helpful.")
 //!     .build();
 //! # Ok(())
@@ -59,14 +59,14 @@ pub trait AgentBuilderExt<Deps, Output> {
     /// # Example
     ///
     /// ```no_run
-    /// use llm_coding_tools_serdesai::absolute::{ReadTool, GlobTool};
+    /// use llm_coding_tools_serdesai::{ReadTool, GlobTool, AbsolutePathResolver};
     /// use llm_coding_tools_serdesai::agent_ext::AgentBuilderExt;
     /// use serdes_ai::prelude::*;
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-    ///     .tool(ReadTool::new())
-    ///     .tool(GlobTool::new())
+    ///     .tool(ReadTool::new(AbsolutePathResolver))
+    ///     .tool(GlobTool::new(AbsolutePathResolver))
     ///     .build();
     /// # Ok(())
     /// # }

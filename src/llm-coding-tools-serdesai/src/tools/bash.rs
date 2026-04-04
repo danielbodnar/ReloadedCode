@@ -2,8 +2,8 @@
 //!
 //! # Public API
 //!
-//! - [`BashTool::host`] — runs commands directly on the host shell.
-//! - [`BashTool::new`] — backward-compatible alias for [`BashTool::host`].
+//! - [`BashTool::host`] - runs commands directly on the host shell.
+//! - [`BashTool::new`] - backward-compatible alias for [`BashTool::host`].
 #![cfg_attr(
     all(feature = "linux-bubblewrap", target_os = "linux"),
     doc = "\
@@ -110,7 +110,7 @@ impl BashTool {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use llm_coding_tools_serdesai::bash::BashTool;
+    /// use llm_coding_tools_serdesai::BashTool;
     ///
     /// // Set both timeouts atomically
     /// let tool = BashTool::new().with_timeouts(Some(5_000), Some(30_000));

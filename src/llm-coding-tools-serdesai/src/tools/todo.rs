@@ -1,6 +1,13 @@
 //! Todo list management tools.
 //!
 //! Provides tools for reading and writing todo items.
+//!
+//! # Public API
+//!
+//! - [`TodoReadTool`] - read the current todo list
+//! - [`TodoWriteTool`] - write/replace the todo list
+//! - [`create_todo_tools`] - create a linked read/write pair with shared state
+//! - [`Todo`], [`TodoPriority`], [`TodoStatus`], [`TodoState`] - core types
 
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;

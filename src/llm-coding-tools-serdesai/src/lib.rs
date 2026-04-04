@@ -1,16 +1,11 @@
 #![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 #![warn(missing_docs)]
 
-pub mod absolute;
 pub mod agent_ext;
 pub mod agent_runtime;
-pub mod allowed;
-pub mod bash;
-mod common;
 pub mod convert;
 pub mod task;
-pub mod todo;
-pub mod webfetch;
+pub mod tools;
 
 /// Re-export core types for convenience.
 pub use llm_coding_tools_core::{ToolError, ToolOutput, ToolResult};
@@ -32,20 +27,11 @@ pub use llm_coding_tools_core::SystemPromptBuilder;
 /// Re-export path resolvers from core.
 pub use llm_coding_tools_core::path::{AbsolutePathResolver, AllowedPathResolver, PathResolver};
 
-// Re-export absolute path tools
-pub use absolute::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-
-/// Re-export allowed module tool types (namespaced to avoid conflicts).
-///
-/// Use this module when you need both absolute and allowed tools:
-///
-/// ```no_run
-/// use llm_coding_tools_serdesai::{ReadTool, WriteTool};  // absolute
-/// use llm_coding_tools_serdesai::allowed_tools::{ReadTool as SandboxedReadTool};
-/// ```
-pub mod allowed_tools {
-    pub use crate::allowed::{EditTool, GlobTool, GrepTool, ReadTool, WriteTool};
-}
+// Re-export tools from the tools module
+pub use tools::{
+    BashTool, EditTool, GlobTool, GrepTool, ReadTool, TodoReadTool, TodoWriteTool, WebFetchTool,
+    WriteTool, create_todo_tools,
+};
 
 // Re-export core operation types used by tools
 pub use llm_coding_tools_core::{
@@ -55,10 +41,7 @@ pub use llm_coding_tools_core::{
 
 // Re-export standalone tools and runtime helpers
 pub use agent_runtime::{AgentBuildContext, AgentBuildError};
-pub use bash::BashTool;
 pub use llm_coding_tools_agents::{
     AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
     TaskSettings, ToolCatalogEntry, ToolCatalogKind, default_tools, resolve_model_with_catalog,
 };
-pub use todo::{TodoReadTool, TodoWriteTool, create_todo_tools};
-pub use webfetch::WebFetchTool;
