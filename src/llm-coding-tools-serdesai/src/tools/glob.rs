@@ -15,6 +15,7 @@ use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::{GlobOutput, GlobRequest, GlobSettings, glob_files};
+use llm_coding_tools_core::util::MIN_LIMIT;
 use serde_json::json;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
 
@@ -50,6 +51,10 @@ impl<R: PathResolver + Clone> GlobTool<R> {
     /// * `resolver` - The path resolver for path validation.
     /// * `limit` - Maximum number of files to return per glob call.
     pub fn with_settings(resolver: R, limit: usize) -> Self {
+        if limit < MIN_LIMIT {
+            panic!("GlobTool::with_settings: limit must be >= {}", MIN_LIMIT);
+        }
+
         let path_mode = R::PATH_MODE;
         Self {
             definition: build_definition(path_mode),

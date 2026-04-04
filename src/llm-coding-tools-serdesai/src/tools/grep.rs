@@ -18,6 +18,7 @@ use llm_coding_tools_core::tool_metadata::grep as grep_meta;
 use llm_coding_tools_core::tools::{
     DEFAULT_MAX_LINE_LENGTH, GrepOutput, GrepRequest, GrepSettings, grep_search,
 };
+use llm_coding_tools_core::util::{MIN_LIMIT, MIN_LINE_LENGTH};
 use serde_json::json;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
 
@@ -68,8 +69,14 @@ impl<R: PathResolver + Clone> GrepTool<R> {
         limit: usize,
         line_numbers: bool,
     ) -> Self {
-        if limit == 0 {
-            panic!("GrepTool::with_settings: limit must be >= 1");
+        if limit < MIN_LIMIT {
+            panic!("GrepTool::with_settings: limit must be >= {}", MIN_LIMIT);
+        }
+        if max_line_length < MIN_LINE_LENGTH {
+            panic!(
+                "GrepTool::with_settings: max_line_length must be >= {}",
+                MIN_LINE_LENGTH
+            );
         }
 
         let path_mode = R::PATH_MODE;

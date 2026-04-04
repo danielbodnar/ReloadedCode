@@ -29,6 +29,7 @@ use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
 use llm_coding_tools_core::tool_metadata::read as read_meta;
 use llm_coding_tools_core::tools::{ReadRequest, ReadSettings, read_file};
+use llm_coding_tools_core::util::{MIN_LIMIT, MIN_LINE_LENGTH};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
@@ -79,6 +80,16 @@ impl<R: PathResolver + Clone> ReadTool<R> {
         max_line_length: usize,
         line_numbers: bool,
     ) -> Self {
+        if limit < MIN_LIMIT {
+            panic!("ReadTool::with_settings: limit must be >= {}", MIN_LIMIT);
+        }
+        if max_line_length < MIN_LINE_LENGTH {
+            panic!(
+                "ReadTool::with_settings: max_line_length must be >= {}",
+                MIN_LINE_LENGTH
+            );
+        }
+
         let path_mode = R::PATH_MODE;
         Self {
             definition: build_definition(path_mode, line_numbers),
