@@ -12,7 +12,7 @@
 //!
 //! # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 //! let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-//!     .tool(ReadTool::<true>::new())
+//!     .tool(ReadTool::new())
 //!     .tool(GlobTool::new())
 //!     .system_prompt("You are helpful.")
 //!     .build();
@@ -65,7 +65,7 @@ pub trait AgentBuilderExt<Deps, Output> {
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-    ///     .tool(ReadTool::<true>::new())
+    ///     .tool(ReadTool::new())
     ///     .tool(GlobTool::new())
     ///     .build();
     /// # Ok(())

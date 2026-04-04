@@ -19,12 +19,13 @@ fn strip_cr(line: &[u8]) -> &[u8] {
 
 /// Processes a single line, appending it to output with optional line numbers.
 #[inline]
-fn process_line<const LINE_NUMBERS: bool>(
+fn process_line(
     line_bytes: &[u8],
     line_number: usize,
     output: &mut String,
     lines_output: &mut usize,
     max_line_length: usize,
+    line_numbers: bool,
 ) {
     let line_bytes = strip_cr(line_bytes);
     let content: Cow<'_, str> = String::from_utf8_lossy(line_bytes);
@@ -34,7 +35,7 @@ fn process_line<const LINE_NUMBERS: bool>(
         output.push('\n');
     }
 
-    if LINE_NUMBERS {
+    if line_numbers {
         let _ = write!(output, "L{}: {}", line_number, display_content);
     } else {
         output.push_str(display_content);
@@ -49,15 +50,16 @@ fn process_line<const LINE_NUMBERS: bool>(
 
 /// Reads a file and returns formatted content, optionally with line numbers.
 ///
-/// When `LINE_NUMBERS` is `true`, each line is prefixed with `L{number}: `.
+/// When `line_numbers` is `true`, each line is prefixed with `L{number}: `.
 /// When `false`, raw content is returned without prefixes.
 #[maybe_async::maybe_async]
-pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
+pub async fn read_file<R: PathResolver>(
     resolver: &R,
     file_path: &str,
     offset: usize,
     limit: usize,
     max_line_length: usize,
+    line_numbers: bool,
 ) -> ToolResult<ToolOutput> {
     // Conditional trait import for consume() method
     #[cfg(feature = "blocking")]
@@ -99,12 +101,13 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
             if !overflow.is_empty() {
                 line_number += 1;
                 if line_number >= offset && lines_output < limit {
-                    process_line::<LINE_NUMBERS>(
+                    process_line(
                         &overflow,
                         line_number,
                         &mut output,
                         &mut lines_output,
                         max_line_length,
+                        line_numbers,
                     );
                 }
             }
@@ -122,22 +125,24 @@ pub async fn read_file<R: PathResolver, const LINE_NUMBERS: bool>(
                 if line_number >= offset && lines_output < limit {
                     if overflow.is_empty() {
                         // Fast path: line is fully in this buffer.
-                        process_line::<LINE_NUMBERS>(
+                        process_line(
                             &buf[pos..newline_pos],
                             line_number,
                             &mut output,
                             &mut lines_output,
                             max_line_length,
+                            line_numbers,
                         );
                     } else {
                         // Slow path: prepend buffered fragment.
                         overflow.extend_from_slice(&buf[pos..newline_pos]);
-                        process_line::<LINE_NUMBERS>(
+                        process_line(
                             &overflow,
                             line_number,
                             &mut output,
                             &mut lines_output,
                             max_line_length,
+                            line_numbers,
                         );
                         overflow.clear();
                     }
@@ -181,27 +186,29 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[maybe_async::maybe_async]
-    async fn read_temp_file<const LINE_NUMBERS: bool>(
+    async fn read_temp_file(
         content: &[u8],
         offset: usize,
         limit: usize,
+        line_numbers: bool,
     ) -> ToolResult<ToolOutput> {
         let mut temp = NamedTempFile::new().unwrap();
         temp.write_all(content).unwrap();
         let resolver = AbsolutePathResolver;
-        read_file::<_, LINE_NUMBERS>(
+        read_file::<_>(
             &resolver,
             temp.path().to_str().unwrap(),
             offset,
             limit,
             2000, // max_line_length
+            line_numbers,
         )
         .await
     }
 
     #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
     async fn reads_basic_file_with_line_numbers() {
-        let result = read_temp_file::<true>(b"hello\nworld\n", 1, 2000)
+        let result = read_temp_file(b"hello\nworld\n", 1, 2000, true)
             .await
             .unwrap();
         assert_eq!(result.content, "L1: hello\nL2: world");
@@ -209,7 +216,7 @@ mod tests {
 
     #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
     async fn reads_basic_file_without_line_numbers() {
-        let result = read_temp_file::<false>(b"hello\nworld\n", 1, 2000)
+        let result = read_temp_file(b"hello\nworld\n", 1, 2000, false)
             .await
             .unwrap();
         assert_eq!(result.content, "hello\nworld");
@@ -217,7 +224,7 @@ mod tests {
 
     #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
     async fn errors_on_offset_zero() {
-        let err = read_temp_file::<true>(b"test\n", 0, 10).await.unwrap_err();
+        let err = read_temp_file(b"test\n", 0, 10, true).await.unwrap_err();
         assert!(matches!(err, ToolError::OutOfBounds(_)));
     }
 
@@ -227,12 +234,13 @@ mod tests {
         temp.write_all(b"test\n").unwrap();
         let resolver = AbsolutePathResolver;
 
-        let err = read_file::<_, true>(
+        let err = read_file::<_>(
             &resolver,
             temp.path().to_str().unwrap(),
             1,
             10,
             3, // below MIN_LINE_LENGTH of 4
+            true,
         )
         .await
         .unwrap_err();
@@ -247,12 +255,13 @@ mod tests {
         temp.write_all(b"abcdefghij\n").unwrap();
         let resolver = AbsolutePathResolver;
 
-        let result = read_file::<_, false>(
+        let result = read_file::<_>(
             &resolver,
             temp.path().to_str().unwrap(),
             1,
             10,
             6, // keep 3 chars + "..."
+            false,
         )
         .await
         .unwrap();

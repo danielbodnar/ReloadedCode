@@ -45,11 +45,11 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // More efficient and ensures consistency.
     let resolver = AllowedPathResolver::new(allowed_paths)?;
 
-    let read: ReadTool<true> = ReadTool::new(resolver.clone());
+    let read: ReadTool = ReadTool::new(resolver.clone());
     let write = WriteTool::new(resolver.clone());
     let edit = EditTool::new(resolver.clone());
     let glob = GlobTool::new(resolver.clone());
-    let grep: GrepTool<true> = GrepTool::new(resolver.clone());
+    let grep = GrepTool::new(resolver.clone());
 
     // === Build agent with sandboxed tools ===
     //

@@ -30,9 +30,9 @@ let mut pb = SystemPromptBuilder::new();
 
 // Build agent with tools - call .system_prompt() last
 let agent = AgentBuilder::<(), String>::from_model("openai:gpt-4o")?
-    .tool(pb.track(ReadTool::<true>::new()))
+    .tool(pb.track(ReadTool::new()))
     .tool(pb.track(GlobTool::new()))
-    .tool(pb.track(GrepTool::<true>::new()))
+    .tool(pb.track(GrepTool::new()))
     .tool(pb.track(EditTool::new()))
     .tool(pb.track(BashTool::host()))
     .tool(pb.track(WebFetchTool::new()))
@@ -69,12 +69,12 @@ use llm_coding_tools_serdesai::AllowedPathResolver;
 use std::path::PathBuf;
 
 // Unrestricted access
-let read = ReadTool::<true>::new();
+let read = ReadTool::new();
 
 // Sandboxed access
 let allowed_paths = vec![PathBuf::from("/home/user/project"), PathBuf::from("/tmp")];
 let resolver = AllowedPathResolver::new(allowed_paths).unwrap();
-let sandboxed_read: AllowedReadTool<true> = AllowedReadTool::new(resolver.clone());
+let sandboxed_read: AllowedReadTool = AllowedReadTool::new(resolver.clone());
 let sandboxed_edit = AllowedEditTool::new(resolver.clone());
 let sandboxed_write = AllowedWriteTool::new(resolver);
 ```

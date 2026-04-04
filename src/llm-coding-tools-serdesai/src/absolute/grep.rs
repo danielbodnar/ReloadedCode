@@ -29,29 +29,31 @@ struct GrepArgs {
 
 /// Tool for searching file contents using regex patterns.
 ///
-/// The `LINE_NUMBERS` const generic controls output format:
+/// The `line_numbers` field controls output format:
 /// - `true` (default): Lines prefixed with `L{number}: `
 /// - `false`: Raw matching lines
 #[derive(Debug, Clone)]
-pub struct GrepTool<const LINE_NUMBERS: bool = true> {
+pub struct GrepTool {
     definition: ToolDefinition,
     max_line_length: usize,
     limit: usize,
+    line_numbers: bool,
 }
 
-impl<const LINE_NUMBERS: bool> Default for GrepTool<LINE_NUMBERS> {
+impl Default for GrepTool {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
+impl GrepTool {
     /// Creates a new grep tool instance with default settings.
     ///
-    /// Uses `max_line_length` of 2000 characters and `limit` of 100 matches.
+    /// Uses `max_line_length` of 2000 characters, `limit` of 100 matches,
+    /// and enables line numbers.
     #[inline]
     pub fn new() -> Self {
-        Self::with_settings(DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT)
+        Self::with_settings(DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT, true)
     }
 
     /// Creates a new grep tool instance with custom settings.
@@ -61,17 +63,19 @@ impl<const LINE_NUMBERS: bool> GrepTool<LINE_NUMBERS> {
     /// * `max_line_length` - Maximum characters per matching line before truncation.
     ///   Longer lines will be truncated with "..." appended.
     /// * `limit` - Maximum number of matches to return when not specified in args.
-    pub fn with_settings(max_line_length: usize, limit: usize) -> Self {
+    /// * `line_numbers` - Whether to prefix lines with line numbers.
+    pub fn with_settings(max_line_length: usize, limit: usize, line_numbers: bool) -> Self {
         Self {
-            definition: build_definition::<LINE_NUMBERS>(),
+            definition: build_definition(line_numbers),
             max_line_length,
             limit,
+            line_numbers,
         }
     }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_NUMBERS> {
+impl<Deps: Send + Sync> Tool<Deps> for GrepTool {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -112,8 +116,9 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
 
         match result {
             Err(e) => to_serdes_result(grep_meta::NAME, Err(e)),
-            Ok(grep_output) => Ok(grep_output_to_return::<LINE_NUMBERS>(
+            Ok(grep_output) => Ok(grep_output_to_return(
                 grep_output,
+                self.line_numbers,
                 limit,
                 self.max_line_length,
             )),
@@ -121,18 +126,18 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for GrepTool<LINE_N
     }
 }
 
-impl<const LINE_NUMBERS: bool> ToolContext for GrepTool<LINE_NUMBERS> {
+impl ToolContext for GrepTool {
     const NAME: &'static str = grep_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Grep {
             path_mode: PathMode::Absolute,
-            line_numbers: LINE_NUMBERS,
+            line_numbers: self.line_numbers,
         }
     }
 }
 
-fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+fn build_definition(line_numbers: bool) -> ToolDefinition {
     let schema = SchemaBuilder::new()
         .string(
             grep_meta::param::PATTERN.name,
@@ -161,7 +166,7 @@ fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
 
     ToolDefinition {
         name: grep_meta::NAME.to_owned(),
-        description: grep_meta::description::absolute(LINE_NUMBERS).to_owned(),
+        description: grep_meta::description::absolute(line_numbers).to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -184,7 +189,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world\nfoo bar").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -206,7 +211,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -235,7 +240,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
         let result = tool
             .call(
                 &mock_ctx(),
@@ -258,7 +263,7 @@ mod tests {
         std::fs::write(dir.path().join("code.py"), "def hello(): pass").unwrap();
         std::fs::write(dir.path().join("readme.txt"), "hello world").unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
 
         // Search only .rs files
         let result = tool
@@ -284,7 +289,7 @@ mod tests {
     async fn returns_partial_json_when_search_has_errors() {
         let dir = TempDir::new().unwrap();
         let missing_path = dir.path().join("missing-root");
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
 
         let result = tool
             .call(
@@ -315,7 +320,7 @@ mod tests {
         let long_line = format!("prefix_{}_suffix", "x".repeat(2500));
         std::fs::write(dir.path().join("long.txt"), &long_line).unwrap();
 
-        let tool: GrepTool<true> = GrepTool::new();
+        let tool = GrepTool::new();
         let result = tool
             .call(
                 &mock_ctx(),

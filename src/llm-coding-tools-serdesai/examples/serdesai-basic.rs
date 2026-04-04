@@ -44,9 +44,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let agent = AgentBuilder::<(), String>::new(model)
         .instructions("Use tools to answer; call at least one tool before responding.")
         // File operations
-        .tool(pb.track(ReadTool::<true>::new()))
+        .tool(pb.track(ReadTool::new()))
         .tool(pb.track(GlobTool::new()))
-        .tool(pb.track(GrepTool::<true>::new()))
+        .tool(pb.track(GrepTool::new()))
         // Shell execution
         .tool(pb.track(BashTool::host()))
         // Web content fetching

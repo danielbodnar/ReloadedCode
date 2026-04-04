@@ -28,17 +28,19 @@ struct ReadArgs {
 ///
 /// Restricts access to configured allowed directories.
 #[derive(Debug, Clone)]
-pub struct ReadTool<const LINE_NUMBERS: bool = true> {
+pub struct ReadTool {
     definition: ToolDefinition,
     resolver: AllowedPathResolver,
     limit: usize,
     max_line_length: usize,
+    line_numbers: bool,
 }
 
-impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
+impl ReadTool {
     /// Creates a new read tool with a shared resolver and default settings.
     ///
-    /// Uses `limit` of 2000 lines and `max_line_length` of 2000 characters.
+    /// Uses `limit` of 2000 lines, `max_line_length` of 2000 characters,
+    /// and enables line numbers.
     ///
     /// See [`ReadTool::new`] for usage example.
     ///
@@ -48,6 +50,7 @@ impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
             resolver,
             read_meta::DEFAULT_LIMIT,
             read_meta::MAX_LINE_LENGTH,
+            true,
         )
     }
 
@@ -60,22 +63,25 @@ impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
     ///   This is the default used when the LLM doesn't specify a limit.
     /// * `max_line_length` - Maximum characters per line before truncation.
     ///   Longer lines will be truncated with "..." appended.
+    /// * `line_numbers` - Whether to prefix lines with line numbers.
     pub fn with_settings(
         resolver: AllowedPathResolver,
         limit: usize,
         max_line_length: usize,
+        line_numbers: bool,
     ) -> Self {
         Self {
-            definition: build_definition::<LINE_NUMBERS>(),
+            definition: build_definition(line_numbers),
             resolver,
             limit,
             max_line_length,
+            line_numbers,
         }
     }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_NUMBERS> {
+impl<Deps: Send + Sync> Tool<Deps> for ReadTool {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -86,30 +92,31 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_N
 
         // Use provided limit or fall back to settings default
         let effective_limit = args.limit.unwrap_or(self.limit);
-        let result = read_file::<_, LINE_NUMBERS>(
+        let result = read_file::<_>(
             &self.resolver,
             &args.file_path,
             args.offset,
             effective_limit,
             self.max_line_length,
+            self.line_numbers,
         )
         .await;
         to_serdes_result(read_meta::NAME, result)
     }
 }
 
-impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
+impl ToolContext for ReadTool {
     const NAME: &'static str = read_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Read {
             path_mode: PathMode::Allowed,
-            line_numbers: LINE_NUMBERS,
+            line_numbers: self.line_numbers,
         }
     }
 }
 
-fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+fn build_definition(line_numbers: bool) -> ToolDefinition {
     let schema = SchemaBuilder::new()
         .string(
             read_meta::param::FILE_PATH_ALLOWED.name,
@@ -135,7 +142,7 @@ fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
 
     ToolDefinition {
         name: read_meta::NAME.to_owned(),
-        description: read_meta::description::allowed(LINE_NUMBERS).to_owned(),
+        description: read_meta::description::allowed(line_numbers).to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -159,7 +166,7 @@ mod tests {
         std::fs::write(dir.path().join("test.txt"), "hello\nworld\n").unwrap();
 
         let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
-        let tool: ReadTool<true> = ReadTool::new(resolver);
+        let tool: ReadTool = ReadTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),
@@ -181,7 +188,7 @@ mod tests {
     async fn rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
         let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
-        let tool: ReadTool<true> = ReadTool::new(resolver);
+        let tool: ReadTool = ReadTool::new(resolver);
         let result = tool
             .call(
                 &mock_ctx(),
