@@ -124,8 +124,8 @@ pub fn write_todos(state: &TodoState, request: TodoWriteRequest) -> ToolResult<S
 }
 
 /// Reads and formats the current todo list.
-pub fn read_todos(_state: &TodoState, _request: TodoReadRequest) -> String {
-    let todos = _state.todos.read();
+pub fn read_todos(state: &TodoState, _request: TodoReadRequest) -> String {
+    let todos = state.todos.read();
 
     if todos.is_empty() {
         return "No tasks.".to_string();
