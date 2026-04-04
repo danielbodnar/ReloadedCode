@@ -122,17 +122,11 @@ where
         match entry.kind {
             ToolCatalogKind::Read => {
                 let settings = &prepared.tool_settings.read;
-                if settings.line_numbers {
-                    builder = builder.tool(prompt_builder.track(ReadTool::<true>::with_settings(
-                        settings.limit,
-                        settings.max_line_length,
-                    )));
-                } else {
-                    builder = builder.tool(prompt_builder.track(ReadTool::<false>::with_settings(
-                        settings.limit,
-                        settings.max_line_length,
-                    )));
-                }
+                builder = builder.tool(prompt_builder.track(ReadTool::with_settings(
+                    settings.limit,
+                    settings.max_line_length,
+                    settings.line_numbers,
+                )));
             }
             ToolCatalogKind::Write => {
                 builder = builder.tool(prompt_builder.track(WriteTool::new()))
@@ -145,17 +139,11 @@ where
             }
             ToolCatalogKind::Grep => {
                 let settings = &prepared.tool_settings.grep;
-                if settings.line_numbers {
-                    builder = builder.tool(prompt_builder.track(GrepTool::<true>::with_settings(
-                        settings.max_line_length,
-                        settings.limit,
-                    )));
-                } else {
-                    builder = builder.tool(prompt_builder.track(GrepTool::<false>::with_settings(
-                        settings.max_line_length,
-                        settings.limit,
-                    )));
-                }
+                builder = builder.tool(prompt_builder.track(GrepTool::with_settings(
+                    settings.max_line_length,
+                    settings.limit,
+                    settings.line_numbers,
+                )));
             }
             ToolCatalogKind::Bash => {
                 let settings = &prepared.tool_settings.bash;

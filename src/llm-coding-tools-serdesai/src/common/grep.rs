@@ -7,13 +7,14 @@ use serdes_ai::tools::ToolReturn;
 const NO_MATCHES_FOUND: &str = "No matches found.";
 
 #[inline]
-pub(crate) fn output_to_return<const LINE_NUMBERS: bool>(
+pub(crate) fn output_to_return(
     output: GrepOutput,
+    line_numbers: bool,
     limit: usize,
     max_line_len: usize,
 ) -> ToolReturn {
     if output.partial {
-        let content = output.format::<LINE_NUMBERS>(limit, max_line_len);
+        let content = output.format(line_numbers, limit, max_line_len);
         return ToolReturn::json(json!({
             "content": content,
             "partial": true,
@@ -27,5 +28,5 @@ pub(crate) fn output_to_return<const LINE_NUMBERS: bool>(
         return ToolReturn::text(NO_MATCHES_FOUND);
     }
 
-    ToolReturn::text(output.format::<LINE_NUMBERS>(limit, max_line_len))
+    ToolReturn::text(output.format(line_numbers, limit, max_line_len))
 }

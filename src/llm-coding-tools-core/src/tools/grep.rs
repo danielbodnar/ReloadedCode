@@ -59,15 +59,12 @@ pub struct GrepOutput {
 impl GrepOutput {
     /// Formats grep results as human-readable text.
     ///
-    /// # Type Parameters
-    ///
-    /// * `LINE_NUMBERS` - When `true`, prefixes each match with `L{num}: `
-    ///
     /// # Arguments
     ///
+    /// * `line_numbers` - When `true`, prefixes each match with `L{num}: `
     /// * `limit` - The original match limit (used in truncation message)
     /// * `max_line_len` - Truncate lines exceeding this character length and append `...`
-    pub fn format<const LINE_NUMBERS: bool>(&self, limit: usize, max_line_len: usize) -> String {
+    pub fn format(&self, line_numbers: bool, limit: usize, max_line_len: usize) -> String {
         let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_MATCH;
         let mut output = String::with_capacity(estimated_capacity);
 
@@ -79,7 +76,7 @@ impl GrepOutput {
                 let (display_text, was_truncated) =
                     truncate_line_with_ellipsis(&m.line_text, max_line_len);
 
-                if LINE_NUMBERS {
+                if line_numbers {
                     let _ = write!(&mut output, "  L{}: {}", m.line_num, display_text);
                 } else {
                     let _ = write!(&mut output, "  {}", display_text);
@@ -364,7 +361,7 @@ mod tests {
             errors,
         };
 
-        let formatted = output.format::<true>(10, DEFAULT_MAX_LINE_LENGTH);
+        let formatted = output.format(true, 10, DEFAULT_MAX_LINE_LENGTH);
 
         assert_eq!(formatted.contains("Partial results"), expect_partial_msg);
         assert_eq!(
@@ -453,11 +450,7 @@ mod tests {
             errors: Vec::new(),
         };
 
-        let formatted = if with_line_numbers {
-            output.format::<true>(10, max_len)
-        } else {
-            output.format::<false>(10, max_len)
-        };
+        let formatted = output.format(with_line_numbers, 10, max_len);
 
         assert!(
             formatted.contains(expected),

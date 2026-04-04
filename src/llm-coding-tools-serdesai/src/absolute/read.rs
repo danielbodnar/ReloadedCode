@@ -26,29 +26,31 @@ struct ReadArgs {
 
 /// Tool for reading file contents with optional line numbers.
 ///
-/// The `LINE_NUMBERS` const generic controls output format:
+/// The `line_numbers` field controls output format:
 /// - `true` (default): Lines prefixed with `L{number}: `
 /// - `false`: Raw file content
 #[derive(Debug, Clone)]
-pub struct ReadTool<const LINE_NUMBERS: bool = true> {
+pub struct ReadTool {
     definition: ToolDefinition,
     limit: usize,
     max_line_length: usize,
+    line_numbers: bool,
 }
 
-impl<const LINE_NUMBERS: bool> Default for ReadTool<LINE_NUMBERS> {
+impl Default for ReadTool {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
+impl ReadTool {
     /// Creates a new read tool instance with default settings.
     ///
-    /// Uses `limit` of 2000 lines and `max_line_length` of 2000 characters.
+    /// Uses `limit` of 2000 lines, `max_line_length` of 2000 characters,
+    /// and enables line numbers.
     #[inline]
     pub fn new() -> Self {
-        Self::with_settings(read_meta::DEFAULT_LIMIT, read_meta::MAX_LINE_LENGTH)
+        Self::with_settings(read_meta::DEFAULT_LIMIT, read_meta::MAX_LINE_LENGTH, true)
     }
 
     /// Creates a new read tool instance with custom settings.
@@ -59,17 +61,19 @@ impl<const LINE_NUMBERS: bool> ReadTool<LINE_NUMBERS> {
     ///   This is the default used when the LLM doesn't specify a limit.
     /// * `max_line_length` - Maximum characters per line before truncation.
     ///   Longer lines will be truncated with "..." appended.
-    pub fn with_settings(limit: usize, max_line_length: usize) -> Self {
+    /// * `line_numbers` - Whether to prefix lines with line numbers.
+    pub fn with_settings(limit: usize, max_line_length: usize, line_numbers: bool) -> Self {
         Self {
-            definition: build_definition::<LINE_NUMBERS>(),
+            definition: build_definition(line_numbers),
             limit,
             max_line_length,
+            line_numbers,
         }
     }
 }
 
 #[async_trait]
-impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_NUMBERS> {
+impl<Deps: Send + Sync> Tool<Deps> for ReadTool {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
@@ -82,30 +86,31 @@ impl<Deps: Send + Sync, const LINE_NUMBERS: bool> Tool<Deps> for ReadTool<LINE_N
         // Use provided limit or fall back to settings default
         let effective_limit = args.limit.unwrap_or(self.limit);
         // Core uses 1-indexed offset directly; args.offset defaults to 1
-        let result = read_file::<_, LINE_NUMBERS>(
+        let result = read_file::<_>(
             &resolver,
             &args.file_path,
             args.offset,
             effective_limit,
             self.max_line_length,
+            self.line_numbers,
         )
         .await;
         to_serdes_result(read_meta::NAME, result)
     }
 }
 
-impl<const LINE_NUMBERS: bool> ToolContext for ReadTool<LINE_NUMBERS> {
+impl ToolContext for ReadTool {
     const NAME: &'static str = read_meta::NAME;
 
     fn context(&self) -> ToolPrompt {
         ToolPrompt::Read {
             path_mode: PathMode::Absolute,
-            line_numbers: LINE_NUMBERS,
+            line_numbers: self.line_numbers,
         }
     }
 }
 
-fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
+fn build_definition(line_numbers: bool) -> ToolDefinition {
     let schema = SchemaBuilder::new()
         .string(
             read_meta::param::FILE_PATH_ABSOLUTE.name,
@@ -131,7 +136,7 @@ fn build_definition<const LINE_NUMBERS: bool>() -> ToolDefinition {
 
     ToolDefinition {
         name: read_meta::NAME.to_owned(),
-        description: read_meta::description::absolute(LINE_NUMBERS).to_owned(),
+        description: read_meta::description::absolute(line_numbers).to_owned(),
         parameters_json_schema: schema,
         strict: None,
         outer_typed_dict_key: None,
@@ -154,7 +159,7 @@ mod tests {
     async fn reads_file_with_offset_and_limit() {
         let mut temp = NamedTempFile::new().unwrap();
         temp.write_all(b"line1\nline2\nline3\nline4\n").unwrap();
-        let tool: ReadTool<true> = ReadTool::new();
+        let tool: ReadTool = ReadTool::new();
 
         let result = tool
             .call(
