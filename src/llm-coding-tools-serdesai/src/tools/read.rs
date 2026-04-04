@@ -120,7 +120,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Re
         let args: ReadArgs = serde_json::from_value(args)
             .map_err(|e| ToolError::validation_error(read_meta::NAME, None, e.to_string()))?;
 
-        let effective_limit = args.limit.unwrap_or(self.limit);
+        let effective_limit = args.limit.unwrap_or(self.limit).min(self.limit);
         let result = read_file(
             &self.resolver,
             &args.file_path,
@@ -288,6 +288,29 @@ mod tests {
         let text = result.as_text().unwrap();
         assert!(text.contains("line1"));
         assert!(!text.contains("L1:")); // line numbers disabled
+    }
+
+    #[tokio::test]
+    async fn caps_requested_limit_at_tool_limit() {
+        let mut temp = NamedTempFile::new().unwrap();
+        temp.write_all(b"line1\nline2\nline3\n").unwrap();
+        let tool = ReadTool::with_settings(AbsolutePathResolver, 1, 100, true);
+
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "file_path": temp.path().to_string_lossy(),
+                    "limit": 3
+                }),
+            )
+            .await
+            .unwrap();
+
+        let text = result.as_text().unwrap();
+        assert!(text.contains("L1: line1"));
+        assert!(!text.contains("L2: line2"));
+        assert!(!text.contains("L3: line3"));
     }
 
     #[test]

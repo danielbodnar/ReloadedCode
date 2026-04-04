@@ -117,7 +117,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Gr
             ));
         }
 
-        let limit = args.limit.unwrap_or(self.limit);
+        let limit = args.limit.unwrap_or(self.limit).min(self.limit);
         if limit == 0 {
             return Err(ToolError::validation_error(
                 grep_meta::NAME,
@@ -459,6 +459,38 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, ToolError::ValidationFailed { .. }));
+    }
+
+    #[tokio::test]
+    async fn caps_requested_limit_at_tool_limit() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("test.txt"), "alpha\nbeta\ngamma\n").unwrap();
+
+        // Tool configured with limit=1, but caller requests limit=3
+        let tool = GrepTool::with_settings(
+            AllowedPathResolver::new([dir.path()]).unwrap(),
+            DEFAULT_MAX_LINE_LENGTH,
+            1,
+            true,
+        );
+
+        let result = tool
+            .call(
+                &mock_ctx(),
+                json!({
+                    "pattern": ".*",
+                    "path": ".",
+                    "limit": 3
+                }),
+            )
+            .await
+            .unwrap();
+
+        let text = result.as_text().unwrap();
+        // Should only see L1: alpha, not the other lines
+        assert!(text.contains("L1: alpha"));
+        assert!(!text.contains("L2: beta"));
+        assert!(!text.contains("L3: gamma"));
     }
 
     #[test]
