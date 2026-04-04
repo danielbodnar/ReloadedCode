@@ -1,4 +1,13 @@
-//! Generic glob file finding tool using any [`PathResolver`].
+//! File search by glob patterns, using any [`PathResolver`].
+//!
+//! Recursively walks a directory tree and returns file paths matching a
+//! glob pattern. Results can be limited to cap output size.
+//!
+//! # Public API
+//!
+//! - [`GlobTool`] - adapter implementing [`Tool`] for glob search
+//!
+//! [`Tool`]: serdes_ai::tools::Tool
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;

@@ -1,4 +1,13 @@
-//! Generic edit file tool using any [`PathResolver`].
+//! Exact string replacement tool for files, using any [`PathResolver`].
+//!
+//! Performs find-and-replace operations on file contents. Supports replacing
+//! a single occurrence or all occurrences of a given string.
+//!
+//! # Public API
+//!
+//! - [`EditTool`] - adapter implementing [`Tool`] for file editing
+//!
+//! [`Tool`]: serdes_ai::tools::Tool
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
@@ -113,7 +122,11 @@ fn build_definition(path_mode: PathMode) -> ToolDefinition {
     };
 
     let schema = SchemaBuilder::new()
-        .string(file_path_param.name, file_path_param.description, file_path_param.required)
+        .string(
+            file_path_param.name,
+            file_path_param.description,
+            file_path_param.required,
+        )
         .string(
             edit_meta::param::OLD_STRING.name,
             edit_meta::param::OLD_STRING.description,

@@ -1,10 +1,27 @@
-//! Generic read file tool using any [`PathResolver`].
+//! File reading tool using any [`PathResolver`].
+//!
+//! Reads file contents with optional offset and line limit. Lines can be
+//! prefixed with line numbers and are truncated at a configurable maximum
+//! length.
 //!
 //! Works with [`AbsolutePathResolver`], [`AllowedPathResolver`], or custom resolvers.
+//!
+//! # Public API
+//!
+//! - [`ReadTool`] - adapter implementing [`Tool`] for file reading
+//!
+//! # Example
+//!
+//! ```no_run
+//! use llm_coding_tools_serdesai::{ReadTool, AbsolutePathResolver};
+//!
+//! let tool = ReadTool::new(AbsolutePathResolver);
+//! ```
 //!
 //! [`PathResolver`]: llm_coding_tools_core::path::PathResolver
 //! [`AbsolutePathResolver`]: llm_coding_tools_core::path::AbsolutePathResolver
 //! [`AllowedPathResolver`]: llm_coding_tools_core::path::AllowedPathResolver
+//! [`Tool`]: serdes_ai::tools::Tool
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
@@ -27,17 +44,10 @@ struct ReadArgs {
     limit: Option<usize>,
 }
 
-/// Tool for reading file contents with optional line numbers.
+/// Tool for reading file contents with optional line ranges and numbers.
 ///
-/// Generic over any [`PathResolver`] implementation.
-///
-/// # Example
-///
-/// ```no_run
-/// use llm_coding_tools_serdesai::{ReadTool, AbsolutePathResolver};
-///
-/// let tool = ReadTool::new(AbsolutePathResolver);
-/// ```
+/// Generic over any [`PathResolver`] implementation. See the [module-level
+/// documentation](crate::tools) for a usage example.
 #[derive(Debug, Clone)]
 pub struct ReadTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
@@ -60,7 +70,12 @@ impl<R: PathResolver + Clone> ReadTool<R> {
     ///   automatically determine the correct path mode (Absolute or Allowed)
     ///   based on the resolver type at construction.
     pub fn new(resolver: R) -> Self {
-        Self::with_settings(resolver, read_meta::DEFAULT_LIMIT, read_meta::MAX_LINE_LENGTH, true)
+        Self::with_settings(
+            resolver,
+            read_meta::DEFAULT_LIMIT,
+            read_meta::MAX_LINE_LENGTH,
+            true,
+        )
     }
 
     /// Creates a new read tool with custom settings.
@@ -71,7 +86,12 @@ impl<R: PathResolver + Clone> ReadTool<R> {
     /// * `limit` - Maximum number of lines to return per read call.
     /// * `max_line_length` - Maximum characters per line before truncation.
     /// * `line_numbers` - Whether to prefix lines with line numbers.
-    pub fn with_settings(resolver: R, limit: usize, max_line_length: usize, line_numbers: bool) -> Self {
+    pub fn with_settings(
+        resolver: R,
+        limit: usize,
+        max_line_length: usize,
+        line_numbers: bool,
+    ) -> Self {
         let path_mode = determine_path_mode::<R>();
         Self {
             definition: build_definition(path_mode, line_numbers),
@@ -159,7 +179,11 @@ fn build_definition(path_mode: PathMode, line_numbers: bool) -> ToolDefinition {
     };
 
     let schema = SchemaBuilder::new()
-        .string(file_path_param.name, file_path_param.description, file_path_param.required)
+        .string(
+            file_path_param.name,
+            file_path_param.description,
+            file_path_param.required,
+        )
         .integer_constrained(
             read_meta::param::OFFSET.name,
             read_meta::param::OFFSET.description,
@@ -291,7 +315,7 @@ mod tests {
     fn determines_correct_path_mode_for_absolute_resolver() {
         let tool = ReadTool::new(AbsolutePathResolver);
         assert_eq!(tool.path_mode(), PathMode::Absolute);
-        
+
         // Verify context returns correct path mode
         match tool.context() {
             ToolPrompt::Read { path_mode, .. } => {
@@ -307,7 +331,7 @@ mod tests {
         let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
         let tool = ReadTool::new(resolver);
         assert_eq!(tool.path_mode(), PathMode::Allowed);
-        
+
         // Verify context returns correct path mode
         match tool.context() {
             ToolPrompt::Read { path_mode, .. } => {
@@ -321,11 +345,11 @@ mod tests {
     fn uses_correct_metadata_for_absolute_resolver() {
         let tool = ReadTool::new(AbsolutePathResolver);
         let def: ToolDefinition = Tool::<()>::definition(&tool);
-        
+
         // Verify the description is the absolute variant
         assert!(def.description.contains("Read a file"));
         assert!(!def.description.contains("allowed"));
-        
+
         // Verify the schema uses absolute parameter
         let schema = &def.parameters_json_schema;
         let props = schema.get("properties").unwrap().as_object().unwrap();
@@ -340,10 +364,10 @@ mod tests {
         let resolver = AllowedPathResolver::new([dir.path()]).unwrap();
         let tool = ReadTool::new(resolver);
         let def: ToolDefinition = Tool::<()>::definition(&tool);
-        
+
         // Verify the description is the allowed variant
         assert!(def.description.contains("allowed"));
-        
+
         // Verify the schema uses allowed parameter
         let schema = &def.parameters_json_schema;
         let props = schema.get("properties").unwrap().as_object().unwrap();

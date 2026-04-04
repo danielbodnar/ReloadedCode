@@ -1,6 +1,11 @@
 //! Web content fetching tool.
 //!
-//! Provides URL fetching with format conversion support.
+//! Fetches URLs and converts responses: HTML to markdown, JSON pretty-printed,
+//! other content returned as-is.
+//!
+//! # Public API
+//!
+//! - [`WebFetchTool`] - fetch and convert web content from URLs
 
 use crate::convert::to_serdes_result;
 use async_trait::async_trait;

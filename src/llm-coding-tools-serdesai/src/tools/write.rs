@@ -1,4 +1,13 @@
-//! Generic write file tool using any [`PathResolver`].
+//! File writing tool using any [`PathResolver`].
+//!
+//! Writes string content to a file, creating the file if it does not exist
+//! or overwriting it if it does.
+//!
+//! # Public API
+//!
+//! - [`WriteTool`] - adapter implementing [`Tool`] for file writing
+//!
+//! [`Tool`]: serdes_ai::tools::Tool
 
 use async_trait::async_trait;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
@@ -100,7 +109,11 @@ fn build_definition(path_mode: PathMode) -> ToolDefinition {
     };
 
     let schema = SchemaBuilder::new()
-        .string(file_path_param.name, file_path_param.description, file_path_param.required)
+        .string(
+            file_path_param.name,
+            file_path_param.description,
+            file_path_param.required,
+        )
         .string(
             write_meta::param::CONTENT.name,
             write_meta::param::CONTENT.description,

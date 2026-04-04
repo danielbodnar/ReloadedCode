@@ -1,4 +1,14 @@
-//! Generic grep content search tool using any [`PathResolver`].
+//! Regex-based content search across files, using any [`PathResolver`].
+//!
+//! Searches file contents using regular expression patterns with optional
+//! file-type filtering. Matching lines are returned with line numbers and
+//! truncated at a configurable maximum length.
+//!
+//! # Public API
+//!
+//! - [`GrepTool`] - adapter implementing [`Tool`] for content search
+//!
+//! [`Tool`]: serdes_ai::tools::Tool
 
 use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
@@ -48,7 +58,12 @@ impl<R: PathResolver + Clone> GrepTool<R> {
     ///   automatically determine the correct path mode (Absolute or Allowed)
     ///   based on the resolver type at construction.
     pub fn new(resolver: R) -> Self {
-        Self::with_settings(resolver, DEFAULT_MAX_LINE_LENGTH, grep_meta::DEFAULT_LIMIT, true)
+        Self::with_settings(
+            resolver,
+            DEFAULT_MAX_LINE_LENGTH,
+            grep_meta::DEFAULT_LIMIT,
+            true,
+        )
     }
 
     /// Creates a new grep tool with custom settings.
@@ -59,7 +74,12 @@ impl<R: PathResolver + Clone> GrepTool<R> {
     /// * `max_line_length` - Maximum characters per matching line before truncation.
     /// * `limit` - Maximum number of matches to return when not specified in args.
     /// * `line_numbers` - Whether to prefix lines with line numbers.
-    pub fn with_settings(resolver: R, max_line_length: usize, limit: usize, line_numbers: bool) -> Self {
+    pub fn with_settings(
+        resolver: R,
+        max_line_length: usize,
+        limit: usize,
+        line_numbers: bool,
+    ) -> Self {
         let path_mode = determine_path_mode::<R>();
         Self {
             definition: build_definition(path_mode, line_numbers),
@@ -108,7 +128,11 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Gr
 
         let include = args.include.as_deref().and_then(|s| {
             let trimmed = s.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         });
 
         let result = grep_search(&self.resolver, pattern, include, &args.path, limit);
