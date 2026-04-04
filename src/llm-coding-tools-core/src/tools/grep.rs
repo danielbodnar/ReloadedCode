@@ -571,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn grep_request_ignores_blank_include_and_caps_limit() {
+    fn grep_request_ignores_blank_include_and_respects_limit() {
         let temp = tempdir().unwrap();
         std::fs::write(temp.path().join("a.rs"), "hello\nworld\n").unwrap();
         std::fs::write(temp.path().join("b.txt"), "hello\nhello\n").unwrap();
