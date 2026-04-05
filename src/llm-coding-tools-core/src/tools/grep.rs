@@ -61,6 +61,11 @@ impl GrepSettings {
     }
 
     /// Updates the maximum number of matches to return.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_limit` is below [`MIN_LIMIT`].
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_max_limit(mut self, max_limit: usize) -> ToolResult<Self> {
         use crate::util::MIN_LIMIT;
         if max_limit < MIN_LIMIT {
@@ -104,6 +109,12 @@ impl GrepFormattingSettings {
     }
 
     /// Updates the maximum line length for formatted output.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_line_length` is below
+    ///   [`MIN_LINE_LENGTH`].
+    ///
+    /// [`MIN_LINE_LENGTH`]: crate::util::MIN_LINE_LENGTH
     pub fn with_max_line_length(mut self, max_line_length: usize) -> ToolResult<Self> {
         use crate::util::MIN_LINE_LENGTH;
         if max_line_length < MIN_LINE_LENGTH {

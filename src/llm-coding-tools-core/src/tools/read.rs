@@ -103,7 +103,10 @@ impl ReadSettings {
     /// - `Ok(Self)` with both limits updated.
     ///
     /// # Errors
-    /// - Returns an error when either limit is below `MIN_LIMIT` or `default_limit > max_limit`.
+    /// - Returns an error when either limit is below [`MIN_LIMIT`] or
+    ///   `default_limit > max_limit`.
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_limits(mut self, default_limit: usize, max_limit: usize) -> ToolResult<Self> {
         ensure_read_limits(default_limit, max_limit)?;
         self.default_limit = default_limit;
@@ -112,16 +115,34 @@ impl ReadSettings {
     }
 
     /// Updates only the default limit while preserving the current max limit.
+    ///
+    /// # Errors
+    /// - Returns an error when `default_limit` is below [`MIN_LIMIT`] or
+    ///   exceeds the current `max_limit`.
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_default_limit(self, default_limit: usize) -> ToolResult<Self> {
         self.with_limits(default_limit, self.max_limit)
     }
 
     /// Updates only the max limit while preserving the current default limit.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_limit` is below [`MIN_LIMIT`] or below
+    ///   the current `default_limit`.
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_max_limit(self, max_limit: usize) -> ToolResult<Self> {
         self.with_limits(self.default_limit, max_limit)
     }
 
     /// Updates the per-line truncation length.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_line_length` is below
+    ///   [`MIN_LINE_LENGTH`].
+    ///
+    /// [`MIN_LINE_LENGTH`]: crate::util::MIN_LINE_LENGTH
     pub fn with_max_line_length(mut self, max_line_length: usize) -> ToolResult<Self> {
         ensure_max_line_length(max_line_length)?;
         self.max_line_length = max_line_length;

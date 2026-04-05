@@ -50,6 +50,17 @@ impl WebFetchSettings {
     }
 
     /// Updates both timeout fields in one validated step.
+    ///
+    /// # Arguments
+    /// - `default_timeout_ms`: Default timeout when the request omits
+    ///   `timeout_ms`.
+    /// - `max_timeout_ms`: Hard cap applied to any requested timeout.
+    ///
+    /// # Errors
+    /// - Returns an error when either timeout is below [`MIN_TIMEOUT_MS`] or
+    ///   `default_timeout_ms > max_timeout_ms`.
+    ///
+    /// [`MIN_TIMEOUT_MS`]: crate::util::MIN_TIMEOUT_MS
     pub fn with_timeouts(
         mut self,
         default_timeout_ms: u32,
@@ -61,17 +72,36 @@ impl WebFetchSettings {
         Ok(self)
     }
 
-    /// Updates only the default timeout while preserving the current max timeout.
+    /// Updates only the default timeout while preserving the current max
+    /// timeout.
+    ///
+    /// # Errors
+    /// - Returns an error when `default_timeout_ms` is below
+    ///   [`MIN_TIMEOUT_MS`] or exceeds the current `max_timeout_ms`.
+    ///
+    /// [`MIN_TIMEOUT_MS`]: crate::util::MIN_TIMEOUT_MS
     pub fn with_default_timeout_ms(self, default_timeout_ms: u32) -> ToolResult<Self> {
         self.with_timeouts(default_timeout_ms, self.max_timeout_ms)
     }
 
-    /// Updates only the max timeout while preserving the current default timeout.
+    /// Updates only the max timeout while preserving the current default
+    /// timeout.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_timeout_ms` is below
+    ///   [`MIN_TIMEOUT_MS`] or below the current `default_timeout_ms`.
+    ///
+    /// [`MIN_TIMEOUT_MS`]: crate::util::MIN_TIMEOUT_MS
     pub fn with_max_timeout_ms(self, max_timeout_ms: u32) -> ToolResult<Self> {
         self.with_timeouts(self.default_timeout_ms, max_timeout_ms)
     }
 
     /// Updates the maximum response size in bytes.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_response_size` is below [`MIN_LIMIT`].
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_max_response_size(mut self, max_response_size: usize) -> ToolResult<Self> {
         use crate::util::MIN_LIMIT;
         if max_response_size < MIN_LIMIT {

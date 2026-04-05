@@ -45,6 +45,11 @@ impl GlobSettings {
     }
 
     /// Updates the maximum number of files returned.
+    ///
+    /// # Errors
+    /// - Returns an error when `limit` is below [`MIN_LIMIT`].
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_limit(mut self, limit: usize) -> ToolResult<Self> {
         use crate::util::MIN_LIMIT;
         if limit < MIN_LIMIT {
