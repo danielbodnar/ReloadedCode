@@ -28,6 +28,13 @@
 //!     max_response_size: 5242880 # default: 5242880 bytes (5 MiB) (tool_metadata::webfetch::MAX_RESPONSE_SIZE)
 //! ---
 //! ```
+//!
+//! Implementation Note:
+//!
+//! We validate settings during deserialization even though `core` already
+//! validates when creating tools. The `core` check is just-in-time, during
+//! final agent build, so configuration errors (e.g. in a subagent) would only
+//! surface at runtime. Validating here catches these issues at startup instead.
 
 use llm_coding_tools_core::tool_metadata::{bash, glob, grep, read, webfetch};
 use llm_coding_tools_core::util::{MIN_LIMIT, MIN_LINE_LENGTH, MIN_TIMEOUT_MS};
