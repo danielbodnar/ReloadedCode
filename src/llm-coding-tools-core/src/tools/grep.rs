@@ -2,6 +2,7 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
+use crate::tool_metadata::grep as grep_meta;
 use crate::util::{truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
 use globset::Glob;
 use grep_regex::RegexMatcher;
@@ -39,10 +40,117 @@ impl GrepRequest {
 }
 
 /// Runtime settings applied to grep requests.
-#[derive(Debug, Clone, Copy)]
+///
+/// The `max_limit` field caps the number of matching lines returned, even if
+/// the caller requests more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrepSettings {
-    /// Maximum number of matches returned for a request.
-    pub max_limit: usize,
+    max_limit: usize,
+}
+
+impl Default for GrepSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GrepSettings {
+    /// Creates valid grep search settings with the standard defaults.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            max_limit: grep_meta::DEFAULT_LIMIT,
+        }
+    }
+
+    /// Sets the upper bound on matching lines returned per search.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_limit` is below [`MIN_LIMIT`].
+    ///
+    /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
+    pub fn with_max_limit(mut self, max_limit: usize) -> ToolResult<Self> {
+        use crate::util::MIN_LIMIT;
+        if max_limit < MIN_LIMIT {
+            return Err(ToolError::validation_for(
+                "max_limit",
+                format!("max_limit must be >= {}", MIN_LIMIT),
+            ));
+        }
+        self.max_limit = max_limit;
+        Ok(self)
+    }
+
+    /// Returns the upper bound on matching lines returned per search.
+    #[must_use]
+    pub const fn max_limit(self) -> usize {
+        self.max_limit
+    }
+}
+
+/// Formatting settings for rendered grep output.
+///
+/// Controls how matching lines are displayed: truncation length for long lines
+/// and whether to prefix each line with a line number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GrepFormattingSettings {
+    max_line_length: usize,
+    line_numbers: bool,
+}
+
+impl Default for GrepFormattingSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GrepFormattingSettings {
+    /// Creates valid grep formatting settings with the standard line-numbered output.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            max_line_length: DEFAULT_MAX_LINE_LENGTH,
+            line_numbers: true,
+        }
+    }
+
+    /// Updates the maximum line length for formatted output.
+    ///
+    /// # Errors
+    /// - Returns an error when `max_line_length` is below
+    ///   [`MIN_LINE_LENGTH`].
+    ///
+    /// [`MIN_LINE_LENGTH`]: crate::util::MIN_LINE_LENGTH
+    pub fn with_max_line_length(mut self, max_line_length: usize) -> ToolResult<Self> {
+        use crate::util::MIN_LINE_LENGTH;
+        if max_line_length < MIN_LINE_LENGTH {
+            return Err(ToolError::validation_for(
+                "max_line_length",
+                format!("max_line_length must be >= {}", MIN_LINE_LENGTH),
+            ));
+        }
+        self.max_line_length = max_line_length;
+        Ok(self)
+    }
+
+    /// Enables or disables line numbers in output.
+    #[must_use]
+    pub const fn with_line_numbers(mut self, line_numbers: bool) -> Self {
+        self.line_numbers = line_numbers;
+        self
+    }
+
+    /// Returns the maximum line length for formatted output.
+    #[must_use]
+    pub const fn max_line_length(self) -> usize {
+        self.max_line_length
+    }
+
+    /// Returns whether line numbers are included in output.
+    #[must_use]
+    pub const fn line_numbers(self) -> bool {
+        self.line_numbers
+    }
 }
 
 /// A single line match within a file.
@@ -90,9 +198,10 @@ impl GrepOutput {
     ///
     /// # Arguments
     ///
-    /// * `line_numbers` - When `true`, prefixes each match with `L{num}: `
-    /// * `max_line_len` - Truncate lines exceeding this character length and append `...`
-    pub fn format(&self, line_numbers: bool, max_line_len: usize) -> String {
+    /// * `formatting` - The formatting settings to use for output
+    pub fn format(&self, formatting: GrepFormattingSettings) -> String {
+        let line_numbers = formatting.line_numbers();
+        let max_line_len = formatting.max_line_length();
         let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_MATCH;
         let mut output = String::with_capacity(estimated_capacity);
 
@@ -157,8 +266,8 @@ pub fn grep_search<R: PathResolver>(
 
     let limit = request
         .limit
-        .unwrap_or(settings.max_limit)
-        .min(settings.max_limit);
+        .unwrap_or(settings.max_limit())
+        .min(settings.max_limit());
     if limit == 0 {
         return Err(ToolError::validation_for("limit", "limit must be >= 1"));
     }
@@ -317,6 +426,32 @@ mod tests {
     use rstest::rstest;
     use tempfile::tempdir;
 
+    // GrepSettings and GrepFormattingSettings tests
+    #[test]
+    fn grep_settings_should_create_standard_defaults() {
+        let settings = GrepSettings::new();
+        assert_eq!(settings.max_limit(), grep_meta::DEFAULT_LIMIT);
+    }
+
+    #[test]
+    fn grep_settings_should_reject_zero_limit() {
+        assert!(GrepSettings::new().with_max_limit(0).is_err());
+    }
+
+    #[test]
+    fn grep_formatting_settings_should_create_standard_defaults() {
+        let settings = GrepFormattingSettings::new();
+        assert_eq!(settings.max_line_length(), DEFAULT_MAX_LINE_LENGTH);
+        assert!(settings.line_numbers());
+    }
+
+    #[test]
+    fn grep_formatting_settings_should_reject_short_line_length() {
+        assert!(GrepFormattingSettings::new()
+            .with_max_line_length(3)
+            .is_err());
+    }
+
     /// Verifies that grep search returns the expected number of files and matches
     /// for different file layouts and optional glob filters.
     #[rstest]
@@ -376,7 +511,7 @@ mod tests {
                 include: include.map(|s| s.to_string()),
                 limit: None,
             },
-            GrepSettings { max_limit: 10 },
+            GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap();
 
@@ -421,7 +556,7 @@ mod tests {
             effective_limit: 10,
         };
 
-        let formatted = output.format(true, DEFAULT_MAX_LINE_LENGTH);
+        let formatted = output.format(GrepFormattingSettings::new());
 
         assert_eq!(formatted.contains("Partial results"), expect_partial_msg);
         assert_eq!(
@@ -511,7 +646,12 @@ mod tests {
             effective_limit: 10,
         };
 
-        let formatted = output.format(with_line_numbers, max_len);
+        let formatted = output.format(
+            GrepFormattingSettings::new()
+                .with_max_line_length(max_len)
+                .unwrap()
+                .with_line_numbers(with_line_numbers),
+        );
 
         assert!(
             formatted.contains(expected),
@@ -535,7 +675,7 @@ mod tests {
                 include: None,
                 limit: None,
             },
-            GrepSettings { max_limit: 10 },
+            GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap();
 
@@ -559,7 +699,7 @@ mod tests {
                 include: None,
                 limit: None,
             },
-            GrepSettings { max_limit: 10 },
+            GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap_err();
 
@@ -585,7 +725,7 @@ mod tests {
                 include: Some("   ".into()),
                 limit: Some(1),
             },
-            GrepSettings { max_limit: 1 },
+            GrepSettings::new().with_max_limit(1).unwrap(),
         )
         .unwrap();
 
@@ -613,7 +753,7 @@ mod tests {
                 include: None,
                 limit: Some(100), // Request asks for 100 matches
             },
-            GrepSettings { max_limit: 2 }, // But max_limit is only 2
+            GrepSettings::new().with_max_limit(2).unwrap(), // But max_limit is only 2
         )
         .unwrap();
 
