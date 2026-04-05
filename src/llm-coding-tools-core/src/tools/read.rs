@@ -67,6 +67,12 @@ impl ReadRequest {
 }
 
 /// Runtime settings applied to read requests.
+///
+/// Controls how many lines a read returns using a two-limit model:
+/// - **Default limit**: line count used when the caller doesn't specify one.
+/// - **Max limit**: hard cap applied regardless of what the caller requests.
+///
+/// Additional settings control per-line truncation and line-number display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadSettings {
     default_limit: usize,
@@ -93,14 +99,16 @@ impl ReadSettings {
         }
     }
 
-    /// Updates both read limits in one validated step.
+    /// Sets the default and maximum line count for read operations in one
+    /// validated step.
+    ///
+    /// The default limit is used when the caller doesn't specify a line count;
+    /// the max limit caps any explicitly requested count. Both limits must be
+    /// at least [`MIN_LIMIT`], and `default_limit` must not exceed `max_limit`.
     ///
     /// # Arguments
-    /// - `default_limit`: Default line count when the request omits `limit`.
-    /// - `max_limit`: Hard cap applied to any requested limit.
-    ///
-    /// # Returns
-    /// - `Ok(Self)` with both limits updated.
+    /// - `default_limit`: Line count used when the request omits `limit`.
+    /// - `max_limit`: Upper bound on lines returned regardless of the request.
     ///
     /// # Errors
     /// - Returns an error when either limit is below [`MIN_LIMIT`] or
@@ -114,22 +122,27 @@ impl ReadSettings {
         Ok(self)
     }
 
-    /// Updates only the default limit while preserving the current max limit.
+    /// Sets the line count used when the caller doesn't specify one.
+    ///
+    /// The new value must not exceed the current max limit.
     ///
     /// # Errors
     /// - Returns an error when `default_limit` is below [`MIN_LIMIT`] or
-    ///   exceeds the current `max_limit`.
+    ///   exceeds the current max limit.
     ///
     /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_default_limit(self, default_limit: usize) -> ToolResult<Self> {
         self.with_limits(default_limit, self.max_limit)
     }
 
-    /// Updates only the max limit while preserving the current default limit.
+    /// Sets the hard cap on lines returned regardless of what the caller
+    /// requests.
+    ///
+    /// The new value must be at least as large as the current default limit.
     ///
     /// # Errors
     /// - Returns an error when `max_limit` is below [`MIN_LIMIT`] or below
-    ///   the current `default_limit`.
+    ///   the current default limit.
     ///
     /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_max_limit(self, max_limit: usize) -> ToolResult<Self> {
@@ -156,13 +169,13 @@ impl ReadSettings {
         self
     }
 
-    /// Returns the default line limit.
+    /// Returns the line count used when the caller doesn't specify one.
     #[must_use]
     pub const fn default_limit(self) -> usize {
         self.default_limit
     }
 
-    /// Returns the maximum line limit.
+    /// Returns the hard cap on lines returned regardless of the request.
     #[must_use]
     pub const fn max_limit(self) -> usize {
         self.max_limit

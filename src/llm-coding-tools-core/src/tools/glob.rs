@@ -24,6 +24,8 @@ impl GlobRequest {
 }
 
 /// Runtime settings applied to glob requests.
+///
+/// The `limit` field caps the number of file paths returned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GlobSettings {
     limit: usize,

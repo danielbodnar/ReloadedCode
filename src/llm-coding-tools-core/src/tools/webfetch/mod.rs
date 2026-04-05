@@ -25,6 +25,12 @@ impl WebFetchRequest {
 }
 
 /// Runtime settings applied to webfetch requests.
+///
+/// Controls request duration using a two-timeout model:
+/// - **Default timeout**: applied when the request doesn't specify one.
+/// - **Max timeout**: hard cap applied regardless of what the caller requests.
+///
+/// A separate `max_response_size` field limits downloaded bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WebFetchSettings {
     default_timeout_ms: u32,
@@ -49,12 +55,16 @@ impl WebFetchSettings {
         }
     }
 
-    /// Updates both timeout fields in one validated step.
+    /// Sets the default and maximum request timeout in one validated step.
+    ///
+    /// The default timeout is used when the request doesn't specify one; the
+    /// max timeout caps any explicitly requested duration. Both must be at
+    /// least [`MIN_TIMEOUT_MS`], and `default_timeout_ms` must not exceed
+    /// `max_timeout_ms`.
     ///
     /// # Arguments
-    /// - `default_timeout_ms`: Default timeout when the request omits
-    ///   `timeout_ms`.
-    /// - `max_timeout_ms`: Hard cap applied to any requested timeout.
+    /// - `default_timeout_ms`: Timeout used when the request omits `timeout_ms`.
+    /// - `max_timeout_ms`: Upper bound on request duration regardless of the request.
     ///
     /// # Errors
     /// - Returns an error when either timeout is below [`MIN_TIMEOUT_MS`] or
@@ -72,24 +82,27 @@ impl WebFetchSettings {
         Ok(self)
     }
 
-    /// Updates only the default timeout while preserving the current max
-    /// timeout.
+    /// Sets the timeout used when the request doesn't specify one.
+    ///
+    /// The new value must not exceed the current max timeout.
     ///
     /// # Errors
     /// - Returns an error when `default_timeout_ms` is below
-    ///   [`MIN_TIMEOUT_MS`] or exceeds the current `max_timeout_ms`.
+    ///   [`MIN_TIMEOUT_MS`] or exceeds the current max timeout.
     ///
     /// [`MIN_TIMEOUT_MS`]: crate::util::MIN_TIMEOUT_MS
     pub fn with_default_timeout_ms(self, default_timeout_ms: u32) -> ToolResult<Self> {
         self.with_timeouts(default_timeout_ms, self.max_timeout_ms)
     }
 
-    /// Updates only the max timeout while preserving the current default
-    /// timeout.
+    /// Sets the hard cap on request duration regardless of what the caller
+    /// specifies.
+    ///
+    /// The new value must be at least as large as the current default timeout.
     ///
     /// # Errors
     /// - Returns an error when `max_timeout_ms` is below
-    ///   [`MIN_TIMEOUT_MS`] or below the current `default_timeout_ms`.
+    ///   [`MIN_TIMEOUT_MS`] or below the current default timeout.
     ///
     /// [`MIN_TIMEOUT_MS`]: crate::util::MIN_TIMEOUT_MS
     pub fn with_max_timeout_ms(self, max_timeout_ms: u32) -> ToolResult<Self> {
@@ -114,13 +127,13 @@ impl WebFetchSettings {
         Ok(self)
     }
 
-    /// Returns the default timeout in milliseconds.
+    /// Returns the timeout used when the request doesn't specify one.
     #[must_use]
     pub const fn default_timeout_ms(self) -> u32 {
         self.default_timeout_ms
     }
 
-    /// Returns the maximum timeout in milliseconds.
+    /// Returns the hard cap on request duration regardless of the request.
     #[must_use]
     pub const fn max_timeout_ms(self) -> u32 {
         self.max_timeout_ms

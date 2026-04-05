@@ -40,6 +40,9 @@ impl GrepRequest {
 }
 
 /// Runtime settings applied to grep requests.
+///
+/// The `max_limit` field caps the number of matching lines returned, even if
+/// the caller requests more.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrepSettings {
     max_limit: usize,
@@ -60,7 +63,7 @@ impl GrepSettings {
         }
     }
 
-    /// Updates the maximum number of matches to return.
+    /// Sets the upper bound on matching lines returned per search.
     ///
     /// # Errors
     /// - Returns an error when `max_limit` is below [`MIN_LIMIT`].
@@ -78,14 +81,17 @@ impl GrepSettings {
         Ok(self)
     }
 
-    /// Returns the maximum number of matches to return.
+    /// Returns the upper bound on matching lines returned per search.
     #[must_use]
     pub const fn max_limit(self) -> usize {
         self.max_limit
     }
 }
 
-/// Core-owned formatting settings for rendered grep output.
+/// Formatting settings for rendered grep output.
+///
+/// Controls how matching lines are displayed: truncation length for long lines
+/// and whether to prefix each line with a line number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GrepFormattingSettings {
     max_line_length: usize,
