@@ -1,8 +1,9 @@
 //! Allowed directory path resolver implementation.
 
-use super::{resolve_nonexistent_candidate, PathResolver};
+use super::PathResolver;
 use crate::context::PathMode;
 use crate::error::{ToolError, ToolResult};
+use soft_canonicalize::soft_canonicalize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -37,17 +38,24 @@ pub struct AllowedPathResolver {
 impl AllowedPathResolver {
     /// Creates a new resolver with the given allowed directories.
     ///
-    /// Each directory is canonicalized during construction to ensure
-    /// consistent path comparison. Returns an error if any directory
-    /// doesn't exist or can't be canonicalized.
+    /// Each directory is resolved during construction to ensure consistent path
+    /// comparison. Returns an error if any directory doesn't exist or can't be
+    /// resolved.
     pub fn new(allowed_paths: impl IntoIterator<Item = impl AsRef<Path>>) -> ToolResult<Self> {
         let canonicalized: Result<Arc<[PathBuf]>, _> = allowed_paths
             .into_iter()
             .map(|p| {
                 let path = p.as_ref();
-                path.canonicalize().map_err(|e| {
+                if !path.is_dir() {
+                    return Err(ToolError::InvalidPath(format!(
+                        "failed to resolve allowed path '{}': path is not an existing directory",
+                        path.display()
+                    )));
+                }
+
+                soft_canonicalize(path).map_err(|e| {
                     ToolError::InvalidPath(format!(
-                        "failed to canonicalize allowed path '{}': {}",
+                        "failed to resolve allowed path '{}': {}",
                         path.display(),
                         e
                     ))
@@ -109,10 +117,12 @@ impl PathResolver for AllowedPathResolver {
                 continue;
             }
 
-            // For non-existent paths (write operations), resolve from the nearest
-            // existing ancestor so new intermediate directories are allowed.
-            if let Some(resolved) = resolve_nonexistent_candidate(base, &candidate) {
-                return Ok(resolved);
+            // Non-existent paths still need a resolved absolute target so we can
+            // validate containment consistently across platforms.
+            if let Ok(resolved) = soft_canonicalize(&candidate) {
+                if resolved.starts_with(base) {
+                    return Ok(resolved);
+                }
             }
         }
 
@@ -177,6 +187,16 @@ mod tests {
             err.to_string().contains("not within allowed"),
             "error should mention 'not within allowed'"
         );
+    }
+
+    #[test]
+    fn resolves_existing_file_through_missing_directory_parent_traversal() {
+        let dir = setup_test_dir();
+        let resolver = AllowedPathResolver::new(vec![dir.path().to_path_buf()]).unwrap();
+
+        let result = resolver.resolve("subdir/new_dir/../../file.txt");
+        assert!(result.is_ok());
+        assert!(result.unwrap().ends_with("file.txt"));
     }
 
     #[test]

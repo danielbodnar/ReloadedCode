@@ -47,6 +47,9 @@ bitflags = "2.11.0"
 # Shell-like expansion for home directory paths (~/ and $HOME/)
 shellexpand = "3.1.2"
 
+# Cross-platform canonicalization for non-existent paths
+soft-canonicalize = "0.5.5"
+
 # Fast binary serialization for catalog cache types
 bitcode = "0.6.9"
 

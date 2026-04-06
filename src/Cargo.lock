@@ -2051,6 +2051,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "shellexpand",
+ "soft-canonicalize",
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",
@@ -2451,6 +2452,12 @@ dependencies = [
  "proc-macro2",
  "syn",
 ]
+
+[[package]]
+name = "proc-canonicalize"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6127461ef34c8119591fc98e4046230f4f953bec84aaebfe326e3d82e8f383da"
 
 [[package]]
 name = "proc-macro-crate"
@@ -3482,6 +3489,15 @@ checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "soft-canonicalize"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaf99d1bbb279dfc59a8642f42fa4b6137935e506c97d1e2e57d282f417f163d"
+dependencies = [
+ "proc-canonicalize",
 ]
 
 [[package]]

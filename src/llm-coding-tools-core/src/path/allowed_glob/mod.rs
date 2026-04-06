@@ -6,10 +6,11 @@
 mod normalize;
 mod policy;
 
-use super::{resolve_nonexistent_candidate, PathResolver};
+use super::PathResolver;
 use crate::context::PathMode;
 use crate::error::{ToolError, ToolResult};
 use normalize::expand_shell;
+use soft_canonicalize::soft_canonicalize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -73,8 +74,14 @@ impl AllowedGlobResolver {
             .map(|p| {
                 let path = p.as_ref();
                 let expanded = expand_shell(&path.to_string_lossy())?;
-                expanded
-                    .canonicalize()
+                if !expanded.is_dir() {
+                    return Err(ToolError::InvalidPath(format!(
+                        "failed to resolve base directory '{}': path is not an existing directory",
+                        path.display()
+                    )));
+                }
+
+                soft_canonicalize(&expanded)
                     .map(|pb| Arc::from(pb.into_boxed_path()))
                     .map_err(|e| {
                         ToolError::InvalidPath(format!(
@@ -160,9 +167,13 @@ impl PathResolver for AllowedGlobResolver {
                 return Ok(resolved);
             }
 
-            // For non-existent paths (write operations), resolve from the nearest
-            // existing ancestor so new intermediate directories are allowed.
-            if let Some(target_path) = resolve_nonexistent_candidate(base_dir, &candidate) {
+            // Non-existent paths still need a resolved absolute target so we can
+            // validate containment and glob policy consistently across platforms.
+            if let Ok(target_path) = soft_canonicalize(&candidate) {
+                if !target_path.starts_with(base_dir) {
+                    continue;
+                }
+
                 // Apply glob policy to the target relative path.
                 let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
@@ -317,11 +328,20 @@ mod tests {
         assert!(result.unwrap().ends_with("src/new_dir/nested/new_file.rs"));
     }
 
+    #[test]
+    fn resolves_existing_file_through_missing_directory_parent_traversal() {
+        let dir = setup_test_dir();
+        let resolver = AllowedGlobResolver::new(vec![dir.path().to_path_buf()]).unwrap();
+
+        let result = resolver.resolve("src/new_dir/../../Cargo.toml");
+        assert!(result.is_ok());
+        assert!(result.unwrap().ends_with("Cargo.toml"));
+    }
+
     #[rstest]
     #[case::parent_traversal("../../../etc/passwd")]
     #[case::nested_traversal("src/../../../etc/passwd")]
     #[case::simple_parent("../Cargo.toml")]
-    #[case::missing_dir_parent_traversal("src/new_dir/../../Cargo.toml")]
     fn rejects_path_traversal_attempts(#[case] input: &str) {
         let dir = setup_test_dir();
         let resolver = AllowedGlobResolver::new(vec![dir.path().to_path_buf()]).unwrap();
