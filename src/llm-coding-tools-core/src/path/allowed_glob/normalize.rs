@@ -101,7 +101,8 @@ mod tests {
 
         #[cfg(not(windows))]
         {
-            let temp_home_path = TempDir::new().unwrap().path().canonicalize().unwrap();
+            let temp_dir = TempDir::new().unwrap();
+            let temp_home_path = temp_dir.path().canonicalize().unwrap();
             temp_env::with_var("HOME", Some(&temp_home_path), || {
                 let result = expand_shell("~/project").unwrap();
                 assert!(result.starts_with(&temp_home_path));
@@ -112,7 +113,8 @@ mod tests {
 
     #[test]
     fn expands_home_dollar() {
-        let temp_home_path = TempDir::new().unwrap().path().canonicalize().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home_path = temp_dir.path().canonicalize().unwrap();
         let temp_home_path = strip_verbatim(temp_home_path);
 
         temp_env::with_var("HOME", Some(&temp_home_path), || {
