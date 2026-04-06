@@ -77,67 +77,6 @@ jobs:
           cargo test -p llm-coding-tools-bubblewrap --no-default-features --features blocking
           cargo test -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap
 
-      - name: Run cargo-semver-checks
-        # Run semver checks only on Linux rows.
-        # Linux is the only target with additional exported APIs in this workspace
-        # (`linux-bubblewrap` and the bubblewrap crate itself); current Windows/macOS
-        # `cfg(...)` usage is implementation-only. Blocking mode still changes public
-        # signatures via maybe-async, so the Blocking Linux row checks that surface too.
-        if: (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')) && matrix.linux_bwrap
-        working-directory: src
-        shell: bash
-        run: |
-          cargo +stable binstall --no-confirm cargo-semver-checks --force
-          rustup +stable target add ${{ matrix.target }}
-
-          case "${{ matrix.mode }}" in
-            async)
-              for CRATE in "llm-coding-tools-core" "llm-coding-tools-agents" "llm-coding-tools-serdesai" "llm-coding-tools-models-dev"; do
-                SEARCH_RESULT=$(cargo search "^${CRATE}$" --limit 1)
-                if echo "$SEARCH_RESULT" | grep -q "^${CRATE} "; then
-                  echo "Running semver checks for ${CRATE}..."
-                  if [ "${CRATE}" = "llm-coding-tools-core" ]; then
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features tokio
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features tokio,linux-bubblewrap
-                  elif [ "${CRATE}" = "llm-coding-tools-serdesai" ]; then
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features full
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features full,linux-bubblewrap
-                  else
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }}
-                  fi
-                else
-                  echo "No previous version of ${CRATE} found on crates.io. Skipping semver checks."
-                fi
-              done
-
-              SEARCH_RESULT=$(cargo search "^llm-coding-tools-bubblewrap$" --limit 1)
-              if echo "$SEARCH_RESULT" | grep -q "^llm-coding-tools-bubblewrap "; then
-                echo "Running semver checks for llm-coding-tools-bubblewrap..."
-                cargo +stable semver-checks -p llm-coding-tools-bubblewrap --target ${{ matrix.target }} --only-explicit-features
-                cargo +stable semver-checks -p llm-coding-tools-bubblewrap --target ${{ matrix.target }} --only-explicit-features --features tokio
-                cargo +stable semver-checks -p llm-coding-tools-bubblewrap --target ${{ matrix.target }} --only-explicit-features --features blocking
-              else
-                echo "No previous version of llm-coding-tools-bubblewrap found on crates.io. Skipping semver checks."
-              fi
-              ;;
-            blocking)
-              for CRATE in "llm-coding-tools-core" "llm-coding-tools-models-dev"; do
-                SEARCH_RESULT=$(cargo search "^${CRATE}$" --limit 1)
-                if echo "$SEARCH_RESULT" | grep -q "^${CRATE} "; then
-                  echo "Running semver checks for ${CRATE}..."
-                  if [ "${CRATE}" = "llm-coding-tools-core" ]; then
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features blocking
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features blocking,linux-bubblewrap
-                  else
-                    cargo +stable semver-checks -p "${CRATE}" --target ${{ matrix.target }} --only-explicit-features --features blocking
-                  fi
-                else
-                  echo "No previous version of ${CRATE} found on crates.io. Skipping semver checks."
-                fi
-              done
-              ;;
-          esac
-
       - name: Check documentation is valid
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         working-directory: src
@@ -213,11 +152,57 @@ jobs:
         with:
           manifest-path: src/Cargo.toml
 
+  semver-checks:
+    name: Semver Checks (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+
+      # Each matrix row represents one semver surface (package + feature combo).
+      #
+      # Linux-only coverage is sufficient because:
+      # - `linux-bubblewrap` exports extra public items only on Linux
+      # - Windows/macOS cfg branches are implementation-only today
+      # - `maybe-async` changes public signatures, so async and blocking must both be checked
+      #
+      # Cache strategy:
+      # - `prefix-key` is unique per row because upstream rustdoc cache excludes feature flags
+      # - `shared-key` is intentionally unset — upstream warns against reuse across surfaces
+      # - Wrapper handles checkout, toolchain, and normal Cargo cache automatically
+
+      matrix:
+        include:
+          - { label: "Core Async", package: llm-coding-tools-core, feature_group: only-explicit-features, features: tokio, prefix_key: core-async-tokio }
+          - { label: "Core Async+Linux", package: llm-coding-tools-core, feature_group: only-explicit-features, features: "tokio,linux-bubblewrap", prefix_key: core-async-tokio-linux-bwrap }
+          - { label: "Serdesai Full", package: llm-coding-tools-serdesai, feature_group: only-explicit-features, features: full, prefix_key: serdesai-async-full }
+          - { label: "Serdesai Full+Linux", package: llm-coding-tools-serdesai, feature_group: only-explicit-features, features: "full,linux-bubblewrap", prefix_key: serdesai-async-full-linux-bwrap }
+          - { label: "Agents+Models", package: "llm-coding-tools-agents,llm-coding-tools-models-dev", feature_group: default-features, features: "", prefix_key: agents-models-dev-default }
+          - { label: "Bubblewrap Base", package: llm-coding-tools-bubblewrap, feature_group: only-explicit-features, features: "", prefix_key: bubblewrap-base }
+          - { label: "Bubblewrap Async", package: llm-coding-tools-bubblewrap, feature_group: only-explicit-features, features: tokio, prefix_key: bubblewrap-tokio }
+          - { label: "Bubblewrap Blocking", package: llm-coding-tools-bubblewrap, feature_group: only-explicit-features, features: blocking, prefix_key: bubblewrap-blocking }
+          - { label: "Core Blocking", package: llm-coding-tools-core, feature_group: only-explicit-features, features: blocking, prefix_key: core-blocking }
+          - { label: "Core Blocking+Linux", package: llm-coding-tools-core, feature_group: only-explicit-features, features: "blocking,linux-bubblewrap", prefix_key: core-blocking-linux-bwrap }
+          - { label: "Models Blocking", package: llm-coding-tools-models-dev, feature_group: only-explicit-features, features: blocking, prefix_key: models-dev-blocking }
+
+    steps:
+      - name: Run semver check surface
+        uses: Reloaded-Project/devops-cargo-semver-checks-action@v1
+        with:
+          manifest-path: src/Cargo.toml
+          package: ${{ matrix.package }}
+          feature-group: ${{ matrix.feature_group }}
+          features: ${{ matrix.features }}
+          rust-toolchain: stable
+          rust-target: x86_64-unknown-linux-gnu
+          prefix-key: ${{ matrix.prefix_key }}
+          rust-cache-key-suffix: ${{ matrix.prefix_key }}
+
   publish-crate:
     permissions:
       contents: write
 
-    needs: [ci, format]
+    needs: [ci, format, semver-checks]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
