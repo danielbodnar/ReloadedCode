@@ -2030,6 +2030,7 @@ dependencies = [
  "bitflags",
  "const_format",
  "criterion",
+ "dirs",
  "globset",
  "grep-regex",
  "grep-searcher",

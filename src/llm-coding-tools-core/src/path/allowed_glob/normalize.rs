@@ -41,6 +41,8 @@ pub(crate) fn expand_shell(path: &str) -> ToolResult<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use temp_env;
+    use tempfile::TempDir;
 
     #[cfg(windows)]
     fn strip_verbatim(path: PathBuf) -> PathBuf {
@@ -87,31 +89,33 @@ mod tests {
 
     #[test]
     fn expands_home_tilde() {
-        use temp_env::with_var;
-        use tempfile::TempDir;
-
-        let temp_home_path = TempDir::new().unwrap().path().canonicalize().unwrap();
-
         #[cfg(windows)]
-        let env_var = "USERPROFILE";
-        #[cfg(not(windows))]
-        let env_var = "HOME";
+        {
+            let expected_home = dirs::home_dir().expect("home directory should exist");
+            let expected_home = strip_verbatim(expected_home.canonicalize().unwrap());
 
-        with_var(env_var, Some(&temp_home_path), || {
             let result = strip_verbatim(expand_shell("~/project").unwrap());
-            assert!(result.starts_with(&temp_home_path));
+            assert!(result.starts_with(&expected_home));
             assert!(result.ends_with("project"));
-        });
+        }
+
+        #[cfg(not(windows))]
+        {
+            let temp_home_path = TempDir::new().unwrap().path().canonicalize().unwrap();
+            temp_env::with_var("HOME", Some(&temp_home_path), || {
+                let result = expand_shell("~/project").unwrap();
+                assert!(result.starts_with(&temp_home_path));
+                assert!(result.ends_with("project"));
+            });
+        }
     }
 
     #[test]
     fn expands_home_dollar() {
-        use temp_env::with_var;
-        use tempfile::TempDir;
-
         let temp_home_path = TempDir::new().unwrap().path().canonicalize().unwrap();
+        let temp_home_path = strip_verbatim(temp_home_path);
 
-        with_var("HOME", Some(&temp_home_path), || {
+        temp_env::with_var("HOME", Some(&temp_home_path), || {
             let result = strip_verbatim(expand_shell("$HOME/workspace").unwrap());
             assert!(result.starts_with(&temp_home_path));
             assert!(result.ends_with("workspace"));
@@ -126,9 +130,7 @@ mod tests {
 
     #[test]
     fn returns_error_for_unset_environment_variable() {
-        use temp_env::with_var;
-
-        with_var("DEFINITELY_NOT_SET_12345", None::<&str>, || {
+        temp_env::with_var("DEFINITELY_NOT_SET_12345", None::<&str>, || {
             let result = expand_shell("$DEFINITELY_NOT_SET_12345/project");
             assert!(result.is_err());
             let err = result.unwrap_err();

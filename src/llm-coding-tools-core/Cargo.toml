@@ -105,6 +105,7 @@ llm-coding-tools-bubblewrap = { version = "0.1.0", path = "../llm-coding-tools-b
 [dev-dependencies]
 serial_test = "3"
 tempfile = "3.27"
+dirs = "6"
 # For tests (async and blocking with wiremock)
 tokio = { version = "1.51", features = ["rt-multi-thread", "macros"] }
 wiremock = "0.6"
