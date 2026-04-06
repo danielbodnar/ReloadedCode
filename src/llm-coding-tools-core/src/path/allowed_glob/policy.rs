@@ -116,10 +116,16 @@ impl GlobPolicyBuilder {
     /// directory paths instead).
     ///
     /// Pattern syntax:
-    /// - `*` matches any number of characters (except `/`)
-    /// - `?` matches exactly one character (except `/`)
-    /// - `**` matches any number of characters including `/`
+    /// - `*` matches any number of characters
+    /// - `?` matches exactly one character
+    /// - `**` matches any number of path components (including zero)
     /// - `{a,b}` matches either `a` or `b`
+    ///
+    /// Patterns are matched against the entire relative path string, so `*` and
+    /// `?` can match path separators (`/`). For example:
+    /// - `*.rs` matches `src/lib.rs` because `*` can span across `/`
+    /// - `*.rs` matches `main.rs` at the root level
+    /// - `target/**` matches `target/debug/app` (and any depth under `target/`)
     ///
     /// # Arguments
     ///
