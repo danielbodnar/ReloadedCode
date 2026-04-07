@@ -26,15 +26,22 @@ pub(crate) fn normalize_path(path: &Path) -> Cow<'_, str> {
     }
 }
 
-/// Expands shell-like patterns (`~/`, `$HOME/`, `$VAR`, `${VAR:-default}`) in a
-/// path string.
+/// Expands shell-like patterns (`~/`, `$HOME/`, `$VAR`, `${VAR:-default}`).
 ///
-/// Returns the expanded path on success, or a `ToolError::InvalidPath` if
-/// expansion fails (e.g., environment variable not set or contains non-Unicode
-/// data). Uses `shellexpand` which internally uses `dirs::home_dir()` for
-/// cross-platform home detection.
+/// Returns `Cow::Borrowed` for patterns without shell metacharacters (zero allocation).
+/// All other `expand_*` functions in this crate are thin wrappers around this one.
+pub(crate) fn expand_pattern(
+    pattern: &str,
+) -> Result<Cow<'_, str>, shellexpand::LookupError<std::env::VarError>> {
+    shellexpand::full(pattern)
+}
+
+/// Expands shell-like patterns in a path string, returning a [`PathBuf`].
+///
+/// Wraps [`expand_pattern`] with fail-fast error handling: returns
+/// `ToolError::InvalidPath` if expansion fails (e.g., unset variable).
 pub(crate) fn expand_shell(path: &str) -> ToolResult<PathBuf> {
-    shellexpand::full(path)
+    expand_pattern(path)
         .map(|cow| PathBuf::from(cow.into_owned()))
         .map_err(|e| {
             ToolError::InvalidPath(format!(
@@ -47,6 +54,7 @@ pub(crate) fn expand_shell(path: &str) -> ToolResult<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use temp_env;
     use tempfile::TempDir;
 
@@ -94,56 +102,96 @@ mod tests {
     }
 
     #[test]
-    fn expands_home_tilde() {
-        #[cfg(windows)]
-        {
-            let expected_home = dirs::home_dir().expect("home directory should exist");
-            let expected_home = strip_verbatim(expected_home.canonicalize().unwrap());
-
-            let result = strip_verbatim(expand_shell("~/project").unwrap());
-            assert!(result.starts_with(&expected_home));
-            assert!(result.ends_with("project"));
-        }
-
-        #[cfg(not(windows))]
-        {
-            let temp_dir = TempDir::new().unwrap();
-            let temp_home_path = temp_dir.path().canonicalize().unwrap();
-            temp_env::with_var("HOME", Some(&temp_home_path), || {
-                let result = expand_shell("~/project").unwrap();
-                assert!(result.starts_with(&temp_home_path));
-                assert!(result.ends_with("project"));
-            });
-        }
-    }
-
-    #[test]
-    fn expands_home_dollar() {
+    fn expand_shell_produces_pathbuf_on_success() {
         let temp_dir = TempDir::new().unwrap();
-        let temp_home_path = temp_dir.path().canonicalize().unwrap();
-        let temp_home_path = strip_verbatim(temp_home_path);
+        let temp_home = temp_dir.path().canonicalize().unwrap();
+        let temp_home = strip_verbatim(temp_home);
 
-        temp_env::with_var("HOME", Some(&temp_home_path), || {
+        temp_env::with_var("HOME", Some(&temp_home), || {
             let result = strip_verbatim(expand_shell("$HOME/workspace").unwrap());
-            assert!(result.starts_with(&temp_home_path));
+            assert!(result.starts_with(&temp_home));
             assert!(result.ends_with("workspace"));
         });
     }
 
     #[test]
-    fn leaves_path_without_shell_patterns_unchanged() {
-        let result = expand_shell("/some/path").unwrap();
-        assert_eq!(result, PathBuf::from("/some/path"));
-    }
-
-    #[test]
-    fn returns_error_for_unset_environment_variable() {
+    fn expand_shell_returns_error_for_unset_environment_variable() {
         temp_env::with_var("DEFINITELY_NOT_SET_12345", None::<&str>, || {
             let result = expand_shell("$DEFINITELY_NOT_SET_12345/project");
             assert!(result.is_err());
             let err = result.unwrap_err();
             assert!(err.to_string().contains("failed to expand shell pattern"));
             assert!(err.to_string().contains("DEFINITELY_NOT_SET_12345"));
+        });
+    }
+
+    // --- expand_pattern ---
+
+    #[cfg(not(windows))]
+    #[test]
+    fn expand_pattern_should_expand_tilde() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path().canonicalize().unwrap();
+
+        temp_env::with_var("HOME", Some(&temp_home), || {
+            let expanded = expand_pattern("~/projects/*").unwrap();
+            let expanded_str = expanded.as_ref();
+            assert!(
+                expanded_str.starts_with(temp_home.to_str().unwrap()),
+                "expected expansion to start with {:?}, got {:?}",
+                temp_home,
+                expanded_str
+            );
+            assert!(
+                expanded_str.ends_with("/projects/*"),
+                "expected expansion to end with /projects/*, got {:?}",
+                expanded_str
+            );
+        });
+    }
+
+    #[test]
+    fn expand_pattern_should_expand_dollar_home() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path().canonicalize().unwrap();
+
+        temp_env::with_var("HOME", Some(&temp_home), || {
+            let expanded = expand_pattern("$HOME/.config/*").unwrap();
+            let expanded_str = expanded.as_ref();
+            assert!(
+                expanded_str.starts_with(temp_home.to_str().unwrap()),
+                "expected expansion to start with {:?}, got {:?}",
+                temp_home,
+                expanded_str
+            );
+            assert!(
+                expanded_str.ends_with("/.config/*"),
+                "expected expansion to end with /.config/*, got {:?}",
+                expanded_str
+            );
+        });
+    }
+
+    #[rstest]
+    #[case::absolute("/workspace/src/lib.rs")]
+    #[case::wildcard("*.rs")]
+    #[case::prefix_wildcard("orchestrator-*")]
+    #[case::exact("bash")]
+    #[case::star("*")]
+    fn expand_pattern_should_borrow_when_no_shell_chars(#[case] pattern: &str) {
+        let result = expand_pattern(pattern).unwrap();
+        assert!(
+            matches!(result, Cow::Borrowed(_)),
+            "expected Borrowed for {:?}, got Owned",
+            pattern
+        );
+        assert_eq!(result.as_ref(), pattern);
+    }
+
+    #[test]
+    fn expand_pattern_should_return_error_on_failure() {
+        temp_env::with_var("DEFINITELY_NOT_SET_99999", None::<&str>, || {
+            assert!(expand_pattern("$DEFINITELY_NOT_SET_99999/path").is_err());
         });
     }
 }

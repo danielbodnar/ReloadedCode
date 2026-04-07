@@ -3,7 +3,7 @@
 //! Provides [`AllowedGlobResolver`] which restricts path access to allowed
 //! directories with glob pattern filtering.
 
-mod normalize;
+pub(crate) mod normalize;
 mod policy;
 
 use super::{path_analysis, resolve_new_file_fast, PathResolver};
