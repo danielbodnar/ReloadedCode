@@ -6,6 +6,8 @@ use super::{
     PIPE_BUFFER_CAPACITY,
 };
 use crate::error::{ToolError, ToolResult};
+use crate::permissions_ext::OptionRulesetExt;
+use crate::tool_metadata::bash as bash_meta;
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
 use llm_coding_tools_bubblewrap::wrap::tokio as linux_bwrap_wrap;
 use parking_lot::Mutex;
@@ -91,6 +93,7 @@ async fn await_pipe_drain_task_with_grace(task: PipeDrainTask, grace: Duration) 
 /// - Unix: Process groups
 ///
 /// # Errors
+/// - Returns [`ToolError::PermissionDenied`] when the command is blocked by `settings.permission`.
 /// - Returns `ToolError::Validation` if timeout is 0 or exceeds max_timeout_ms.
 /// - Returns [`ToolError::InvalidPath`] if workdir is not absolute or doesn't exist.
 /// - Returns [`ToolError::Execution`] for sandbox mode when bwrap is missing or unusable.
@@ -100,6 +103,10 @@ pub async fn execute_command(
     request: super::BashRequest,
     settings: super::BashSettings<'_>,
 ) -> ToolResult<BashOutput> {
+    settings
+        .permission
+        .check(bash_meta::NAME, &request.command)?;
+
     let workdir = request
         .workdir
         .as_deref()
@@ -265,6 +272,8 @@ fn build_host_wrap(command: &str, workdir: Option<&Path>) -> ToolResult<CommandW
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permissions::{PermissionAction, Rule, Ruleset};
+    use crate::tool_metadata::bash as bash_meta;
     use crate::tools::{BashRequest, BashSettings};
     use tempfile::TempDir;
 
@@ -281,6 +290,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await
@@ -288,6 +298,39 @@ mod tests {
 
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn rejected_command_returns_permission_denied() {
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new(bash_meta::NAME, "*", PermissionAction::Allow));
+        ruleset.push(Rule::new(
+            bash_meta::NAME,
+            "echo hello",
+            PermissionAction::Deny,
+        ));
+
+        let err = execute_command(
+            &BashExecutionMode::Host,
+            BashRequest {
+                command: "echo hello".to_string(),
+                workdir: None,
+                timeout_ms: None,
+            },
+            BashSettings {
+                default_timeout_ms: 5000,
+                max_timeout_ms: 10000,
+                default_workdir: None,
+                permission: Some(&ruleset),
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ToolError::PermissionDenied { tool: "bash", .. }
+        ));
     }
 
     #[tokio::test]
@@ -310,6 +353,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await
@@ -339,6 +383,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await;
@@ -367,6 +412,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await;
@@ -419,6 +465,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await;
@@ -445,6 +492,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 10000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await
@@ -493,6 +541,7 @@ mod tests {
                 default_timeout_ms: 5000,
                 max_timeout_ms: 60000,
                 default_workdir: None,
+                permission: None,
             },
         )
         .await

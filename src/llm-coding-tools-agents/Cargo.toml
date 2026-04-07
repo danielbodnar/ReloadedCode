@@ -42,3 +42,7 @@ rstest = "0.26"
 [[bench]]
 name = "parser"
 harness = false
+
+[[bench]]
+name = "runtime_task"
+harness = false

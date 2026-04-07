@@ -4,6 +4,8 @@ use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::output::ToolOutput;
 use crate::path::PathResolver;
+use crate::permissions::Ruleset;
+use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::read as read_meta;
 use crate::util::{truncate_line_with_ellipsis, ESTIMATED_CHARS_PER_LINE, TRUNCATION_ELLIPSIS};
 use memchr::memchr;
@@ -11,6 +13,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::Write;
+use std::sync::Arc;
 
 /// Strips trailing CR from a line (for CRLF handling).
 #[inline]
@@ -73,12 +76,13 @@ impl ReadRequest {
 /// - **Max limit**: hard cap applied regardless of what the caller requests.
 ///
 /// Additional settings control per-line truncation and line-number display.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadSettings {
     default_limit: usize,
     max_limit: usize,
     max_line_length: usize,
     line_numbers: bool,
+    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for ReadSettings {
@@ -90,12 +94,13 @@ impl Default for ReadSettings {
 impl ReadSettings {
     /// Creates valid read settings with the standard defaults.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             default_limit: read_meta::DEFAULT_LIMIT,
             max_limit: read_meta::DEFAULT_LIMIT,
             max_line_length: read_meta::MAX_LINE_LENGTH,
             line_numbers: true,
+            permission: None,
         }
     }
 
@@ -132,7 +137,8 @@ impl ReadSettings {
     ///
     /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_default_limit(self, default_limit: usize) -> ToolResult<Self> {
-        self.with_limits(default_limit, self.max_limit)
+        let max_limit = self.max_limit;
+        self.with_limits(default_limit, max_limit)
     }
 
     /// Sets the hard cap on lines returned regardless of what the caller
@@ -146,7 +152,8 @@ impl ReadSettings {
     ///
     /// [`MIN_LIMIT`]: crate::util::MIN_LIMIT
     pub fn with_max_limit(self, max_limit: usize) -> ToolResult<Self> {
-        self.with_limits(self.default_limit, max_limit)
+        let default_limit = self.default_limit;
+        self.with_limits(default_limit, max_limit)
     }
 
     /// Updates the per-line truncation length.
@@ -163,34 +170,80 @@ impl ReadSettings {
     }
 
     /// Enables or disables line numbers in output.
+    ///
+    /// # Arguments
+    /// - `line_numbers` - `true` to prefix each line with its line number.
+    ///
+    /// # Returns
+    /// - The modified [`ReadSettings`] with the updated flag.
     #[must_use]
-    pub const fn with_line_numbers(mut self, line_numbers: bool) -> Self {
+    pub fn with_line_numbers(mut self, line_numbers: bool) -> Self {
         self.line_numbers = line_numbers;
         self
     }
 
-    /// Returns the line count used when the caller doesn't specify one.
+    /// Attaches an optional permission ruleset to read operations.
+    ///
+    /// # Arguments
+    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
+    ///   may be read. Pass `None` to disable permission filtering.
+    ///
+    /// # Returns
+    /// - The modified [`ReadSettings`] with the permission attached.
+    ///
+    /// [`Arc<Ruleset>`]: std::sync::Arc
     #[must_use]
-    pub const fn default_limit(self) -> usize {
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.permission = permission;
+        self
+    }
+
+    /// Returns the line count used when the caller doesn't specify one.
+    ///
+    /// # Returns
+    /// - The configured default line limit.
+    #[must_use]
+    pub const fn default_limit(&self) -> usize {
         self.default_limit
     }
 
     /// Returns the hard cap on lines returned regardless of the request.
+    ///
+    /// # Returns
+    /// - The configured maximum line limit.
     #[must_use]
-    pub const fn max_limit(self) -> usize {
+    pub const fn max_limit(&self) -> usize {
         self.max_limit
     }
 
     /// Returns the maximum characters per line before truncation.
+    ///
+    /// # Returns
+    /// - The configured per-line truncation length.
     #[must_use]
-    pub const fn max_line_length(self) -> usize {
+    pub const fn max_line_length(&self) -> usize {
         self.max_line_length
     }
 
     /// Returns whether line numbers are included in output.
+    ///
+    /// # Returns
+    /// - `true` when line numbers are enabled.
     #[must_use]
-    pub const fn line_numbers(self) -> bool {
+    pub const fn line_numbers(&self) -> bool {
         self.line_numbers
+    }
+
+    /// Returns the permission ruleset applied to read operations, if any.
+    ///
+    /// # Returns
+    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
+    /// - `None` when no permission filtering is applied.
+    ///
+    /// [`Ruleset`]: crate::permissions::Ruleset
+    #[must_use]
+    pub fn permission(&self) -> Option<&Ruleset> {
+        self.permission.as_deref()
     }
 }
 
@@ -236,7 +289,7 @@ fn ensure_max_line_length(max_line_length: usize) -> ToolResult<()> {
 pub async fn read_file<R: PathResolver>(
     resolver: &R,
     request: ReadRequest,
-    settings: ReadSettings,
+    settings: &ReadSettings,
 ) -> ToolResult<ToolOutput> {
     // Conditional trait import for consume() method
     #[cfg(feature = "blocking")]
@@ -263,6 +316,10 @@ pub async fn read_file<R: PathResolver>(
     }
 
     let path = resolver.resolve(&request.file_path)?;
+    let subject = path.to_string_lossy();
+    settings
+        .permission()
+        .check(read_meta::NAME, subject.as_ref())?;
     let buf_capacity = (limit * ESTIMATED_CHARS_PER_LINE).next_power_of_two();
     let mut reader = fs::open_buffered(&path, buf_capacity).await?;
 
@@ -362,6 +419,7 @@ pub async fn read_file<R: PathResolver>(
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
+    use crate::permissions::{PermissionAction, Rule};
     use rstest::rstest;
     use std::io::Write as _;
     use tempfile::NamedTempFile;
@@ -387,7 +445,7 @@ mod tests {
                 offset,
                 limit: Some(limit),
             },
-            settings,
+            &settings,
         )
         .await
     }
@@ -481,7 +539,7 @@ mod tests {
                 offset: 1,
                 limit: Some(10),
             },
-            settings,
+            &settings,
         )
         .await
         .unwrap();
@@ -511,7 +569,7 @@ mod tests {
                 offset: 1,
                 limit: Some(3),
             },
-            settings,
+            &settings,
         )
         .await
         .unwrap();
@@ -538,11 +596,43 @@ mod tests {
                 offset: 1,
                 limit: Some(0), // Request explicitly asks for 0 lines
             },
-            settings,
+            &settings,
         )
         .await
         .unwrap_err();
 
         assert!(matches!(err, ToolError::Validation { .. }));
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn read_request_rejects_denied_path() {
+        let mut temp = NamedTempFile::new().unwrap();
+        temp.write_all(b"line1\n").unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new("read", "*", PermissionAction::Allow));
+        ruleset.push(Rule::new(
+            "read",
+            temp.path().to_string_lossy().into_owned(),
+            PermissionAction::Deny,
+        ));
+
+        let err = read_file(
+            &resolver,
+            ReadRequest {
+                file_path: temp.path().to_string_lossy().into_owned(),
+                offset: 1,
+                limit: Some(1),
+            },
+            &ReadSettings::new().with_permission(Some(Arc::new(ruleset))),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ToolError::PermissionDenied { tool: "read", .. }
+        ));
     }
 }

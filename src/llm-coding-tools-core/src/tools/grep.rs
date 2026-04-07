@@ -2,6 +2,8 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
+use crate::permissions::Ruleset;
+use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::grep as grep_meta;
 use crate::util::{truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
 use globset::Glob;
@@ -13,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Write;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Default maximum line length (in characters) for formatted grep output.
@@ -43,9 +46,10 @@ impl GrepRequest {
 ///
 /// The `max_limit` field caps the number of matching lines returned, even if
 /// the caller requests more.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrepSettings {
     max_limit: usize,
+    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for GrepSettings {
@@ -57,9 +61,10 @@ impl Default for GrepSettings {
 impl GrepSettings {
     /// Creates valid grep search settings with the standard defaults.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             max_limit: grep_meta::DEFAULT_LIMIT,
+            permission: None,
         }
     }
 
@@ -81,10 +86,41 @@ impl GrepSettings {
         Ok(self)
     }
 
-    /// Returns the upper bound on matching lines returned per search.
+    /// Attaches an optional permission ruleset to grep operations.
+    ///
+    /// # Arguments
+    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
+    ///   may be searched. Pass `None` to disable permission filtering.
+    ///
+    /// # Returns
+    /// - The modified [`GrepSettings`] with the permission attached.
+    ///
+    /// [`Arc<Ruleset>`]: std::sync::Arc
     #[must_use]
-    pub const fn max_limit(self) -> usize {
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.permission = permission;
+        self
+    }
+
+    /// Returns the upper bound on matching lines returned per search.
+    ///
+    /// # Returns
+    /// - The configured maximum line limit.
+    #[must_use]
+    pub const fn max_limit(&self) -> usize {
         self.max_limit
+    }
+
+    /// Returns the permission ruleset applied to grep operations, if any.
+    ///
+    /// # Returns
+    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
+    /// - `None` when no permission filtering is applied.
+    ///
+    /// [`Ruleset`]: crate::permissions::Ruleset
+    #[must_use]
+    pub fn permission(&self) -> Option<&Ruleset> {
+        self.permission.as_deref()
     }
 }
 
@@ -254,7 +290,7 @@ impl GrepOutput {
 pub fn grep_search<R: PathResolver>(
     resolver: &R,
     request: GrepRequest,
-    settings: GrepSettings,
+    settings: &GrepSettings,
 ) -> ToolResult<GrepOutput> {
     let pattern = request.pattern.trim();
     if pattern.is_empty() {
@@ -282,6 +318,10 @@ pub fn grep_search<R: PathResolver>(
     });
 
     let path = resolver.resolve(&request.path)?;
+    let search_subject = path.to_string_lossy();
+    settings
+        .permission()
+        .check(grep_meta::NAME, search_subject.as_ref())?;
 
     let matcher =
         RegexMatcher::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
@@ -321,6 +361,15 @@ pub fn grep_search<R: PathResolver>(
         }
 
         let entry_path = entry.path();
+
+        // If target is in a location it's not allowed to access, it needs
+        // to be filtered out.
+        if let Some(ruleset) = settings.permission() {
+            let subject = entry_path.to_string_lossy();
+            if !ruleset.is_allowed(grep_meta::NAME, subject.as_ref()) {
+                continue;
+            }
+        }
 
         // Apply include glob to basename when requested.
         if let Some(ref matcher) = glob_matcher {
@@ -423,6 +472,7 @@ fn collect_file_matches(
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
+    use crate::permissions::{PermissionAction, Rule};
     use rstest::rstest;
     use tempfile::tempdir;
 
@@ -511,7 +561,7 @@ mod tests {
                 include: include.map(|s| s.to_string()),
                 limit: None,
             },
-            GrepSettings::new().with_max_limit(10).unwrap(),
+            &GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap();
 
@@ -675,7 +725,7 @@ mod tests {
                 include: None,
                 limit: None,
             },
-            GrepSettings::new().with_max_limit(10).unwrap(),
+            &GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap();
 
@@ -699,7 +749,7 @@ mod tests {
                 include: None,
                 limit: None,
             },
-            GrepSettings::new().with_max_limit(10).unwrap(),
+            &GrepSettings::new().with_max_limit(10).unwrap(),
         )
         .unwrap_err();
 
@@ -725,7 +775,7 @@ mod tests {
                 include: Some("   ".into()),
                 limit: Some(1),
             },
-            GrepSettings::new().with_max_limit(1).unwrap(),
+            &GrepSettings::new().with_max_limit(1).unwrap(),
         )
         .unwrap();
 
@@ -753,7 +803,7 @@ mod tests {
                 include: None,
                 limit: Some(100), // Request asks for 100 matches
             },
-            GrepSettings::new().with_max_limit(2).unwrap(), // But max_limit is only 2
+            &GrepSettings::new().with_max_limit(2).unwrap(), // But max_limit is only 2
         )
         .unwrap();
 
@@ -761,5 +811,39 @@ mod tests {
         assert_eq!(result.effective_limit, 2);
         assert_eq!(result.match_count, 2);
         assert!(result.truncated);
+    }
+
+    #[test]
+    fn grep_skips_denied_files_before_counting_matches() {
+        let temp = tempdir().unwrap();
+        let allowed = temp.path().join("allowed.txt");
+        let denied = temp.path().join("denied.txt");
+        std::fs::write(&allowed, "hello\n").unwrap();
+        std::fs::write(&denied, "hello\n").unwrap();
+        let resolver = AbsolutePathResolver;
+
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new(grep_meta::NAME, "*", PermissionAction::Allow));
+        ruleset.push(Rule::new(
+            grep_meta::NAME,
+            denied.to_string_lossy().into_owned(),
+            PermissionAction::Deny,
+        ));
+
+        let result = grep_search(
+            &resolver,
+            GrepRequest {
+                pattern: "hello".into(),
+                path: temp.path().to_string_lossy().into_owned(),
+                include: None,
+                limit: None,
+            },
+            &GrepSettings::new().with_permission(Some(Arc::new(ruleset))),
+        )
+        .unwrap();
+
+        assert_eq!(result.match_count, 1);
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.files[0].path, allowed.to_string_lossy());
     }
 }

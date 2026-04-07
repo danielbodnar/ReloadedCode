@@ -5,8 +5,7 @@
 //! Each call is independent — no session state is kept between runs.
 
 use crate::agent_runtime::{TaskBuildContext, build_agent};
-use llm_coding_tools_agents::{AgentMode, RulesetExt};
-use llm_coding_tools_core::permissions::Ruleset;
+use llm_coding_tools_agents::AgentMode;
 use llm_coding_tools_core::tool_metadata::task as task_meta;
 use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput, TaskOutput};
 use serdes_ai::tools::ToolError;
@@ -105,6 +104,8 @@ where
 
     fn validate_target(&self, caller_name: &str, target_name: &str) -> Result<(), ToolError> {
         let catalog = self.context.runtime().catalog();
+
+        // Check if we can get caller & target
         let caller = catalog.by_name(caller_name).ok_or_else(|| {
             ToolError::execution_failed(format!(
                 "delegating agent `{caller_name}` disappeared from the runtime catalog"
@@ -118,6 +119,7 @@ where
             )
         })?;
 
+        // Primary agents cannot be delegated to; they're main driver.
         if matches!(target.mode, AgentMode::Primary) {
             return Err(ToolError::validation_error(
                 task_meta::NAME,
@@ -128,14 +130,12 @@ where
             ));
         }
 
-        // `validate_target` only applies `Ruleset` filtering when `caller.permission`
-        // explicitly defines `task_meta::NAME`; without that opt-in, non-Primary
-        // targets remain callable for compatibility, while `AgentMode::Primary`
-        // targets are always denied above.
-        let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
-        if has_explicit_task_permission
-            && !Ruleset::from_permission_config(&caller.permission)
-                .is_allowed(task_meta::NAME, target_name)
+        // Check if caller is allowed to delegate to target
+        if caller.permission.contains_key(task_meta::NAME)
+            && !self
+                .context
+                .runtime()
+                .can_delegate_to(caller_name, target_name)
         {
             return Err(ToolError::validation_error(
                 task_meta::NAME,

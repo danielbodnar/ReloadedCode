@@ -13,9 +13,11 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::edit as edit_meta;
-use llm_coding_tools_core::tools::{EditRequest, edit_file};
+use llm_coding_tools_core::tools::{EditRequest, EditSettings, edit_file};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
+use std::sync::Arc;
 
 use crate::convert::core_error_to_serdes;
 
@@ -27,6 +29,7 @@ pub struct EditTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
     resolver: R,
     path_mode: PathMode,
+    settings: EditSettings,
 }
 
 impl<R: PathResolver + Clone> EditTool<R> {
@@ -36,12 +39,36 @@ impl<R: PathResolver + Clone> EditTool<R> {
     ///
     /// * `R` - A path resolver implementing [`PathResolver`].
     pub fn new(resolver: R) -> Self {
+        Self::with_settings(resolver, EditSettings::new())
+    }
+
+    /// Creates a new edit tool with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - A [`PathResolver`] used to resolve and validate file paths.
+    /// * `settings` - [`EditSettings`] controlling edit behaviour such as
+    ///   permission checks and replacement limits.
+    pub fn with_settings(resolver: R, settings: EditSettings) -> Self {
         let path_mode = R::PATH_MODE;
         Self {
             definition: build_definition(path_mode),
             resolver,
             path_mode,
+            settings,
         }
+    }
+
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for path access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.settings = self.settings.with_permission(permission);
+        self
     }
 
     /// Returns the path mode for this tool instance.
@@ -60,8 +87,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Ed
     async fn call(&self, _ctx: &RunContext<Deps>, args: serde_json::Value) -> ToolResult {
         let args =
             EditRequest::parse(args).map_err(|e| core_error_to_serdes(edit_meta::NAME, e))?;
-
-        let result = edit_file(&self.resolver, args).await;
+        let result = edit_file(&self.resolver, args, &self.settings).await;
 
         result
             .map(ToolReturn::text)

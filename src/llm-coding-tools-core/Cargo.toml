@@ -124,3 +124,7 @@ harness = false
 [[bench]]
 name = "path_resolvers"
 harness = false
+
+[[bench]]
+name = "permissions"
+harness = false

@@ -12,10 +12,12 @@
 use async_trait::async_trait;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::write as write_meta;
-use llm_coding_tools_core::tools::{WriteRequest, write_file};
+use llm_coding_tools_core::tools::{WriteRequest, WriteSettings, write_file};
 use llm_coding_tools_core::{ToolContext, ToolOutput};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
+use std::sync::Arc;
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 
@@ -27,6 +29,7 @@ pub struct WriteTool<R: PathResolver + Clone> {
     definition: ToolDefinition,
     resolver: R,
     path_mode: PathMode,
+    settings: WriteSettings,
 }
 
 impl<R: PathResolver + Clone> WriteTool<R> {
@@ -36,12 +39,36 @@ impl<R: PathResolver + Clone> WriteTool<R> {
     ///
     /// * `R` - A path resolver implementing [`PathResolver`].
     pub fn new(resolver: R) -> Self {
+        Self::with_settings(resolver, WriteSettings::new())
+    }
+
+    /// Creates a new write tool with custom settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - A [`PathResolver`] used to resolve and validate file paths.
+    /// * `settings` - [`WriteSettings`] controlling write behaviour such as
+    ///   permission checks and overwrite handling.
+    pub fn with_settings(resolver: R, settings: WriteSettings) -> Self {
         let path_mode = R::PATH_MODE;
         Self {
             definition: build_definition(path_mode),
             resolver,
             path_mode,
+            settings,
         }
+    }
+
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for path access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.settings = self.settings.with_permission(permission);
+        self
     }
 
     /// Returns the path mode for this tool instance.
@@ -61,7 +88,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Wr
         let args =
             WriteRequest::parse(args).map_err(|e| core_error_to_serdes(write_meta::NAME, e))?;
 
-        let result = write_file(&self.resolver, args).await;
+        let result = write_file(&self.resolver, args, &self.settings).await;
         to_serdes_result(write_meta::NAME, result.map(ToolOutput::new))
     }
 }

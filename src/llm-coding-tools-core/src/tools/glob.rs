@@ -2,11 +2,14 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
+use crate::permissions::Ruleset;
+use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::glob as glob_meta;
 use globset::Glob;
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Serde-friendly glob request owned by the core crate.
@@ -26,9 +29,10 @@ impl GlobRequest {
 /// Runtime settings applied to glob requests.
 ///
 /// The `limit` field caps the number of file paths returned.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobSettings {
     limit: usize,
+    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for GlobSettings {
@@ -40,9 +44,10 @@ impl Default for GlobSettings {
 impl GlobSettings {
     /// Creates valid glob settings with the standard result limit.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             limit: glob_meta::MAX_RESULTS,
+            permission: None,
         }
     }
 
@@ -64,10 +69,41 @@ impl GlobSettings {
         Ok(self)
     }
 
-    /// Returns the maximum number of files to return.
+    /// Attaches an optional permission ruleset to glob operations.
+    ///
+    /// # Arguments
+    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
+    ///   may be traversed. Pass `None` to disable permission filtering.
+    ///
+    /// # Returns
+    /// - The modified [`GlobSettings`] with the permission attached.
+    ///
+    /// [`Arc<Ruleset>`]: std::sync::Arc
     #[must_use]
-    pub const fn limit(self) -> usize {
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.permission = permission;
+        self
+    }
+
+    /// Returns the maximum number of files to return.
+    ///
+    /// # Returns
+    /// - The configured result limit.
+    #[must_use]
+    pub const fn limit(&self) -> usize {
         self.limit
+    }
+
+    /// Returns the permission ruleset applied to glob operations, if any.
+    ///
+    /// # Returns
+    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
+    /// - `None` when no permission filtering is applied.
+    ///
+    /// [`Ruleset`]: crate::permissions::Ruleset
+    #[must_use]
+    pub fn permission(&self) -> Option<&Ruleset> {
+        self.permission.as_deref()
     }
 }
 
@@ -94,9 +130,13 @@ pub struct GlobOutput {
 pub fn glob_files<R: PathResolver>(
     resolver: &R,
     request: GlobRequest,
-    settings: GlobSettings,
+    settings: &GlobSettings,
 ) -> ToolResult<GlobOutput> {
     let path = resolver.resolve(&request.path)?;
+    let search_subject = path.to_string_lossy();
+    settings
+        .permission()
+        .check(glob_meta::NAME, search_subject.as_ref())?;
 
     if !path.is_dir() {
         return Err(ToolError::InvalidPath(format!(
@@ -160,6 +200,15 @@ pub fn glob_files<R: PathResolver>(
             continue;
         }
 
+        // If target is in a location it's not allowed to access, it needs
+        // to be filtered out.
+        let entry_subject = entry.path().to_string_lossy();
+        if let Some(ruleset) = settings.permission() {
+            if !ruleset.is_allowed(glob_meta::NAME, entry_subject.as_ref()) {
+                continue;
+            }
+        }
+
         let mtime = entry
             .metadata()
             .ok()
@@ -191,6 +240,7 @@ pub fn glob_files<R: PathResolver>(
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
+    use crate::permissions::{PermissionAction, Rule};
     use rstest::rstest;
     use std::fs::{self, File, FileTimes};
     use std::io::Write;
@@ -242,7 +292,7 @@ mod tests {
                 pattern: pattern.to_string(),
                 path: dir.path().to_str().unwrap().to_string(),
             },
-            GlobSettings::new().with_limit(1000).unwrap(),
+            &GlobSettings::new().with_limit(1000).unwrap(),
         )
         .unwrap();
 
@@ -333,7 +383,7 @@ mod tests {
                 pattern: "**/*.txt".to_string(),
                 path: base.to_str().unwrap().to_string(),
             },
-            GlobSettings::new().with_limit(1000).unwrap(),
+            &GlobSettings::new().with_limit(1000).unwrap(),
         )
         .unwrap();
 
@@ -367,7 +417,7 @@ mod tests {
                 pattern: "**/*.rs".to_string(),
                 path: dir.path().to_str().unwrap().to_string(),
             },
-            GlobSettings::new().with_limit(1000).unwrap(),
+            &GlobSettings::new().with_limit(1000).unwrap(),
         )
         .unwrap();
 
@@ -380,5 +430,35 @@ mod tests {
             assert!(!path.contains('\\'), "expected forward slashes: {path}");
         }
         assert!(result.files.iter().any(|f| f.contains('/')));
+    }
+
+    #[test]
+    fn glob_filters_denied_files_before_returning_output() {
+        let dir = TempDir::new().unwrap();
+        let resolver = AbsolutePathResolver;
+        let allowed = dir.path().join("allowed.txt");
+        let denied = dir.path().join("denied.txt");
+        File::create(&allowed).unwrap();
+        File::create(&denied).unwrap();
+
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new(glob_meta::NAME, "*", PermissionAction::Allow));
+        ruleset.push(Rule::new(
+            glob_meta::NAME,
+            denied.to_string_lossy().into_owned(),
+            PermissionAction::Deny,
+        ));
+
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: "**/*.txt".to_string(),
+                path: dir.path().to_string_lossy().into_owned(),
+            },
+            &GlobSettings::new().with_permission(Some(Arc::new(ruleset))),
+        )
+        .unwrap();
+
+        assert_eq!(result.files, vec!["allowed.txt".to_string()]);
     }
 }

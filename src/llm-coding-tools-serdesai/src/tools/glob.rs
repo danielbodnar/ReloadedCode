@@ -13,12 +13,14 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::{GlobOutput, GlobRequest, GlobSettings, glob_files};
 use serde_json::json;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
+use std::sync::Arc;
 
-use crate::convert::{core_error_to_serdes, to_serdes_result};
+use crate::convert::core_error_to_serdes;
 
 /// Tool for finding files matching glob patterns.
 ///
@@ -59,6 +61,18 @@ impl<R: PathResolver + Clone> GlobTool<R> {
         }
     }
 
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for path access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.settings = self.settings.with_permission(permission);
+        self
+    }
+
     /// Returns the path mode for this tool instance.
     #[must_use]
     pub fn path_mode(&self) -> PathMode {
@@ -76,12 +90,10 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Gl
         let args =
             GlobRequest::parse(args).map_err(|e| core_error_to_serdes(glob_meta::NAME, e))?;
 
-        let result = glob_files(&self.resolver, args, self.settings);
+        let output = glob_files(&self.resolver, args, &self.settings)
+            .map_err(|e| core_error_to_serdes(glob_meta::NAME, e))?;
 
-        match result {
-            Err(e) => to_serdes_result(glob_meta::NAME, Err(e)),
-            Ok(output) => Ok(glob_output_to_return(output)),
-        }
+        Ok(glob_output_to_return(output))
     }
 }
 

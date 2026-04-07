@@ -5,11 +5,12 @@
 //! - [`callable_targets`] - Returns the agents an active agent may delegate to via Task.
 //! - [`TaskTargetSummary`] - Stable Task UI metadata for a callable target.
 
-use super::state::AgentRuntime;
 use super::tool_catalog::{ToolCatalogEntry, ToolCatalogKind};
 use crate::{AgentCatalog, AgentConfig, AgentMode, RulesetExt};
+use ahash::AHashMap;
 use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::task as task_meta;
+use std::sync::Arc;
 
 /// Compact metadata used to describe one callable Task target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,18 +35,7 @@ pub fn summarize_callable_targets(
     catalog: &AgentCatalog,
     caller_name: &str,
 ) -> Vec<TaskTargetSummary> {
-    let callable = callable_targets(catalog, caller_name);
-    let mut summaries = Vec::with_capacity(callable.len());
-
-    // Copy stable Task metadata into owned summaries.
-    for target in callable {
-        summaries.push(TaskTargetSummary {
-            name: target.name.clone(),
-            description: target.description.clone(),
-        });
-    }
-
-    summaries
+    summarize_targets(callable_targets(catalog, caller_name))
 }
 
 /// Returns the agents that `caller_name` (the currently running agent) may delegate to via Task.
@@ -66,20 +56,89 @@ pub fn callable_targets<'a>(catalog: &'a AgentCatalog, caller_name: &str) -> Vec
     let Some(caller) = catalog.by_name(caller_name) else {
         return Vec::new();
     };
-
-    let agents = sorted_agents(catalog);
     let task_rules = Ruleset::from_permission_config(&caller.permission);
-    let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
-    let mut targets = Vec::with_capacity(agents.len());
+    // Sort to give deterministic ordering regardless of catalog iteration order;
+    // the result feeds into LLM prompts and cached summaries that must be stable.
+    let agents = sorted_agents(catalog);
+    filter_callable_targets(&agents, caller, &task_rules)
+}
 
-    // Keep only non-primary targets that survive `permission.task` filtering.
-    for target in agents {
-        if target_is_callable(target, &task_rules, has_explicit_task_permission) {
-            targets.push(target);
-        }
+/// Pre-compute per-agent task caches for the entire catalog in one pass.
+///
+/// For every agent in `catalog`, resolves which targets it may delegate to via Task
+/// and which tools it is allowed to invoke, then returns both mappings keyed by
+/// agent name.
+///
+/// # Arguments
+/// - `catalog` - All registered agents.
+/// - `permission_rulesets` - Pre-built [`Ruleset`] per agent name. Every agent
+///   present in `catalog` **must** have an entry or the function panics.
+/// - `tools` - The full tool catalog to filter per caller.
+///
+/// # Returns
+/// A tuple of:
+/// - Allowed tools per caller agent name ([`Vec<ToolCatalogEntry>`]).
+/// - Callable target summaries per caller agent name ([`Vec<TaskTargetSummary>`]).
+///
+/// # Panics
+/// Panics if any agent in `catalog` lacks a corresponding entry in
+/// `permission_rulesets`.
+pub(super) fn build_runtime_task_caches(
+    catalog: &AgentCatalog,
+    permission_rulesets: &AHashMap<String, Arc<Ruleset>>,
+    tools: &[ToolCatalogEntry],
+) -> (
+    AHashMap<String, Vec<ToolCatalogEntry>>,
+    AHashMap<String, Vec<TaskTargetSummary>>,
+) {
+    let mut allowed_tools_by_caller = AHashMap::with_capacity(permission_rulesets.len());
+    let mut callable_target_summaries_by_caller =
+        AHashMap::with_capacity(permission_rulesets.len());
+    let agents = sorted_agents(catalog);
+
+    for caller in catalog.iter() {
+        let task_rules = permission_rulesets
+            .get(caller.name.as_ref())
+            .map(Arc::as_ref)
+            .expect("every runtime agent must have a cached ruleset");
+        let callable_targets = filter_callable_targets(&agents, caller, task_rules);
+        let task_is_callable = !callable_targets.is_empty();
+
+        callable_target_summaries_by_caller
+            .insert(caller.name.to_string(), summarize_targets(callable_targets));
+        allowed_tools_by_caller.insert(
+            caller.name.to_string(),
+            collect_allowed_tools(tools, task_rules, task_is_callable),
+        );
     }
 
-    targets
+    (allowed_tools_by_caller, callable_target_summaries_by_caller)
+}
+
+fn summarize_targets(callable: Vec<&AgentConfig>) -> Vec<TaskTargetSummary> {
+    let mut summaries = Vec::with_capacity(callable.len());
+
+    for target in callable {
+        summaries.push(TaskTargetSummary {
+            name: target.name.clone(),
+            description: target.description.clone(),
+        });
+    }
+
+    summaries
+}
+
+fn filter_callable_targets<'a>(
+    agents: &[&'a AgentConfig],
+    caller: &AgentConfig,
+    task_rules: &Ruleset,
+) -> Vec<&'a AgentConfig> {
+    let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
+    agents
+        .iter()
+        .copied()
+        .filter(|t| target_is_callable(t, task_rules, has_explicit_task_permission))
+        .collect()
 }
 
 fn sorted_agents(catalog: &AgentCatalog) -> Vec<&AgentConfig> {
@@ -90,7 +149,7 @@ fn sorted_agents(catalog: &AgentCatalog) -> Vec<&AgentConfig> {
 
 fn target_is_callable(
     target: &AgentConfig,
-    task_rules: &Ruleset<'_>,
+    task_rules: &Ruleset,
     has_explicit_task_permission: bool,
 ) -> bool {
     matches!(target.mode, AgentMode::All | AgentMode::Subagent)
@@ -98,33 +157,9 @@ fn target_is_callable(
             || task_rules.is_allowed(task_meta::NAME, target.name.as_ref()))
 }
 
-pub(super) fn resolve_allowed_tools(
-    runtime: &AgentRuntime,
-    caller_name: &str,
-) -> Vec<ToolCatalogEntry> {
-    let Some(caller) = runtime.catalog().by_name(caller_name) else {
-        return Vec::new();
-    };
-
-    let agents = sorted_agents(runtime.catalog());
-    let task_rules = Ruleset::from_permission_config(&caller.permission);
-    let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
-    let mut task_is_callable = false;
-
-    // Expose `task` only when at least one delegated target remains callable.
-    for target in agents {
-        if target_is_callable(target, &task_rules, has_explicit_task_permission) {
-            task_is_callable = true;
-            break;
-        }
-    }
-
-    collect_allowed_tools(runtime.tools(), &task_rules, task_is_callable)
-}
-
 fn collect_allowed_tools(
     tools: &[ToolCatalogEntry],
-    task_rules: &Ruleset<'_>,
+    task_rules: &Ruleset,
     task_is_callable: bool,
 ) -> Vec<ToolCatalogEntry> {
     let mut allowed = Vec::with_capacity(tools.len());

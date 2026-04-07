@@ -27,11 +27,13 @@
 //! for the full operator guide.
 //!
 //! # Errors
+//! - [`ToolError::PermissionDenied`] when the command is blocked by [`BashSettings::permission`].
 //! - [`ToolError::InvalidPath`] when the working directory is not absolute or does not exist.
 //! - [`ToolError::Execution`] when the process cannot start, or when `bwrap` is missing or unusable in sandbox mode.
 //! - [`ToolError::Timeout`] / [`ToolError::TimeoutWithKillFailure`] when the command exceeds the deadline.
 
 use crate::error::{ToolError, ToolResult};
+use crate::permissions::Ruleset;
 use crate::ToolOutput;
 use core::fmt::Write;
 use serde::{Deserialize, Serialize};
@@ -82,6 +84,9 @@ impl BashRequest {
 }
 
 /// Runtime settings applied to bash requests.
+///
+/// When [`BashSettings::permission`] is set, operations may return
+/// [`ToolError::PermissionDenied`] if the command is blocked by the ruleset.
 #[derive(Debug, Clone, Copy)]
 pub struct BashSettings<'a> {
     /// Default timeout when omitted from the request.
@@ -90,6 +95,10 @@ pub struct BashSettings<'a> {
     pub max_timeout_ms: u32,
     /// Default working directory when omitted from the request.
     pub default_workdir: Option<&'a Path>,
+    /// Optional permission ruleset applied to command strings.
+    ///
+    /// When set, blocked commands return [`ToolError::PermissionDenied`].
+    pub permission: Option<&'a Ruleset>,
 }
 
 /// Default buffer capacity for stdout/stderr pipe reads.

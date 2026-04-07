@@ -14,8 +14,9 @@ use crate::{
 };
 use llm_coding_tools_agents::{
     AgentRuntime, AgentToolSettings, ModelResolutionError, TaskTargetSummary, ToolCatalogEntry,
-    ToolCatalogKind, summarize_callable_targets,
+    ToolCatalogKind,
 };
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::{
     glob as glob_meta, grep as grep_meta, read as read_meta, webfetch as webfetch_meta,
 };
@@ -25,6 +26,7 @@ use llm_coding_tools_core::tools::{
 use llm_coding_tools_core::{CredentialLookup, models::ModelCatalog};
 use serdes_ai::AgentBuilder;
 use serdes_ai_models::BoxedModel;
+use std::sync::Arc;
 
 /// Error returned when a build cannot produce a SerdesAI agent.
 #[derive(Debug, thiserror::Error)]
@@ -80,6 +82,9 @@ pub(super) struct PreparedBuild {
     tool_settings: AgentToolSettings,
     /// Pre-computed callable Task target summaries for the Task tool description.
     callable_target_summaries: Vec<TaskTargetSummary>,
+    /// Pre-built permission ruleset for tool access control.
+    /// None if agent has no permissions (backward compatibility).
+    permission: Option<Arc<Ruleset>>,
 }
 
 impl PreparedBuild {
@@ -88,14 +93,7 @@ impl PreparedBuild {
     pub(super) fn model(&self) -> &BoxedModel {
         &self.model
     }
-
-    /// Returns the resolved callable Task target summaries.
-    #[inline]
-    pub(super) fn callable_target_summaries(&self) -> &[TaskTargetSummary] {
-        &self.callable_target_summaries
-    }
 }
-
 /// Resolves model configuration and collects build parameters for an agent.
 pub(super) fn prepare_build<C>(
     runtime: &AgentRuntime,
@@ -113,12 +111,16 @@ where
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
     let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
     let serdes_model = build_serdes_model(model_catalog, &resolved, credentials)?;
-    let tools = runtime.allowed_tools(name);
+    let tools = runtime.allowed_tools(name).to_vec();
     let callable_target_summaries = if with_summaries {
-        summarize_callable_targets(runtime.catalog(), name)
+        runtime.summarize_callable_targets(name).to_vec()
     } else {
         Vec::new()
     };
+
+    let permission = runtime
+        .permission_ruleset(name)
+        .filter(|ruleset| !ruleset.is_empty());
 
     Ok(PreparedBuild {
         agent_name: agent.name.clone(),
@@ -133,6 +135,7 @@ where
         tools,
         tool_settings: agent.tool_settings.clone(),
         callable_target_summaries,
+        permission,
     })
 }
 
@@ -156,44 +159,63 @@ where
         builder = builder.top_p(top_p);
     }
 
-    for entry in &prepared.tools {
+    // Use pre-built permission ruleset from PreparedBuild
+    // No need to rebuild - already constructed in prepare_build
+    let permission = prepared.permission.clone();
+
+    for entry in prepared.tools.iter() {
         match entry.kind {
             ToolCatalogKind::Read => {
                 let settings = build_read_settings(&prepared.tool_settings.read)?;
-                builder = builder.tool(
-                    prompt_builder.track(ReadTool::with_settings(AbsolutePathResolver, settings)),
-                );
+                builder =
+                    builder.tool(prompt_builder.track(ReadTool::with_settings_and_permission(
+                        AbsolutePathResolver,
+                        settings,
+                        permission.clone(),
+                    )));
             }
             ToolCatalogKind::Write => {
-                builder = builder.tool(prompt_builder.track(WriteTool::new(AbsolutePathResolver)))
+                builder = builder.tool(prompt_builder.track(
+                    WriteTool::new(AbsolutePathResolver).with_permission(permission.clone()),
+                ));
             }
             ToolCatalogKind::Edit => {
-                builder = builder.tool(prompt_builder.track(EditTool::new(AbsolutePathResolver)))
+                builder = builder.tool(prompt_builder.track(
+                    EditTool::new(AbsolutePathResolver).with_permission(permission.clone()),
+                ));
             }
             ToolCatalogKind::Glob => {
                 let settings = build_glob_settings(&prepared.tool_settings.glob)?;
                 builder = builder.tool(
-                    prompt_builder.track(GlobTool::with_settings(AbsolutePathResolver, settings)),
+                    prompt_builder.track(
+                        GlobTool::with_settings(AbsolutePathResolver, settings)
+                            .with_permission(permission.clone()),
+                    ),
                 );
             }
             ToolCatalogKind::Grep => {
                 let (search_settings, formatting_settings) =
                     build_grep_settings(&prepared.tool_settings.grep)?;
-                builder = builder.tool(prompt_builder.track(GrepTool::with_settings(
-                    AbsolutePathResolver,
-                    search_settings,
-                    formatting_settings,
-                )));
+                builder = builder.tool(
+                    prompt_builder.track(
+                        GrepTool::with_settings(
+                            AbsolutePathResolver,
+                            search_settings,
+                            formatting_settings,
+                        )
+                        .with_permission(permission.clone()),
+                    ),
+                );
             }
             ToolCatalogKind::Bash => {
                 let settings = &prepared.tool_settings.bash;
-                builder =
-                    builder.tool(prompt_builder.track(
-                        BashTool::new().with_timeouts(
-                            Some(settings.timeout_ms),
-                            Some(settings.max_timeout_ms),
-                        ),
-                    ));
+                builder = builder.tool(
+                    prompt_builder.track(
+                        BashTool::new()
+                            .with_timeouts(Some(settings.timeout_ms), Some(settings.max_timeout_ms))
+                            .with_permission(permission.clone()),
+                    ),
+                );
             }
             ToolCatalogKind::WebFetch => {
                 let settings = build_webfetch_settings(&prepared.tool_settings.webfetch)?;
@@ -207,11 +229,11 @@ where
             }
             ToolCatalogKind::Task => {
                 if let Some(task_handle) = task_handle
-                    && !prepared.callable_target_summaries().is_empty()
+                    && !prepared.callable_target_summaries.is_empty()
                 {
                     builder = builder.tool(prompt_builder.track(TaskTool::new(
                         prepared.agent_name.as_ref(),
-                        prepared.callable_target_summaries().to_vec(),
+                        prepared.callable_target_summaries.clone(),
                         (*task_handle).clone(),
                     )));
                 }
