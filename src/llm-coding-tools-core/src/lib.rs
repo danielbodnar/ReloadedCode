@@ -15,6 +15,7 @@ pub mod models;
 pub mod output;
 pub mod path;
 pub mod permissions;
+pub mod permissions_ext;
 pub mod system_prompt;
 pub mod tool_metadata;
 pub mod tools;
@@ -33,10 +34,10 @@ pub use system_prompt::SystemPromptBuilder;
 pub use tools::{
     edit_file, execute_command, execute_command_with_mode, glob_files, grep_search, read_file,
     read_todos, write_file, write_todos, BashExecutionMode, BashOutput, BashRequest, BashSettings,
-    EditError, EditRequest, GlobOutput, GlobRequest, GlobSettings, GrepFileMatches,
+    EditError, EditRequest, EditSettings, GlobOutput, GlobRequest, GlobSettings, GrepFileMatches,
     GrepFormattingSettings, GrepLineMatch, GrepOutput, GrepRequest, GrepSettings, ReadRequest,
     ReadSettings, TaskInput, TaskOutput, TaskSettings, Todo, TodoPriority, TodoReadRequest,
-    TodoState, TodoStatus, TodoWriteRequest, WriteRequest,
+    TodoState, TodoStatus, TodoWriteRequest, WriteRequest, WriteSettings,
 };
 
 // Re-export Linux sandbox types (Linux-only, requires linux-bubblewrap feature)

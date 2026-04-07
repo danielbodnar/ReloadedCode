@@ -14,12 +14,14 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::grep as grep_meta;
 use llm_coding_tools_core::tools::{
     GrepFormattingSettings, GrepOutput, GrepRequest, GrepSettings, grep_search,
 };
 use serde_json::json;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
+use std::sync::Arc;
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 
@@ -70,6 +72,18 @@ impl<R: PathResolver + Clone> GrepTool<R> {
         }
     }
 
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for path access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.search_settings = self.search_settings.with_permission(permission);
+        self
+    }
+
     /// Returns the path mode for this tool instance.
     #[must_use]
     pub fn path_mode(&self) -> PathMode {
@@ -87,7 +101,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Gr
         let args =
             GrepRequest::parse(args).map_err(|e| core_error_to_serdes(grep_meta::NAME, e))?;
 
-        let result = grep_search(&self.resolver, args, self.search_settings);
+        let result = grep_search(&self.resolver, args, &self.search_settings);
 
         match result {
             Err(e) => to_serdes_result(grep_meta::NAME, Err(e)),
@@ -441,7 +455,7 @@ mod tests {
         let resolver = AbsolutePathResolver;
         let search_settings = GrepSettings::new().with_max_limit(1).unwrap();
         let formatting_settings = GrepFormattingSettings::new().with_line_numbers(false);
-        let tool = GrepTool::with_settings(resolver, search_settings, formatting_settings);
+        let tool = GrepTool::with_settings(resolver, search_settings.clone(), formatting_settings);
         assert_eq!(tool.search_settings, search_settings);
         assert_eq!(tool.formatting_settings, formatting_settings);
     }

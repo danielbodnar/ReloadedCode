@@ -27,9 +27,11 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::read as read_meta;
 use llm_coding_tools_core::tools::{ReadRequest, ReadSettings, read_file};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
+use std::sync::Arc;
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 
@@ -74,6 +76,33 @@ impl<R: PathResolver + Clone> ReadTool<R> {
         }
     }
 
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for path access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.settings = self.settings.with_permission(permission);
+        self
+    }
+
+    /// Creates a new read tool with settings and permission.
+    ///
+    /// # Arguments
+    ///
+    /// * `resolver` - The path resolver for path validation and resolution.
+    /// * `settings` - Core read settings for limits and formatting.
+    /// * `permission` - Optional permission ruleset for access control.
+    pub fn with_settings_and_permission(
+        resolver: R,
+        settings: ReadSettings,
+        permission: Option<Arc<Ruleset>>,
+    ) -> Self {
+        Self::with_settings(resolver, settings.with_permission(permission))
+    }
+
     /// Returns the path mode for this tool instance.
     ///
     /// The path mode comes from the resolver implementation.
@@ -93,7 +122,7 @@ impl<R: PathResolver + Clone + Send + Sync, Deps: Send + Sync> Tool<Deps> for Re
         let args =
             ReadRequest::parse(args).map_err(|e| core_error_to_serdes(read_meta::NAME, e))?;
 
-        let result = read_file(&self.resolver, args, self.settings).await;
+        let result = read_file(&self.resolver, args, &self.settings).await;
         to_serdes_result(read_meta::NAME, result)
     }
 }
@@ -175,7 +204,7 @@ mod tests {
             .with_max_line_length(100)
             .unwrap()
             .with_line_numbers(false);
-        let tool = ReadTool::with_settings(AbsolutePathResolver, settings);
+        let tool = ReadTool::with_settings(AbsolutePathResolver, settings.clone());
         assert_eq!(tool.settings, settings);
     }
 

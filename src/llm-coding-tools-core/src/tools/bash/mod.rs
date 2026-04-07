@@ -32,6 +32,7 @@
 //! - [`ToolError::Timeout`] / [`ToolError::TimeoutWithKillFailure`] when the command exceeds the deadline.
 
 use crate::error::{ToolError, ToolResult};
+use crate::permissions::Ruleset;
 use crate::ToolOutput;
 use core::fmt::Write;
 use serde::{Deserialize, Serialize};
@@ -90,6 +91,8 @@ pub struct BashSettings<'a> {
     pub max_timeout_ms: u32,
     /// Default working directory when omitted from the request.
     pub default_workdir: Option<&'a Path>,
+    /// Optional permission ruleset applied to command strings.
+    pub permission: Option<&'a Ruleset>,
 }
 
 /// Default buffer capacity for stdout/stderr pipe reads.

@@ -80,9 +80,12 @@ mod tests {
     use super::AgentRuntimeBuilder;
     use crate::runtime::tool_catalog::{default_tools, ToolCatalogEntry, ToolCatalogKind};
     use crate::runtime::AgentDefaults;
-    use crate::{AgentCatalog, AgentConfig, AgentMode, AgentToolSettings};
+    use crate::{AgentCatalog, AgentConfig, AgentMode, AgentToolSettings, PermissionRule};
+    use indexmap::IndexMap;
+    use llm_coding_tools_core::permissions::PermissionAction;
     use llm_coding_tools_core::tool_metadata::{glob as glob_meta, read as read_meta};
     use llm_coding_tools_core::TaskSettings;
+    use std::sync::Arc;
 
     fn sample_config(name: &str, model: Option<&str>) -> AgentConfig {
         AgentConfig {
@@ -146,5 +149,37 @@ mod tests {
         assert_eq!(runtime.defaults(), &AgentDefaults::default());
         assert_eq!(runtime.task_settings(), TaskSettings::default());
         assert_eq!(runtime.tools(), default_tools().as_slice());
+    }
+
+    #[test]
+    fn builder_caches_permission_rulesets() {
+        let runtime = AgentRuntimeBuilder::new()
+            .catalog(AgentCatalog::from_entries([AgentConfig {
+                name: "planner".into(),
+                mode: AgentMode::Subagent,
+                description: "planner description".into(),
+                model: None,
+                hidden: false,
+                temperature: None,
+                top_p: None,
+                permission: IndexMap::from([(
+                    read_meta::NAME.into(),
+                    PermissionRule::Action(PermissionAction::Allow),
+                )]),
+                options: Default::default(),
+                tool_settings: AgentToolSettings::default(),
+                prompt: Default::default(),
+            }]))
+            .build();
+
+        let first = runtime
+            .permission_ruleset("planner")
+            .expect("cached ruleset should exist");
+        let second = runtime
+            .permission_ruleset("planner")
+            .expect("cached ruleset should exist");
+
+        assert!(Arc::ptr_eq(&first, &second));
+        assert!(first.is_allowed(read_meta::NAME, "*"));
     }
 }

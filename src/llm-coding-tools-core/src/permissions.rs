@@ -77,38 +77,23 @@ pub enum PermissionAction {
 /// # Memory Layout
 ///
 /// Size is 56 bytes on 64-bit platforms:
-/// - `permission`: 16 bytes (&str ptr + len)
-/// - `pattern`: 16 bytes (&str ptr + len)
+/// - `permission`: 16 bytes (`Box<str>` ptr + len)
+/// - `pattern`: 16 bytes (`Box<str>` ptr + len)
 /// - `permission_hash`: 8 bytes (Hash64)
 /// - `pattern_hash`: 8 bytes (Hash64)
 /// - `permission_is_wildcard`: 1 byte
 /// - `pattern_is_wildcard`: 1 byte
 /// - `action`: 1 byte
 /// - padding: 5 bytes
-///
-/// `Rule<'a>` is `Copy` to enable cheap bulk operations (e.g., `extend_from_slice()`
-/// during ruleset merges) without explicit `.clone()` calls.
-///
-/// # Miscellaneous Notes
-///
-/// In this codebase, [`Rule<'a>`] and [`Ruleset<'a>`] are usually temporary:
-/// - Built while deciding which tools an agent can use, then dropped.
-/// - Built while preparing Task tool behaviour, then dropped.
-/// - Built for one permission check during task delegation, then dropped.
-///
-/// They borrow `&'a str` values, so they cannot outlive the source config data.
-///
-/// We cache some discovered properties, e.g. `permission_is_wildcard`, to avoid
-/// repeating the same checks on every evaluation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Rule<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rule {
     /// The permission key pattern (e.g., "bash", "*", "task-*")
-    permission: &'a str,
+    permission: Box<str>,
     /// The subject pattern (e.g., "*", "orchestrator-*")
-    pattern: &'a str,
+    pattern: Box<str>,
     /// Pre-computed hash of `permission` for fast exact-match comparison
     permission_hash: Hash64,
-    /// Pre-computed hash of `pattern` for potential fast-path usage
+    /// Pre-computed hash of `pattern` for fast exact-match comparison
     pattern_hash: Hash64,
     /// Whether `permission` uses `*` (any number of chars) or `?` (one char).
     permission_is_wildcard: bool,
@@ -118,7 +103,7 @@ pub struct Rule<'a> {
     action: PermissionAction,
 }
 
-impl<'a> Rule<'a> {
+impl Rule {
     /// Creates a new rule with the provided permission and pattern.
     ///
     /// Permission keys with `*` or `?` are treated as patterns.
@@ -136,29 +121,34 @@ impl<'a> Rule<'a> {
     /// // Wildcard permission key matches any tool
     /// let wildcard = Rule::new("*", "*", PermissionAction::Allow);
     /// ```
-    #[inline]
-    pub fn new(permission: &'a str, pattern: &'a str, action: PermissionAction) -> Self {
+    pub fn new(
+        permission: impl Into<Box<str>>,
+        pattern: impl Into<Box<str>>,
+        action: PermissionAction,
+    ) -> Self {
+        let permission = permission.into();
+        let pattern = pattern.into();
         Self {
-            permission,
-            pattern,
-            permission_hash: hash_u64(permission),
-            pattern_hash: hash_u64(pattern),
+            permission_hash: hash_u64(&permission),
+            pattern_hash: hash_u64(&pattern),
             permission_is_wildcard: permission.contains('*') || permission.contains('?'),
             pattern_is_wildcard: pattern.contains('*') || pattern.contains('?'),
+            permission,
+            pattern,
             action,
         }
     }
 
     /// Returns the permission key pattern.
     #[inline]
-    pub fn permission(&self) -> &'a str {
-        self.permission
+    pub fn permission(&self) -> &str {
+        &self.permission
     }
 
     /// Returns the stored pattern.
     #[inline]
-    pub fn pattern(&self) -> &'a str {
-        self.pattern
+    pub fn pattern(&self) -> &str {
+        &self.pattern
     }
 
     /// Returns the action for this rule.
@@ -171,6 +161,12 @@ impl<'a> Rule<'a> {
     #[inline]
     pub fn permission_hash(&self) -> u64 {
         self.permission_hash.as_u64()
+    }
+
+    /// Returns the stored 64-bit pattern hash.
+    #[inline]
+    pub fn pattern_hash(&self) -> u64 {
+        self.pattern_hash.as_u64()
     }
 
     /// Returns true if the permission key contains wildcards.
@@ -192,12 +188,12 @@ impl<'a> Rule<'a> {
 ///
 /// When no rule matches, the default action is [`PermissionAction::Deny`].
 /// To allow a permission, you must explicitly add an allow rule.
-#[derive(Debug, Clone, Default)]
-pub struct Ruleset<'a> {
-    rules: Vec<Rule<'a>>,
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Ruleset {
+    rules: Vec<Rule>,
 }
 
-impl<'a> Ruleset<'a> {
+impl Ruleset {
     /// Creates an empty ruleset.
     #[inline]
     pub fn new() -> Self {
@@ -214,7 +210,7 @@ impl<'a> Ruleset<'a> {
 
     /// Appends a rule to the ruleset.
     #[inline]
-    pub fn push(&mut self, rule: Rule<'a>) {
+    pub fn push(&mut self, rule: Rule) {
         self.rules.push(rule);
     }
 
@@ -232,7 +228,7 @@ impl<'a> Ruleset<'a> {
 
     /// Returns an iterator over the rules.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &Rule<'a>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Rule> {
         self.rules.iter()
     }
 
@@ -259,9 +255,9 @@ impl<'a> Ruleset<'a> {
             let permission_matches = rule_matches(
                 permission,
                 permission_hash,
-                rule.permission,
+                rule.permission(),
                 rule.permission_hash,
-                rule.permission_is_wildcard,
+                rule.permission_is_wildcard(),
             );
 
             if !permission_matches {
@@ -271,16 +267,16 @@ impl<'a> Ruleset<'a> {
             let pattern_matches = rule_matches(
                 subject,
                 subject_hash,
-                rule.pattern,
+                rule.pattern(),
                 rule.pattern_hash,
-                rule.pattern_is_wildcard,
+                rule.pattern_is_wildcard(),
             );
 
             if !pattern_matches {
                 continue;
             }
 
-            result = rule.action;
+            result = rule.action();
         }
 
         result
@@ -299,18 +295,15 @@ impl<'a> Ruleset<'a> {
     ///
     /// Rules from `other` are appended in order, giving them higher priority
     /// in last-match-wins evaluation.
-    pub fn merge(&mut self, other: &Ruleset<'a>) {
+    pub fn merge(&mut self, other: &Ruleset) {
         self.rules.reserve(other.rules.len());
-        self.rules.extend_from_slice(&other.rules);
+        self.rules.extend(other.rules.iter().cloned());
     }
 
     /// Creates a new ruleset by merging multiple rulesets.
     ///
     /// Rules are concatenated in order; later rulesets have higher priority.
-    pub fn merged<'b>(rulesets: impl IntoIterator<Item = &'b Ruleset<'a>>) -> Self
-    where
-        'a: 'b,
-    {
+    pub fn merged<'a>(rulesets: impl IntoIterator<Item = &'a Ruleset>) -> Self {
         let rulesets: Vec<_> = rulesets.into_iter().collect();
         let capacity = rulesets.iter().map(|r| r.len()).sum();
         let mut result = Self::with_capacity(capacity);
@@ -334,7 +327,7 @@ impl<'a> Ruleset<'a> {
 /// assert!(wildcard_match("test", "te?t"));
 /// assert!(!wildcard_match("bash", "task"));
 /// ```
-pub(crate) fn wildcard_match(input: &str, pattern: &str) -> bool {
+pub fn wildcard_match(input: &str, pattern: &str) -> bool {
     // Fast path: exact match or universal wildcard
     if pattern == "*" {
         return true;
@@ -419,7 +412,7 @@ mod tests {
     ) -> PermissionAction {
         let mut ruleset = Ruleset::new();
         for (perm, pat, action) in rules {
-            ruleset.push(Rule::new(perm, pat, *action));
+            ruleset.push(Rule::new(*perm, *pat, *action));
         }
         ruleset.evaluate(permission, subject)
     }
@@ -512,6 +505,7 @@ mod tests {
     fn wildcard_subject_should_set_wildcard_flag() {
         let rule = Rule::new("bash", "orchestrator-*", PermissionAction::Allow);
         assert_eq!(rule.pattern(), "orchestrator-*");
+        assert_eq!(rule.pattern_hash(), hash_u64("orchestrator-*").as_u64());
         assert!(rule.pattern_is_wildcard());
         assert!(!rule.permission_is_wildcard());
     }
@@ -521,6 +515,7 @@ mod tests {
     fn exact_subject_should_not_set_wildcard_flag() {
         let rule = Rule::new("bash", "exact-subject", PermissionAction::Allow);
         assert_eq!(rule.pattern(), "exact-subject");
+        assert_eq!(rule.pattern_hash(), hash_u64("exact-subject").as_u64());
         assert!(!rule.pattern_is_wildcard());
         assert!(!rule.permission_is_wildcard());
     }
@@ -533,10 +528,18 @@ mod tests {
     }
 
     #[test]
-    fn rule_should_be_56_byte_copy() {
-        assert_eq!(std::mem::size_of::<Rule<'_>>(), 56);
-        fn assert_copy<T: Copy>() {}
-        assert_copy::<Rule<'_>>();
+    fn rule_pattern_hash_should_be_case_sensitive() {
+        let upper = Rule::new("bash", "SUBJECT", PermissionAction::Allow);
+        let lower = Rule::new("bash", "subject", PermissionAction::Allow);
+        assert_ne!(upper.pattern_hash(), lower.pattern_hash());
+    }
+
+    #[test]
+    fn rule_should_be_56_byte_clone() {
+        assert_eq!(std::mem::size_of::<Rule>(), 56);
+        // Rule is Clone but not Copy (contains owned Box<str>)
+        fn assert_clone<T: Clone>() {}
+        assert_clone::<Rule>();
     }
 
     // --- Ruleset evaluate ---

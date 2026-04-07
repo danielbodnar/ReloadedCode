@@ -77,6 +77,15 @@ pub(crate) fn core_error_to_serdes(tool_name: &str, err: CoreError) -> SerdesErr
             SerdesError::validation_error(tool_name, field.clone(), message.clone())
         }
         CoreError::Json(msg) => SerdesError::validation_error(tool_name, None, msg.to_string()),
+        // Permission denied - treated as validation error (policy violation)
+        CoreError::PermissionDenied { tool, subject } => SerdesError::validation_error(
+            tool_name,
+            None,
+            format!(
+                "Permission denied for tool '{}' on subject '{}'",
+                tool, subject
+            ),
+        ),
         // Execution errors - runtime failures
         CoreError::Io(_)
         | CoreError::Http(_)

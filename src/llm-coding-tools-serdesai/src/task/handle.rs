@@ -5,8 +5,7 @@
 //! Each call is independent — no session state is kept between runs.
 
 use crate::agent_runtime::{TaskBuildContext, build_agent};
-use llm_coding_tools_agents::{AgentMode, RulesetExt};
-use llm_coding_tools_core::permissions::Ruleset;
+use llm_coding_tools_agents::AgentMode;
 use llm_coding_tools_core::tool_metadata::task as task_meta;
 use llm_coding_tools_core::{CredentialLookup, CredentialResolver, TaskInput, TaskOutput};
 use serdes_ai::tools::ToolError;
@@ -134,8 +133,11 @@ where
         // targets are always denied above.
         let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
         if has_explicit_task_permission
-            && !Ruleset::from_permission_config(&caller.permission)
-                .is_allowed(task_meta::NAME, target_name)
+            && !self
+                .context
+                .runtime()
+                .permission_ruleset(caller_name)
+                .is_some_and(|ruleset| ruleset.is_allowed(task_meta::NAME, target_name))
         {
             return Err(ToolError::validation_error(
                 task_meta::NAME,

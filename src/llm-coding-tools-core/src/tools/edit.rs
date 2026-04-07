@@ -3,9 +3,12 @@
 use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::path::PathResolver;
+use crate::permissions::Ruleset;
+use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::edit as edit_meta;
 use serde::Deserialize;
 use serde_json::Value;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors specific to edit tools.
@@ -77,6 +80,57 @@ impl From<EditError> for ToolError {
     }
 }
 
+/// Runtime settings that control permission filtering for edit requests.
+///
+/// Wraps an optional [`Ruleset`] that gates which paths an [`edit_file`]
+/// operation may target.
+///
+/// [`Ruleset`]: crate::permissions::Ruleset
+/// [`edit_file`]: edit_file
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EditSettings {
+    permission: Option<Arc<Ruleset>>,
+}
+
+impl EditSettings {
+    /// Creates default edit settings with no extra permission filtering.
+    ///
+    /// # Returns
+    /// - An [`EditSettings`] with permission set to `None`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { permission: None }
+    }
+
+    /// Attaches an optional permission ruleset to edit operations.
+    ///
+    /// # Arguments
+    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
+    ///   may be edited. Pass `None` to disable permission filtering.
+    ///
+    /// # Returns
+    /// - The modified [`EditSettings`] with the permission attached.
+    ///
+    /// [`Arc<Ruleset>`]: std::sync::Arc
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.permission = permission;
+        self
+    }
+
+    /// Returns the permission ruleset applied to edit operations, if any.
+    ///
+    /// # Returns
+    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
+    /// - `None` when no permission filtering is applied.
+    ///
+    /// [`Ruleset`]: crate::permissions::Ruleset
+    #[must_use]
+    pub fn permission(&self) -> Option<&Ruleset> {
+        self.permission.as_deref()
+    }
+}
+
 /// Performs exact string replacement in a file.
 ///
 /// Returns success message with replacement count.
@@ -84,6 +138,7 @@ impl From<EditError> for ToolError {
 pub async fn edit_file<R: PathResolver>(
     resolver: &R,
     request: EditRequest,
+    settings: &EditSettings,
 ) -> Result<String, EditError> {
     if request.old_string.is_empty() {
         return Err(EditError::EmptyOldString);
@@ -93,6 +148,10 @@ pub async fn edit_file<R: PathResolver>(
     }
 
     let path = resolver.resolve(&request.file_path)?;
+    let subject = path.to_string_lossy();
+    settings
+        .permission()
+        .check(edit_meta::NAME, subject.as_ref())?;
     let content = fs::read_to_string(&path).await?;
 
     let (new_content, replacement_count) = if request.replace_all {
@@ -142,6 +201,7 @@ pub async fn edit_file<R: PathResolver>(
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
+    use crate::permissions::{PermissionAction, Rule};
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -165,6 +225,7 @@ mod tests {
                 new_string: "rust".to_string(),
                 replace_all: false,
             },
+            &EditSettings::new(),
         )
         .await
         .unwrap();
@@ -187,9 +248,42 @@ mod tests {
                 new_string: "x".to_string(),
                 replace_all: false,
             },
+            &EditSettings::new(),
         )
         .await
         .unwrap_err();
         assert!(matches!(err, EditError::NotFound));
+    }
+
+    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
+    async fn edit_rejects_denied_path() {
+        let file = create_temp_file("hello world");
+        let resolver = AbsolutePathResolver;
+
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new("edit", "*", PermissionAction::Allow));
+        ruleset.push(Rule::new(
+            "edit",
+            file.path().to_string_lossy().into_owned(),
+            PermissionAction::Deny,
+        ));
+
+        let err = edit_file(
+            &resolver,
+            EditRequest {
+                file_path: file.path().to_string_lossy().into_owned(),
+                old_string: "world".to_string(),
+                new_string: "rust".to_string(),
+                replace_all: false,
+            },
+            &EditSettings::new().with_permission(Some(Arc::new(ruleset))),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            EditError::Tool(ToolError::PermissionDenied { tool: "edit", .. })
+        ));
     }
 }

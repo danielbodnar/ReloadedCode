@@ -27,10 +27,12 @@
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 use async_trait::async_trait;
 use llm_coding_tools_core::context::{ToolContext, ToolPrompt};
+use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::bash as bash_meta;
 use llm_coding_tools_core::tools::{BashExecutionMode, BashRequest, BashSettings, execute_command};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
 use llm_coding_tools_bubblewrap::profile::{NetworkPolicy, Profile};
@@ -49,6 +51,8 @@ pub struct BashTool {
     max_timeout_ms: u32,
     /// Default working directory when not specified in args.
     default_workdir: Option<PathBuf>,
+    /// Optional permission ruleset for command access control.
+    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for BashTool {
@@ -77,6 +81,7 @@ impl BashTool {
             default_timeout_ms: bash_meta::DEFAULT_TIMEOUT_MS,
             max_timeout_ms: bash_meta::MAX_TIMEOUT_MS,
             default_workdir: None,
+            permission: None,
         }
     }
 
@@ -146,6 +151,18 @@ impl BashTool {
         self
     }
 
+    /// Sets the permission ruleset for this tool.
+    ///
+    /// # Arguments
+    ///
+    /// * `permission` - Optional [`Ruleset`] for command access control.
+    ///   Use `None` to disable permission checking.
+    #[must_use]
+    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
+        self.permission = permission;
+        self
+    }
+
     /// Runs commands inside a Linux sandbox using bubblewrap.
     ///
     /// Accepts an owned [`Profile`] or `Arc<Profile>` to share one profile across
@@ -200,6 +217,7 @@ impl<Deps: Send + Sync> Tool<Deps> for BashTool {
                 default_timeout_ms: self.default_timeout_ms,
                 max_timeout_ms: self.max_timeout_ms,
                 default_workdir: self.default_workdir.as_deref(),
+                permission: self.permission.as_deref(),
             },
         )
         .await;

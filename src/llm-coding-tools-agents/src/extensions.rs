@@ -37,11 +37,11 @@ pub trait RulesetExt {
     /// let ruleset = Ruleset::from_permission_config(&config);
     /// assert!(ruleset.is_allowed("bash", "*"));
     /// ```
-    fn from_permission_config<'a>(config: &'a IndexMap<String, PermissionRule>) -> Ruleset<'a>;
+    fn from_permission_config(config: &IndexMap<String, PermissionRule>) -> Ruleset;
 }
 
-impl RulesetExt for Ruleset<'_> {
-    fn from_permission_config<'a>(config: &'a IndexMap<String, PermissionRule>) -> Ruleset<'a> {
+impl RulesetExt for Ruleset {
+    fn from_permission_config(config: &IndexMap<String, PermissionRule>) -> Ruleset {
         let mut ruleset = Ruleset::with_capacity(config.len() * 2);
 
         for (key, rule) in config {

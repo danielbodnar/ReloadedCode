@@ -20,7 +20,7 @@ pub use bash::{
     execute_command, execute_command_with_mode, BashExecutionMode, BashOutput, BashRequest,
     BashSettings,
 };
-pub use edit::{edit_file, EditError, EditRequest};
+pub use edit::{edit_file, EditError, EditRequest, EditSettings};
 pub use glob::{glob_files, GlobOutput, GlobRequest, GlobSettings};
 pub use grep::{
     grep_search, GrepFileMatches, GrepFormattingSettings, GrepLineMatch, GrepOutput, GrepRequest,
@@ -32,7 +32,7 @@ pub use todo::{
     read_todos, write_todos, Todo, TodoPriority, TodoReadRequest, TodoState, TodoStatus,
     TodoWriteRequest,
 };
-pub use write::{write_file, WriteRequest};
+pub use write::{write_file, WriteRequest, WriteSettings};
 
 // Webfetch available in both tokio and blocking modes
 #[cfg(any(feature = "tokio", feature = "blocking"))]

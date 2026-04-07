@@ -54,6 +54,15 @@ pub enum ToolError {
     /// JSON serialization/deserialization failed.
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// Permission denied for the requested operation.
+    #[error("permission denied for tool '{tool}' on '{subject}'")]
+    PermissionDenied {
+        /// Tool name that was denied.
+        tool: &'static str,
+        /// Path or command that was denied.
+        subject: String,
+    },
 }
 
 /// Result type alias for tool operations.
