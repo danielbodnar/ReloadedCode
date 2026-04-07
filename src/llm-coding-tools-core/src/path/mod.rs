@@ -7,7 +7,7 @@
 
 mod absolute;
 mod allowed;
-mod allowed_glob;
+pub(crate) mod allowed_glob;
 
 pub use absolute::AbsolutePathResolver;
 pub use allowed::AllowedPathResolver;

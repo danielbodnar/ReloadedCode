@@ -52,10 +52,11 @@
 //! assert_eq!(rules.evaluate("task", "other-agent"), PermissionAction::Deny);
 //! ```
 
-use serde::{Deserialize, Serialize};
-
 use crate::internal::hash64::hash_u64;
 use crate::internal::hash64::Hash64;
+use crate::path::allowed_glob::normalize::expand_pattern;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 /// Permission level for tool access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -127,7 +128,12 @@ impl Rule {
         action: PermissionAction,
     ) -> Self {
         let permission = permission.into();
-        let pattern = pattern.into();
+        let pattern_box: Box<str> = pattern.into();
+        let pattern: Box<str> = match expand_pattern(&pattern_box) {
+            Ok(Cow::Borrowed(_)) => pattern_box,
+            Ok(Cow::Owned(s)) => s.into_boxed_str(),
+            Err(_) => pattern_box,
+        };
         Self {
             permission_hash: hash_u64(&permission),
             pattern_hash: hash_u64(&pattern),
@@ -432,6 +438,8 @@ fn evaluate_single_rule(rule: &Rule, permission: &str, subject: &str) -> Permiss
 mod tests {
     use super::*;
     use rstest::rstest;
+    use temp_env;
+    use tempfile::TempDir;
 
     fn build_and_eval(
         rules: &[(&str, &str, PermissionAction)],
@@ -722,5 +730,69 @@ mod tests {
 
         let combined = Ruleset::merged([&r1, &r2]);
         assert_eq!(combined.evaluate("a", "x"), PermissionAction::Allow);
+    }
+
+    // --- Rule::new with expansion integration ---
+
+    /// Verifies that a rule created with `~/` pattern matches the expanded home path.
+    #[cfg(not(windows))]
+    #[test]
+    fn rule_with_tilde_pattern_should_match_expanded_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path().canonicalize().unwrap();
+
+        temp_env::with_var("HOME", Some(&temp_home), || {
+            let mut ruleset = Ruleset::new();
+            ruleset.push(Rule::new("read", "~/projects/*", PermissionAction::Allow));
+
+            let subject = format!("{}/projects/src/lib.rs", temp_home.to_str().unwrap());
+            assert_eq!(
+                ruleset.evaluate("read", &subject),
+                PermissionAction::Allow,
+                "expanded ~/ pattern should match real path"
+            );
+        });
+    }
+
+    /// Verifies that a rule created with `$HOME/` pattern matches the expanded path.
+    #[test]
+    fn rule_with_dollar_home_pattern_should_match_expanded_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_home = temp_dir.path().canonicalize().unwrap();
+
+        temp_env::with_var("HOME", Some(&temp_home), || {
+            let mut ruleset = Ruleset::new();
+            ruleset.push(Rule::new(
+                "read",
+                "$HOME/.config/*",
+                PermissionAction::Allow,
+            ));
+
+            let subject = format!("{}/.config/app.conf", temp_home.to_str().unwrap());
+            assert_eq!(
+                ruleset.evaluate("read", &subject),
+                PermissionAction::Allow,
+                "expanded $HOME/ pattern should match real path"
+            );
+        });
+    }
+
+    /// Verifies that rules without shell patterns evaluate correctly after
+    /// the expansion change (regression guard).
+    #[test]
+    fn rule_without_shell_patterns_evaluates_correctly() {
+        let mut ruleset = Ruleset::new();
+        ruleset.push(Rule::new("bash", "*", PermissionAction::Allow));
+        ruleset.push(Rule::new("task", "orchestrator-*", PermissionAction::Allow));
+
+        assert_eq!(
+            ruleset.evaluate("bash", "anything"),
+            PermissionAction::Allow
+        );
+        assert_eq!(
+            ruleset.evaluate("task", "orchestrator-builder"),
+            PermissionAction::Allow
+        );
+        assert_eq!(ruleset.evaluate("task", "other"), PermissionAction::Deny);
     }
 }
