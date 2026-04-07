@@ -54,7 +54,7 @@
 use core::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use llm_coding_tools_core::path::{
-    AllowedGlobResolver, AllowedPathResolver, GlobPolicy, PathResolver,
+    AllowedGlobResolver, AllowedPathResolver, GlobPolicy, GlobPolicyBuilder, PathResolver,
 };
 use std::fs;
 use tempfile::TempDir;
@@ -63,6 +63,13 @@ const EXISTING_FILE: &str = "src/lib.rs";
 const NEW_FILE: &str = "benchmarks/new_file_test.rs";
 const DEEP_NESTED: &str = "src/llm-coding-tools-core/src/path/allowed_glob/policy.rs";
 const TRAVERSAL: &str = "../../../outside.txt";
+
+fn build_policy<F>(f: F) -> llm_coding_tools_core::error::ToolResult<GlobPolicy>
+where
+    F: FnOnce(GlobPolicyBuilder) -> llm_coding_tools_core::error::ToolResult<GlobPolicyBuilder>,
+{
+    f(GlobPolicy::builder()).and_then(|b| b.build())
+}
 
 /// Benchmarks [`AllowedPathResolver`] and [`AllowedGlobResolver`] on the same paths.
 ///
@@ -98,35 +105,22 @@ fn bench_resolvers_same_paths(c: &mut Criterion) {
 
     // Simple policy: single glob pattern (src/**/*.rs)
     // This tests minimal glob matching overhead.
-    let simple_policy = GlobPolicy::builder()
-        .allow("src/**/*.rs")
-        .unwrap()
-        .build()
-        .unwrap();
+    let simple_policy = build_policy(|b| b.allow("src/**/*.rs")).unwrap();
 
     // Complex policy: 10 rules simulating a realistic project configuration.
     // Tests last-match-wins semantics and rule iteration overhead.
-    let complex_policy = GlobPolicy::builder()
-        .allow("src/**/*.rs")
-        .unwrap()
-        .deny("target/**")
-        .unwrap()
-        .allow("*.toml")
-        .unwrap()
-        .deny("*.log")
-        .unwrap()
-        .allow("benches/**")
-        .unwrap()
-        .deny("**/test_data/**")
-        .unwrap()
-        .allow("tests/**/*.rs")
-        .unwrap()
-        .deny("node_modules/**")
-        .unwrap()
-        .allow("examples/**")
-        .unwrap()
-        .build()
-        .unwrap();
+    let complex_policy = build_policy(|b| {
+        b.allow("src/**/*.rs")?
+            .deny("target/**")?
+            .allow("*.toml")?
+            .deny("*.log")?
+            .allow("benches/**")?
+            .deny("**/test_data/**")?
+            .allow("tests/**/*.rs")?
+            .deny("node_modules/**")?
+            .allow("examples/**")
+    })
+    .unwrap();
 
     let glob_simple = AllowedGlobResolver::new(vec![current_dir.clone()])
         .unwrap()
