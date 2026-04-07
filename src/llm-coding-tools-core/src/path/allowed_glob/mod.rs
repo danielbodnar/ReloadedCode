@@ -6,7 +6,7 @@
 mod normalize;
 mod policy;
 
-use super::PathResolver;
+use super::{path_analysis, resolve_new_file_fast, PathResolver};
 use crate::context::PathMode;
 use crate::error::{ToolError, ToolResult};
 use normalize::expand_shell;
@@ -141,11 +141,32 @@ impl PathResolver for AllowedGlobResolver {
     const PATH_MODE: PathMode = PathMode::Allowed;
 
     fn resolve(&self, path: &str) -> ToolResult<PathBuf> {
-        let input_path = PathBuf::from(path);
+        let input_path = Path::new(path);
+        let policy = self.policy.as_deref();
+
+        let analysis = path_analysis(input_path);
+        if analysis.escapes {
+            return Err(ToolError::InvalidPath(format!(
+                "path '{}' is not within allowed directories",
+                path
+            )));
+        }
+
+        // Optimization: if path has no `.` or `..` components, we can check the glob
+        // policy on the input path directly and only fall back to the resolved path
+        // check when canonicalization changes what the policy should see.
+        let fast_policy_input = if !analysis.has_dots { Some(path) } else { None };
 
         for base_dir in self.base_directories.iter() {
+            // Fast policy check before filesystem operations.
+            if let (Some(policy), Some(input)) = (policy, fast_policy_input) {
+                if !policy.is_allowed(input) {
+                    continue;
+                }
+            }
+
             // Relative input joins base_dir; absolute input overrides it.
-            let candidate = base_dir.join(&input_path);
+            let candidate = base_dir.join(input_path);
 
             // Existing file/dir: canonicalize resolves symlinks and normalizes.
             if let Ok(resolved) = candidate.canonicalize() {
@@ -154,12 +175,14 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Apply glob policy to the relative path.
-                let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
-                let normalized_relative = normalize::normalize_path(relative_path);
-
-                if let Some(policy) = &self.policy {
-                    if !policy.is_allowed(&normalized_relative) {
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
+                if let Some(policy) = policy {
+                    let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
+                    let normalized_relative = normalize::normalize_path(relative_path);
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
                         continue;
                     }
                 }
@@ -167,19 +190,43 @@ impl PathResolver for AllowedGlobResolver {
                 return Ok(resolved);
             }
 
-            // Non-existent paths still need a resolved absolute target so we can
-            // validate containment and glob policy consistently across platforms.
+            // Fast path for new files in existing directories.
+            // Canonicalizes parent directory, then joins filename.
+            // This avoids soft_canonicalize's expensive walk-up logic.
+            if let Some(resolved) = resolve_new_file_fast(&candidate) {
+                if !resolved.starts_with(base_dir) {
+                    continue;
+                }
+
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
+                if let Some(policy) = policy {
+                    let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
+                    let normalized_relative = normalize::normalize_path(relative_path);
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
+                        continue;
+                    }
+                }
+
+                return Ok(resolved);
+            }
+
+            // Fallback for paths where parent doesn't exist.
             if let Ok(target_path) = soft_canonicalize(&candidate) {
                 if !target_path.starts_with(base_dir) {
                     continue;
                 }
 
-                // Apply glob policy to the target relative path.
-                let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
-                let normalized_relative = normalize::normalize_path(relative_path);
-
-                if let Some(policy) = &self.policy {
-                    if !policy.is_allowed(&normalized_relative) {
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
+                if let Some(policy) = policy {
+                    let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
+                    let normalized_relative = normalize::normalize_path(relative_path);
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
                         continue;
                     }
                 }
@@ -371,6 +418,42 @@ mod tests {
 
         let result = resolver.resolve("escape_link/secret.txt");
         assert!(result.is_err(), "symlink escape should be blocked");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("not within allowed"));
+    }
+
+    /// Regression test: symlink under allowed dir pointing to denied dir
+    /// must be blocked after canonicalization re-checks policy.
+    #[test]
+    #[cfg(unix)]
+    fn rejects_symlink_policy_bypass_attempt() {
+        use std::os::unix::fs::symlink;
+
+        let dir = setup_test_dir();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        fs::write(dir.path().join("target/app"), "binary").unwrap();
+
+        let symlink_path = dir.path().join("src/link");
+        symlink(dir.path().join("target"), &symlink_path).unwrap();
+
+        let policy = GlobPolicy::builder()
+            .allow("src/**")
+            .unwrap()
+            .deny("target/**")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let resolver = AllowedGlobResolver::new(vec![dir.path().to_path_buf()])
+            .unwrap()
+            .with_policy(policy);
+
+        let result = resolver.resolve("src/link/app");
+        assert!(
+            result.is_err(),
+            "symlink policy bypass should be blocked: 'src/link/app' resolves to 'target/app' which should be denied"
+        );
         let err = result.unwrap_err();
         assert!(err.to_string().contains("not within allowed"));
     }
