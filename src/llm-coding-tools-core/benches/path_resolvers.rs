@@ -15,7 +15,8 @@
 //! |------------------------|----------------------------------------------------|------------------------------------------------|
 //! | existing_file          | src/lib.rs                                         | Fast path: file exists, canonicalize succeeds  |
 //! | new_file_existing_dir  | src/new_file_test.rs                               | Fast path: parent exists, canonicalize parent   |
-//! | new_file_missing_dir   | benchmarks/new_file_test.rs                        | Slow path: soft-canonicalize for non-existent  |
+//! | new_file_missing_dir   | src/new_dir/nested/new_file_test.rs                | Slow path: soft-canonicalize for non-existent  |
+//! | policy_reject          | benchmarks/new_file_test.rs                        | Early rejection via fast policy check          |
 //! | deep_nested            | src/llm-coding-tools-core/src/path/.../policy.rs   | Longer path, more components to process        |
 //! | traversal_reject       | ../../../outside.txt                               | Early rejection via lexical escape check       |
 //! ```
@@ -23,22 +24,24 @@
 //! # Reference Results (Linux, optimized build)
 //!
 //! ```text
-//! resolvers/AllowedPathResolver/existing_file          ~1.8 µs
+//! resolvers/AllowedPathResolver/existing_file          ~1.7 µs
 //! resolvers/AllowedPathResolver/new_file_existing_dir ~3.5 µs  (optimized: parent canonicalize)
-//! resolvers/AllowedPathResolver/new_file_missing_dir  ~8.1 µs  (fallback: soft_canonicalize)
-//! resolvers/AllowedPathResolver/deep_nested           ~10.5 µs
+//! resolvers/AllowedPathResolver/new_file_missing_dir  ~9.7 µs  (fallback: soft_canonicalize)
+//! resolvers/AllowedPathResolver/policy_reject         ~8.0 µs  (no policy, resolves normally)
+//! resolvers/AllowedPathResolver/deep_nested           ~10.9 µs
 //! resolvers/AllowedPathResolver/traversal_reject      ~20 ns
 //!
-//! resolvers/AllowedGlobResolver_simple_policy/existing_file          ~2.0 µs
-//! resolvers/AllowedGlobResolver_simple_policy/new_file_existing_dir  ~3.8 µs
-//! resolvers/AllowedGlobResolver_simple_policy/new_file_missing_dir   ~8.4 µs
+//! resolvers/AllowedGlobResolver_simple_policy/existing_file          ~1.8 µs  (overhead: ~100 ns)
+//! resolvers/AllowedGlobResolver_simple_policy/new_file_existing_dir  ~3.5 µs  (overhead: ~40 ns)
+//! resolvers/AllowedGlobResolver_simple_policy/new_file_missing_dir   ~9.8 µs  (overhead: ~90 ns)
+//! resolvers/AllowedGlobResolver_simple_policy/policy_reject          ~54 ns   (150x faster!)
 //! resolvers/AllowedGlobResolver_simple_policy/deep_nested            ~10.8 µs
-//! resolvers/AllowedGlobResolver_simple_policy/traversal_reject       ~20 ns
+//! resolvers/AllowedGlobResolver_simple_policy/traversal_reject       ~28 ns
 //!
 //! canonicalize/existing_file_canonicalize         ~1.6 µs
 //! canonicalize/existing_file_soft_canonicalize    ~4.4 µs  (2.7x slower than canonicalize)
-//! canonicalize/new_file_shallow_soft_canonicalize ~6.0 µs
-//! canonicalize/new_file_deep_soft_canonicalize    ~7.0 µs
+//! canonicalize/new_file_shallow_soft_canonicalize ~5.9 µs
+//! canonicalize/new_file_deep_soft_canonicalize    ~6.9 µs
 //! ```
 //!
 //! # Platform Differences
@@ -71,7 +74,10 @@ use tempfile::TempDir;
 
 const EXISTING_FILE: &str = "src/lib.rs";
 const NEW_FILE_EXISTING_DIR: &str = "src/new_file_test.rs";
-const NEW_FILE_MISSING_DIR: &str = "benchmarks/new_file_test.rs";
+// Path that matches simple policy (src/**/*.rs) but has missing directories
+const NEW_FILE_MISSING_DIR: &str = "src/new_dir/nested/new_file_test.rs";
+// Path that does NOT match simple policy - tests early rejection
+const POLICY_REJECT: &str = "benchmarks/new_file_test.rs";
 const DEEP_NESTED: &str = "src/llm-coding-tools-core/src/path/allowed_glob/policy.rs";
 const TRAVERSAL: &str = "../../../outside.txt";
 
@@ -147,6 +153,7 @@ fn bench_resolvers_same_paths(c: &mut Criterion) {
         ("existing_file", EXISTING_FILE),
         ("new_file_existing_dir", NEW_FILE_EXISTING_DIR),
         ("new_file_missing_dir", NEW_FILE_MISSING_DIR),
+        ("policy_reject", POLICY_REJECT),
         ("deep_nested", DEEP_NESTED),
         ("traversal_reject", TRAVERSAL),
     ] {

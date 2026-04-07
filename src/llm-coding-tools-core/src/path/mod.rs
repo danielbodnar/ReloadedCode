@@ -49,26 +49,65 @@ pub trait PathResolver: Send + Sync {
 /// - `false` if the path stays within bounds or is absolute
 #[inline]
 pub(crate) fn relative_path_escapes_base(path: &Path) -> bool {
+    path_analysis(path).escapes
+}
+
+/// Result of analyzing a path for traversal and dot components.
+pub(crate) struct PathAnalysis {
+    /// Whether the path would escape its base directory.
+    pub(crate) escapes: bool,
+    /// Whether the path contains `.` or `..` components.
+    pub(crate) has_dots: bool,
+}
+
+/// Analyzes a path for traversal attacks and dot components.
+///
+/// This is a single-pass analysis that checks both:
+/// 1. Whether the path escapes its base (for security)
+/// 2. Whether the path has `.` or `..` components (for optimization)
+///
+/// The `has_dots` flag is used by `AllowedGlobResolver` to decide whether
+/// to check the glob policy on the input path (fast) or the canonical path
+/// (correct for paths like `src/../lib.rs`).
+#[inline]
+pub(crate) fn path_analysis(path: &Path) -> PathAnalysis {
     if path.is_absolute() {
-        return false;
+        return PathAnalysis {
+            escapes: false,
+            has_dots: false,
+        };
     }
 
     let mut depth = 0usize;
+    let mut has_dots = false;
+
     for component in path.components() {
         match component {
             Component::Normal(_) => depth += 1,
-            Component::CurDir => {}
+            Component::CurDir => has_dots = true,
             Component::ParentDir => {
+                has_dots = true;
                 if depth == 0 {
-                    return true;
+                    return PathAnalysis {
+                        escapes: true,
+                        has_dots: true,
+                    };
                 }
                 depth -= 1;
             }
-            Component::RootDir | Component::Prefix(_) => return false,
+            Component::RootDir | Component::Prefix(_) => {
+                return PathAnalysis {
+                    escapes: false,
+                    has_dots: false,
+                };
+            }
         }
     }
 
-    false
+    PathAnalysis {
+        escapes: false,
+        has_dots,
+    }
 }
 
 /// Resolves a path for a new file when the parent directory exists.

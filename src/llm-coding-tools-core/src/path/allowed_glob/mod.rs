@@ -6,7 +6,7 @@
 mod normalize;
 mod policy;
 
-use super::{relative_path_escapes_base, resolve_new_file_fast, PathResolver};
+use super::{path_analysis, resolve_new_file_fast, PathResolver};
 use crate::context::PathMode;
 use crate::error::{ToolError, ToolResult};
 use normalize::expand_shell;
@@ -144,14 +144,27 @@ impl PathResolver for AllowedGlobResolver {
         let input_path = Path::new(path);
         let policy = self.policy.as_deref();
 
-        if relative_path_escapes_base(input_path) {
+        let analysis = path_analysis(input_path);
+        if analysis.escapes {
             return Err(ToolError::InvalidPath(format!(
                 "path '{}' is not within allowed directories",
                 path
             )));
         }
 
+        // Optimization: if path has no `.` or `..` components, we can check the glob
+        // policy on the input path directly, avoiding strip_prefix overhead.
+        // For paths with dots (e.g., "src/../lib.rs"), we must use the canonical path.
+        let fast_policy_input = if !analysis.has_dots { Some(path) } else { None };
+
         for base_dir in self.base_directories.iter() {
+            // Fast policy check before filesystem operations.
+            if let (Some(policy), Some(input)) = (policy, fast_policy_input) {
+                if !policy.is_allowed(input) {
+                    continue;
+                }
+            }
+
             // Relative input joins base_dir; absolute input overrides it.
             let candidate = base_dir.join(input_path);
 
@@ -162,8 +175,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Apply glob policy to the relative path.
-                if let Some(policy) = policy {
+                // Slow policy check for paths with dots.
+                if let (Some(policy), None) = (policy, fast_policy_input) {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
@@ -182,8 +195,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Apply glob policy to the resolved relative path.
-                if let Some(policy) = policy {
+                // Slow policy check for paths with dots.
+                if let (Some(policy), None) = (policy, fast_policy_input) {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
@@ -200,8 +213,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Apply glob policy to the target relative path.
-                if let Some(policy) = policy {
+                // Slow policy check for paths with dots.
+                if let (Some(policy), None) = (policy, fast_policy_input) {
                     let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
