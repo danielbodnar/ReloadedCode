@@ -5,15 +5,13 @@
 //! - [`AgentRuntime`] — Container for loaded agents, defaults, Task settings, and tools.
 //! - [`AgentDefaults`] — Fallback settings when an agent doesn't specify them.
 
-use super::task::{resolve_allowed_tools, resolve_callable_target_summaries};
+use super::task::{build_runtime_task_caches, TaskTargetSummary};
 use super::tool_catalog::ToolCatalogEntry;
 use crate::{AgentCatalog, RulesetExt};
 use ahash::AHashMap;
 use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::TaskSettings;
 use std::sync::Arc;
-
-use super::task::TaskTargetSummary;
 
 /// Default settings used when an agent doesn't specify them.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -46,6 +44,8 @@ pub struct AgentRuntime {
     task_settings: TaskSettings,
     tools: Vec<ToolCatalogEntry>,
     permission_rulesets: AHashMap<String, Arc<Ruleset>>,
+    allowed_tools_by_caller: AHashMap<String, Vec<ToolCatalogEntry>>,
+    callable_target_summaries_by_caller: AHashMap<String, Vec<TaskTargetSummary>>,
 }
 
 impl AgentRuntime {
@@ -65,6 +65,8 @@ impl AgentRuntime {
                 )
             })
             .collect();
+        let (allowed_tools_by_caller, callable_target_summaries_by_caller) =
+            build_runtime_task_caches(&catalog, &permission_rulesets, &tools);
 
         Self {
             catalog,
@@ -72,6 +74,8 @@ impl AgentRuntime {
             task_settings,
             tools,
             permission_rulesets,
+            allowed_tools_by_caller,
+            callable_target_summaries_by_caller,
         }
     }
 
@@ -115,7 +119,10 @@ impl AgentRuntime {
     /// target remains callable after applying `permission.task`.
     #[inline]
     pub fn allowed_tools(&self, caller_name: &str) -> Vec<ToolCatalogEntry> {
-        resolve_allowed_tools(self, caller_name)
+        self.allowed_tools_by_caller
+            .get(caller_name)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Returns stable summaries for every agent the named caller may delegate to via Task.
@@ -138,6 +145,32 @@ impl AgentRuntime {
     /// [`AgentMode::Subagent`]: crate::AgentMode::Subagent
     #[inline]
     pub fn summarize_callable_targets(&self, caller_name: &str) -> Vec<TaskTargetSummary> {
-        resolve_callable_target_summaries(self, caller_name)
+        self.callable_target_summaries_by_caller
+            .get(caller_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Returns whether the named caller may delegate to the given target.
+    ///
+    /// Looks up the caller's filtered callable-target list and performs a
+    /// binary search for `target_name`.
+    ///
+    /// # Arguments
+    /// - `caller_name`: Name of the agent that would originate the delegation.
+    /// - `target_name`: Name of the candidate delegate target.
+    ///
+    /// # Returns
+    /// - `true` if `target_name` appears in the caller's permitted target list.
+    /// - `false` if the caller is not in the catalog or the target is absent.
+    #[inline]
+    pub fn can_delegate_to(&self, caller_name: &str, target_name: &str) -> bool {
+        self.callable_target_summaries_by_caller
+            .get(caller_name)
+            .is_some_and(|summaries| {
+                summaries
+                    .binary_search_by(|summary| summary.name.as_ref().cmp(target_name))
+                    .is_ok()
+            })
     }
 }

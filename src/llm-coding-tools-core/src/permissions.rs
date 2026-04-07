@@ -247,39 +247,41 @@ impl Ruleset {
     ///   `*` means any number of chars, `?` means one char.
     /// * `subject` - The subject to match against rule patterns (e.g., agent name, path)
     pub fn evaluate(&self, permission: &str, subject: &str) -> PermissionAction {
-        let permission_hash = hash_u64(permission);
-        let subject_hash = hash_u64(subject);
-        let mut result = PermissionAction::Deny;
-
-        for rule in &self.rules {
-            let permission_matches = rule_matches(
-                permission,
-                permission_hash,
-                rule.permission(),
-                rule.permission_hash,
-                rule.permission_is_wildcard(),
-            );
-
-            if !permission_matches {
-                continue;
-            }
-
-            let pattern_matches = rule_matches(
-                subject,
-                subject_hash,
-                rule.pattern(),
-                rule.pattern_hash,
-                rule.pattern_is_wildcard(),
-            );
-
-            if !pattern_matches {
-                continue;
-            }
-
-            result = rule.action();
+        match self.rules.as_slice() {
+            [] => return PermissionAction::Deny,
+            [rule] => return evaluate_single_rule(rule, permission, subject),
+            _ => {}
         }
 
-        result
+        let permission_hash = hash_u64(permission);
+        let mut subject_hash = None;
+
+        // Last-match-wins means the hottest successful path is the tail of the
+        // ruleset, so scan in reverse and exit on the first match.
+        for rule in self.rules.iter().rev() {
+            if !rule_matches(
+                permission,
+                permission_hash,
+                &rule.permission,
+                rule.permission_hash,
+                rule.permission_is_wildcard,
+            ) {
+                continue;
+            }
+
+            let pattern_matches = if rule.pattern_is_wildcard {
+                wildcard_match(subject, &rule.pattern)
+            } else {
+                let subject_hash = *subject_hash.get_or_insert_with(|| hash_u64(subject));
+                rule.pattern_hash == subject_hash && &*rule.pattern == subject
+            };
+
+            if pattern_matches {
+                return rule.action;
+            }
+        }
+
+        PermissionAction::Deny
     }
 
     /// Checks if a permission is allowed for the given subject.
@@ -397,6 +399,32 @@ fn rule_matches(
         wildcard_match(input, rule_value)
     } else {
         rule_hash == input_hash && rule_value == input
+    }
+}
+
+#[inline(always)]
+fn evaluate_single_rule(rule: &Rule, permission: &str, subject: &str) -> PermissionAction {
+    let permission_hash = hash_u64(permission);
+    if !rule_matches(
+        permission,
+        permission_hash,
+        &rule.permission,
+        rule.permission_hash,
+        rule.permission_is_wildcard,
+    ) {
+        return PermissionAction::Deny;
+    }
+
+    let pattern_matches = if rule.pattern_is_wildcard {
+        wildcard_match(subject, &rule.pattern)
+    } else {
+        rule.pattern_hash == hash_u64(subject) && &*rule.pattern == subject
+    };
+
+    if pattern_matches {
+        rule.action
+    } else {
+        PermissionAction::Deny
     }
 }
 

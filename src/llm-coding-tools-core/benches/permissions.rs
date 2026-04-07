@@ -30,8 +30,8 @@ struct PermissionCase {
 /// - `final_pattern`: Subject pattern for the last (allow) rule.
 fn build_ruleset(
     rule_count: usize,
-    final_permission: impl Into<String>,
-    final_pattern: impl Into<String>,
+    final_permission: impl Into<Box<str>>,
+    final_pattern: impl Into<Box<str>>,
 ) -> Ruleset {
     let mut ruleset = Ruleset::with_capacity(rule_count.max(1));
 
@@ -69,6 +69,12 @@ fn benchmark_cases() -> Vec<PermissionCase> {
             ruleset: build_ruleset(32, "read", "/workspace/src/lib.rs"),
         },
         PermissionCase {
+            name: "exact_128_rules",
+            tool_name: "read",
+            subject: "/workspace/src/lib.rs",
+            ruleset: build_ruleset(128, "read", "/workspace/src/lib.rs"),
+        },
+        PermissionCase {
             name: "wildcard_subject_32_rules",
             tool_name: "read",
             subject: "/workspace/src/lib.rs",
@@ -85,6 +91,12 @@ fn benchmark_cases() -> Vec<PermissionCase> {
             tool_name: "read",
             subject: "/workspace/src/lib.rs",
             ruleset: build_ruleset(32, "r*d", "/workspace/src/*.rs"),
+        },
+        PermissionCase {
+            name: "wildcard_both_128_rules",
+            tool_name: "read",
+            subject: "/workspace/src/lib.rs",
+            ruleset: build_ruleset(128, "r*d", "/workspace/src/*.rs"),
         },
     ]
 }

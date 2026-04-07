@@ -104,6 +104,8 @@ where
 
     fn validate_target(&self, caller_name: &str, target_name: &str) -> Result<(), ToolError> {
         let catalog = self.context.runtime().catalog();
+
+        // Check if we can get caller & target
         let caller = catalog.by_name(caller_name).ok_or_else(|| {
             ToolError::execution_failed(format!(
                 "delegating agent `{caller_name}` disappeared from the runtime catalog"
@@ -117,6 +119,7 @@ where
             )
         })?;
 
+        // Primary agents cannot be delegated to; they're main driver.
         if matches!(target.mode, AgentMode::Primary) {
             return Err(ToolError::validation_error(
                 task_meta::NAME,
@@ -127,17 +130,12 @@ where
             ));
         }
 
-        // `validate_target` only applies `Ruleset` filtering when `caller.permission`
-        // explicitly defines `task_meta::NAME`; without that opt-in, non-Primary
-        // targets remain callable for compatibility, while `AgentMode::Primary`
-        // targets are always denied above.
-        let has_explicit_task_permission = caller.permission.contains_key(task_meta::NAME);
-        if has_explicit_task_permission
+        // Check if caller is allowed to delegate to target
+        if caller.permission.contains_key(task_meta::NAME)
             && !self
                 .context
                 .runtime()
-                .permission_ruleset(caller_name)
-                .is_some_and(|ruleset| ruleset.is_allowed(task_meta::NAME, target_name))
+                .can_delegate_to(caller_name, target_name)
         {
             return Err(ToolError::validation_error(
                 task_meta::NAME,

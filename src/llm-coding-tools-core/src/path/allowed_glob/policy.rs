@@ -76,9 +76,15 @@ impl GlobPolicy {
     /// # Returns
     ///
     /// `true` if the path is allowed by the last matching rule, `false` otherwise.
+    #[inline]
     pub(crate) fn is_allowed(&self, normalized_path: &str) -> bool {
         if self.rules.is_empty() {
             return false;
+        }
+
+        // Single-rule fast path: skip GlobSet + loop when there's only one rule.
+        if let [(matcher, action)] = self.rules.as_slice() {
+            return matcher.is_match(normalized_path) && matches!(action, RuleAction::Allow);
         }
 
         // Speedup: Match against all globs at once.
