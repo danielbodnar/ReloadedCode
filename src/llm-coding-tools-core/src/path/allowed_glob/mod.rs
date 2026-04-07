@@ -175,8 +175,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Slow policy check for paths with dots.
-                if let (Some(policy), None) = (policy, fast_policy_input) {
+                // Policy check on resolved path (handles symlink policy bypass).
+                if let Some(policy) = policy {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
@@ -195,8 +195,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Slow policy check for paths with dots.
-                if let (Some(policy), None) = (policy, fast_policy_input) {
+                // Policy check on resolved path (handles symlink policy bypass).
+                if let Some(policy) = policy {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
@@ -213,8 +213,8 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Slow policy check for paths with dots.
-                if let (Some(policy), None) = (policy, fast_policy_input) {
+                // Policy check on resolved path (handles symlink policy bypass).
+                if let Some(policy) = policy {
                     let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
                     if !policy.is_allowed(&normalized_relative) {
@@ -409,6 +409,42 @@ mod tests {
 
         let result = resolver.resolve("escape_link/secret.txt");
         assert!(result.is_err(), "symlink escape should be blocked");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("not within allowed"));
+    }
+
+    /// Regression test: symlink under allowed dir pointing to denied dir
+    /// must be blocked after canonicalization re-checks policy.
+    #[test]
+    #[cfg(unix)]
+    fn rejects_symlink_policy_bypass_attempt() {
+        use std::os::unix::fs::symlink;
+
+        let dir = setup_test_dir();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        fs::write(dir.path().join("target/app"), "binary").unwrap();
+
+        let symlink_path = dir.path().join("src/link");
+        symlink(dir.path().join("target"), &symlink_path).unwrap();
+
+        let policy = GlobPolicy::builder()
+            .allow("src/**")
+            .unwrap()
+            .deny("target/**")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let resolver = AllowedGlobResolver::new(vec![dir.path().to_path_buf()])
+            .unwrap()
+            .with_policy(policy);
+
+        let result = resolver.resolve("src/link/app");
+        assert!(
+            result.is_err(),
+            "symlink policy bypass should be blocked: 'src/link/app' resolves to 'target/app' which should be denied"
+        );
         let err = result.unwrap_err();
         assert!(err.to_string().contains("not within allowed"));
     }
