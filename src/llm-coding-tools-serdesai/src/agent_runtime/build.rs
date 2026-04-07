@@ -93,14 +93,7 @@ impl PreparedBuild {
     pub(super) fn model(&self) -> &BoxedModel {
         &self.model
     }
-
-    /// Returns the resolved callable Task target summaries.
-    #[inline]
-    pub(super) fn callable_target_summaries(&self) -> &[TaskTargetSummary] {
-        &self.callable_target_summaries
-    }
 }
-
 /// Resolves model configuration and collects build parameters for an agent.
 pub(super) fn prepare_build<C>(
     runtime: &AgentRuntime,
@@ -118,9 +111,9 @@ where
         .ok_or_else(|| AgentBuildError::UnknownAgent { name: name.into() })?;
     let resolved = resolve_model(model_catalog, runtime.defaults(), agent)?;
     let serdes_model = build_serdes_model(model_catalog, &resolved, credentials)?;
-    let tools = runtime.allowed_tools(name);
+    let tools = runtime.allowed_tools(name).to_vec();
     let callable_target_summaries = if with_summaries {
-        runtime.summarize_callable_targets(name)
+        runtime.summarize_callable_targets(name).to_vec()
     } else {
         Vec::new()
     };
@@ -170,7 +163,7 @@ where
     // No need to rebuild - already constructed in prepare_build
     let permission = prepared.permission.clone();
 
-    for entry in &prepared.tools {
+    for entry in prepared.tools.iter() {
         match entry.kind {
             ToolCatalogKind::Read => {
                 let settings = build_read_settings(&prepared.tool_settings.read)?;
@@ -236,11 +229,11 @@ where
             }
             ToolCatalogKind::Task => {
                 if let Some(task_handle) = task_handle
-                    && !prepared.callable_target_summaries().is_empty()
+                    && !prepared.callable_target_summaries.is_empty()
                 {
                     builder = builder.tool(prompt_builder.track(TaskTool::new(
                         prepared.agent_name.as_ref(),
-                        prepared.callable_target_summaries().to_vec(),
+                        prepared.callable_target_summaries.clone(),
                         (*task_handle).clone(),
                     )));
                 }

@@ -118,11 +118,11 @@ impl AgentRuntime {
     /// `task` is only included when at least one `mode: all` or `mode: subagent`
     /// target remains callable after applying `permission.task`.
     #[inline]
-    pub fn allowed_tools(&self, caller_name: &str) -> Vec<ToolCatalogEntry> {
+    pub fn allowed_tools(&self, caller_name: &str) -> &[ToolCatalogEntry] {
         self.allowed_tools_by_caller
             .get(caller_name)
-            .cloned()
-            .unwrap_or_default()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Returns stable summaries for every agent the named caller may delegate to via Task.
@@ -144,11 +144,11 @@ impl AgentRuntime {
     /// [`AgentMode::All`]: crate::AgentMode::All
     /// [`AgentMode::Subagent`]: crate::AgentMode::Subagent
     #[inline]
-    pub fn summarize_callable_targets(&self, caller_name: &str) -> Vec<TaskTargetSummary> {
+    pub fn summarize_callable_targets(&self, caller_name: &str) -> &[TaskTargetSummary] {
         self.callable_target_summaries_by_caller
             .get(caller_name)
-            .cloned()
-            .unwrap_or_default()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Returns whether the named caller may delegate to the given target.
