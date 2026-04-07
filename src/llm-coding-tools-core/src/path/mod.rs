@@ -148,3 +148,20 @@ pub(crate) fn resolve_new_file_fast(candidate: &Path) -> Option<PathBuf> {
         None
     }
 }
+
+#[cfg(unix)]
+#[inline]
+pub(crate) fn path_as_str(path: &Path) -> &str {
+    use std::os::unix::ffi::OsStrExt;
+    let os_str = path.as_os_str();
+    match std::str::from_utf8(os_str.as_bytes()) {
+        Ok(s) => s,
+        Err(_) => path.to_str().unwrap_or(""),
+    }
+}
+
+#[cfg(not(unix))]
+#[inline]
+pub(crate) fn path_as_str(path: &Path) -> &str {
+    path.to_str().unwrap_or("")
+}
