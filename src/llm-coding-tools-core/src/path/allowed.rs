@@ -198,6 +198,7 @@ mod tests {
     use super::*;
     use crate::permissions::{PermissionAction, Rule, Ruleset};
     use rstest::rstest;
+    use soft_canonicalize::soft_canonicalize;
     use std::fs;
     use std::sync::Arc;
     use tempfile::TempDir;
@@ -311,14 +312,20 @@ mod tests {
         fs::write(&external_file, "content").unwrap();
 
         // Grant access to anything under external_dir.
-        let pattern = format!("{}/*", external_dir.path().to_str().unwrap());
+        // Use soft_canonicalize to match the resolver's internal canonicalization,
+        // ensuring consistent path format across platforms (macOS symlinks, Windows UNC).
+        let canon_external = soft_canonicalize(external_dir.path()).unwrap();
+        let pattern = canon_external.join("*").to_str().unwrap().to_owned();
         let resolver = resolver_with_external_rule(&dir, &pattern, PermissionAction::Allow);
 
         let result = resolver.resolve(external_file.to_str().unwrap());
         let resolved = result.expect("external path allowed by permission should resolve");
         assert!(resolved.is_absolute(), "resolved path must be absolute");
-        let expected = external_file.canonicalize().expect("file should exist");
-        assert_eq!(resolved, expected, "resolved path must be canonical");
+        assert_eq!(
+            resolved,
+            soft_canonicalize(&external_file).unwrap(),
+            "resolved path must be canonical"
+        );
     }
 
     /// External paths are rejected whether explicitly denied or no ruleset is configured.
@@ -371,21 +378,28 @@ mod tests {
         fs::create_dir_all(&subdir).unwrap();
         fs::write(subdir.join("secret.txt"), "content").unwrap();
 
-        let pattern = format!("{}/allowed/secret.txt", tmp.path().to_str().unwrap());
+        let canon_tmp = soft_canonicalize(tmp.path()).unwrap();
+        let pattern = canon_tmp
+            .join("allowed")
+            .join("secret.txt")
+            .to_str()
+            .unwrap()
+            .to_owned();
         let resolver = resolver_with_external_rule(&dir, &pattern, PermissionAction::Allow);
 
-        let input = format!(
-            "{}/allowed/../allowed/secret.txt",
-            tmp.path().to_str().unwrap()
-        );
-        let result = resolver.resolve(&input);
+        let input = canon_tmp
+            .join("allowed")
+            .join("..")
+            .join("allowed")
+            .join("secret.txt");
+        let result = resolver.resolve(&input.to_string_lossy());
         assert!(
             result.is_ok(),
             "canonicalized path must match exact pattern"
         );
         let resolved = result.unwrap();
         assert!(
-            resolved.ends_with("allowed/secret.txt"),
+            resolved.ends_with(Path::new("allowed").join("secret.txt")),
             "resolved path should be canonical: {:?}",
             resolved
         );
