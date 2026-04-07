@@ -153,8 +153,8 @@ impl PathResolver for AllowedGlobResolver {
         }
 
         // Optimization: if path has no `.` or `..` components, we can check the glob
-        // policy on the input path directly, avoiding strip_prefix overhead.
-        // For paths with dots (e.g., "src/../lib.rs"), we must use the canonical path.
+        // policy on the input path directly and only fall back to the resolved path
+        // check when canonicalization changes what the policy should see.
         let fast_policy_input = if !analysis.has_dots { Some(path) } else { None };
 
         for base_dir in self.base_directories.iter() {
@@ -175,11 +175,14 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Policy check on resolved path (handles symlink policy bypass).
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
                 if let Some(policy) = policy {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
-                    if !policy.is_allowed(&normalized_relative) {
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
                         continue;
                     }
                 }
@@ -195,11 +198,14 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Policy check on resolved path (handles symlink policy bypass).
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
                 if let Some(policy) = policy {
                     let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
-                    if !policy.is_allowed(&normalized_relative) {
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
                         continue;
                     }
                 }
@@ -213,11 +219,14 @@ impl PathResolver for AllowedGlobResolver {
                     continue;
                 }
 
-                // Policy check on resolved path (handles symlink policy bypass).
+                // Re-check policy after resolution if normalization or symlinks changed
+                // the path seen by glob matching.
                 if let Some(policy) = policy {
                     let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
                     let normalized_relative = normalize::normalize_path(relative_path);
-                    if !policy.is_allowed(&normalized_relative) {
+                    if fast_policy_input != Some(normalized_relative.as_ref())
+                        && !policy.is_allowed(&normalized_relative)
+                    {
                         continue;
                     }
                 }
