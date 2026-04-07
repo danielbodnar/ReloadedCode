@@ -641,7 +641,8 @@ mod tests {
         } else {
             AllowedGlobResolver::new(vec![dir.path().to_path_buf()]).unwrap()
         };
-        let result = resolver.resolve("/some/external/path.txt");
+        let external_path = std::env::temp_dir().join("some-external-path.txt");
+        let result = resolver.resolve(external_path.to_str().unwrap());
         let err = result.expect_err("external path should be rejected");
         assert!(err.to_string().contains("not within allowed"));
     }
