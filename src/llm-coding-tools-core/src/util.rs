@@ -99,6 +99,28 @@ pub(crate) fn truncate_line_with_ellipsis(line: &str, max_chars: usize) -> (&str
     }
 }
 
+/// Fast integer-to-string conversion for positive integers.
+///
+/// Uses a stack buffer to avoid allocations and converts digit-by-digit
+/// for maximum performance.
+#[inline]
+pub(crate) fn push_usize(output: &mut String, mut n: usize) {
+    if n == 0 {
+        output.push('0');
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut pos = 20usize;
+    while n > 0 {
+        pos -= 1;
+        buf[pos] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    unsafe {
+        output.push_str(core::str::from_utf8_unchecked(&buf[pos..]));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

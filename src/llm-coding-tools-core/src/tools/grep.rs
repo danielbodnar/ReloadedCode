@@ -5,7 +5,7 @@ use crate::path::PathResolver;
 use crate::permissions::Ruleset;
 use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::grep as grep_meta;
-use crate::util::{truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
+use crate::util::{push_usize, truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
 use globset::Glob;
 use grep_regex::RegexMatcher;
 use grep_searcher::sinks::UTF8;
@@ -241,7 +241,7 @@ impl GrepOutput {
         let mut output = String::with_capacity(estimated_capacity);
 
         output.push_str("Found ");
-        push_u64(&mut output, self.match_count as u64);
+        push_usize(&mut output, self.match_count);
         output.push_str(" matches\n");
 
         for file in &self.files {
@@ -255,7 +255,7 @@ impl GrepOutput {
 
                 if line_numbers {
                     output.push_str("  L");
-                    push_u64(&mut output, m.line_num);
+                    push_usize(&mut output, m.line_num as usize);
                     output.push_str(": ");
                     output.push_str(display_text);
                 } else {
@@ -273,13 +273,13 @@ impl GrepOutput {
 
         if self.truncated {
             output.push_str("\n(Results truncated at ");
-            push_u64(&mut output, self.effective_limit as u64);
+            push_usize(&mut output, self.effective_limit);
             output.push_str(" matches)");
         }
 
         if self.partial {
             output.push_str("\n(Partial results: ");
-            push_u64(&mut output, self.errors.len() as u64);
+            push_usize(&mut output, self.errors.len());
             output.push_str(" file error(s) encountered)");
         }
 
@@ -439,28 +439,6 @@ pub fn grep_search<R: PathResolver>(
         errors,
         effective_limit: limit,
     })
-}
-
-/// Formats a [`u64`] as decimal digits and appends them to `output`.
-///
-/// Writes digits into a fixed-size stack buffer right-to-left, then appends
-/// the resulting slice — no intermediate [`String`] or heap allocation.
-#[inline]
-fn push_u64(output: &mut String, mut n: u64) {
-    if n == 0 {
-        output.push('0');
-        return;
-    }
-    let mut buf = [0u8; 20];
-    let mut pos = 20usize;
-    while n > 0 {
-        pos -= 1;
-        buf[pos] = b'0' + (n % 10) as u8;
-        n /= 10;
-    }
-    unsafe {
-        output.push_str(core::str::from_utf8_unchecked(&buf[pos..]));
-    }
 }
 
 struct FileSearchResult {
