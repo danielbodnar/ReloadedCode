@@ -12,14 +12,12 @@
 //!
 //! For each configured base directory, try in order:
 //!
-//! 1. **Fast policy check** - if the input has no dot components, check the
-//!    glob policy on the raw input string before any filesystem work.
-//! 2. **Canonicalize** - if the file exists, resolve symlinks and normalize.
+//! 1. **Canonicalize** - if the file exists, resolve symlinks and normalize.
 //!    Accept if the result stays inside the base and passes policy.
-//! 3. **New-file fast path** - if only the file is new but its parent
+//! 2. **New-file fast path** - if only the file is new but its parent
 //!    directory exists, canonicalize the parent and join the filename.
 //!    Accept if the result stays inside the base and passes policy.
-//! 4. **Soft canonicalize** - for paths where even the parent doesn't exist,
+//! 3. **Soft canonicalize** - for paths where even the parent doesn't exist,
 //!    resolve as far as possible. Accept if the result stays inside the
 //!    base and passes policy.
 //!
@@ -221,25 +219,14 @@ impl PathResolver for AllowedGlobResolver {
             );
         }
 
-        let fast_policy_input = if !analysis.has_dots { Some(path) } else { None };
-        // Optimization: if path has no `.` or `..` components, we can check the glob
-        // policy on the input path directly and only fall back to the resolved path
-        // check when canonicalization changes what the policy should see.
-        resolve_relative(
-            &self.base_directories,
-            policy,
-            path,
-            input_path,
-            fast_policy_input,
-        )
+        resolve_relative(&self.base_directories, policy, path, input_path)
     }
 }
 
 /// For each configured base directory, try to resolve the relative input.
 ///
-/// Three resolution tiers, cheapest first (plus a fast policy pre-check):
+/// Three resolution tiers, cheapest first:
 ///
-/// 0. Fast policy check on raw input (skip bases that would deny it).
 /// 1. `canonicalize()` for existing files.
 /// 2. `resolve_new_file_fast()` for new files in existing dirs.
 /// 3. `soft_canonicalize()` fallback for missing parent dirs.
@@ -252,16 +239,8 @@ fn resolve_relative(
     policy: Option<&GlobPolicy>,
     path: &str,
     input_path: &Path,
-    fast_policy_input: Option<&str>,
 ) -> ToolResult<PathBuf> {
     for base_dir in base_directories.iter() {
-        // Step 0: fast policy check before any filesystem operations.
-        if let (Some(policy), Some(input)) = (policy, fast_policy_input) {
-            if !policy.is_allowed(input) {
-                continue;
-            }
-        }
-
         let candidate = base_dir.join(input_path);
 
         // Step 1: canonicalize for existing files - resolves symlinks and normalizes.
@@ -274,9 +253,7 @@ fn resolve_relative(
             if let Some(policy) = policy {
                 let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     continue;
                 }
             }
@@ -294,9 +271,7 @@ fn resolve_relative(
             if let Some(policy) = policy {
                 let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     continue;
                 }
             }
@@ -314,9 +289,7 @@ fn resolve_relative(
             if let Some(policy) = policy {
                 let relative_path = target_path.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     continue;
                 }
             }

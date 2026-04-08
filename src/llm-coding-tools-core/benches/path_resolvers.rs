@@ -17,7 +17,7 @@
 //! | existing_file          | src/lib.rs                                         | Fast path: file exists, canonicalize succeeds  |
 //! | new_file_existing_dir  | src/new_file_test.rs                               | Fast path: parent exists, canonicalize parent   |
 //! | new_file_missing_dir   | src/new_dir/nested/new_file_test.rs                | Slow path: soft-canonicalize for non-existent  |
-//! | policy_reject          | benchmarks/new_file_test.rs                        | Early rejection via fast policy check          |
+//! | policy_reject          | benchmarks/new_file_test.rs                        | Rejection via glob policy after resolution     |
 //! | deep_nested            | src/llm-coding-tools-core/src/path/.../policy.rs   | Longer path, more components to process        |
 //! | traversal_reject       | ../../../outside.txt                               | Early rejection via lexical escape check       |
 //! ```
@@ -35,14 +35,14 @@
 //! resolvers/AllowedGlobResolver_simple_policy/existing_file          ~2.3 µs  (overhead: ~200 ns)
 //! resolvers/AllowedGlobResolver_simple_policy/new_file_existing_dir  ~4.4 µs  (overhead: ~300 ns)
 //! resolvers/AllowedGlobResolver_simple_policy/new_file_missing_dir   ~12.0 µs (overhead: ~300 ns)
-//! resolvers/AllowedGlobResolver_simple_policy/policy_reject          ~43 ns   (230x faster!)
+//! resolvers/AllowedGlobResolver_simple_policy/policy_reject          ~10.0 µs (must resolve to check policy)
 //! resolvers/AllowedGlobResolver_simple_policy/deep_nested            ~12.9 µs
 //! resolvers/AllowedGlobResolver_simple_policy/traversal_reject       ~21 ns
 //!
 //! resolvers/AllowedGlobResolver_complex_policy/existing_file          ~2.6 µs
 //! resolvers/AllowedGlobResolver_complex_policy/new_file_existing_dir  ~4.6 µs
 //! resolvers/AllowedGlobResolver_complex_policy/new_file_missing_dir   ~12.2 µs
-//! resolvers/AllowedGlobResolver_complex_policy/policy_reject          ~105 ns
+//! resolvers/AllowedGlobResolver_complex_policy/policy_reject          ~10.5 µs (must resolve to check policy)
 //! resolvers/AllowedGlobResolver_complex_policy/deep_nested            ~13.2 µs
 //! resolvers/AllowedGlobResolver_complex_policy/traversal_reject       ~21 ns
 //!
