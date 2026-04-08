@@ -5,7 +5,7 @@ use crate::path::PathResolver;
 use crate::permissions::Ruleset;
 use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::grep as grep_meta;
-use crate::util::{truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
+use crate::util::{push_usize, truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
 use globset::Glob;
 use grep_regex::RegexMatcher;
 use grep_searcher::sinks::UTF8;
@@ -13,7 +13,6 @@ use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -241,18 +240,27 @@ impl GrepOutput {
         let estimated_capacity = self.match_count * ESTIMATED_CHARS_PER_MATCH;
         let mut output = String::with_capacity(estimated_capacity);
 
-        let _ = writeln!(&mut output, "Found {} matches", self.match_count);
+        output.push_str("Found ");
+        push_usize(&mut output, self.match_count);
+        output.push_str(" matches\n");
 
         for file in &self.files {
-            let _ = writeln!(&mut output, "\n{}:", file.path);
+            output.push('\n');
+            output.push_str(&file.path);
+            output.push_str(":\n");
+
             for m in &file.matches {
                 let (display_text, was_truncated) =
                     truncate_line_with_ellipsis(&m.line_text, max_line_len);
 
                 if line_numbers {
-                    let _ = write!(&mut output, "  L{}: {}", m.line_num, display_text);
+                    output.push_str("  L");
+                    push_usize(&mut output, m.line_num as usize);
+                    output.push_str(": ");
+                    output.push_str(display_text);
                 } else {
-                    let _ = write!(&mut output, "  {}", display_text);
+                    output.push_str("  ");
+                    output.push_str(display_text);
                 }
 
                 if was_truncated {
@@ -264,19 +272,15 @@ impl GrepOutput {
         }
 
         if self.truncated {
-            let _ = write!(
-                &mut output,
-                "\n(Results truncated at {} matches)",
-                self.effective_limit
-            );
+            output.push_str("\n(Results truncated at ");
+            push_usize(&mut output, self.effective_limit);
+            output.push_str(" matches)");
         }
 
         if self.partial {
-            let _ = write!(
-                &mut output,
-                "\n(Partial results: {} file error(s) encountered)",
-                self.errors.len()
-            );
+            output.push_str("\n(Partial results: ");
+            push_usize(&mut output, self.errors.len());
+            output.push_str(" file error(s) encountered)");
         }
 
         output
