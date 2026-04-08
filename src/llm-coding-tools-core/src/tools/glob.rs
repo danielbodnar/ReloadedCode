@@ -231,10 +231,10 @@ pub fn glob_files<R: PathResolver>(
     let truncated = total > limit;
 
     if total <= limit {
-        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        entries.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     } else {
-        entries.select_nth_unstable_by(limit - 1, |a, b| b.1.cmp(&a.1));
-        entries[..limit].sort_by(|a, b| b.1.cmp(&a.1));
+        entries.select_nth_unstable_by(limit - 1, |a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        entries[..limit].sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     }
 
     let files: Vec<String> = entries[..limit.min(total)]
@@ -425,6 +425,53 @@ mod tests {
             "expected newer file before older: {:?}",
             result.files
         );
+    }
+
+    #[rstest]
+    #[case::within_limit(
+        &["c.txt", "a.txt", "b.txt"],
+        1000,
+        vec!["a.txt", "b.txt", "c.txt"],
+        false,
+    )]
+    #[case::truncated(
+        &["e.txt", "c.txt", "a.txt", "d.txt", "b.txt"],
+        3,
+        vec!["a.txt", "b.txt", "c.txt"],
+        true,
+    )]
+    fn glob_sorts_deterministically_with_identical_mtimes(
+        #[case] files: &[&str],
+        #[case] limit: usize,
+        #[case] expected: Vec<&str>,
+        #[case] expected_truncated: bool,
+    ) {
+        let dir = TempDir::new().unwrap();
+        let base = dir.path();
+        let resolver = AbsolutePathResolver;
+
+        let same_time = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
+        for name in files {
+            let f = File::create(base.join(name)).unwrap();
+            f.set_times(FileTimes::new().set_modified(same_time))
+                .unwrap();
+        }
+
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: "**/*.txt".to_string(),
+                path: base.to_str().unwrap().to_string(),
+            },
+            &GlobSettings::new().with_limit(limit).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.files, expected,
+            "entries with identical mtimes must be sorted lexicographically by path"
+        );
+        assert_eq!(result.truncated, expected_truncated);
     }
 
     #[test]
