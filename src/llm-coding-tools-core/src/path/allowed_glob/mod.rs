@@ -221,7 +221,6 @@ impl PathResolver for AllowedGlobResolver {
                 policy,
                 path,
                 input_path,
-                analysis.has_dots,
             );
         }
 
@@ -338,10 +337,8 @@ fn resolve_relative(
 /// Absolute-path branch - same three resolution tiers as [`resolve_relative`]
 /// but canonicalize once and check all bases (no per-base FS calls).
 ///
-/// For each candidate, also verify glob policy. `fast_policy_input` holds
-/// the original input string when it has no dot components - if the
-/// resolved path's normalized relative form matches it, we skip the policy
-/// re-check since the fast-path already approved it.
+/// For each candidate, verify glob policy. Every tier calls
+/// [`GlobPolicy::is_allowed`] with the normalized relative form.
 ///
 /// If no base accepts, fall through to [`try_external`].
 fn resolve_absolute(
@@ -350,13 +347,9 @@ fn resolve_absolute(
     policy: Option<&GlobPolicy>,
     path: &str,
     input_path: &Path,
-    has_dots: bool,
 ) -> ToolResult<PathBuf> {
-    let fast_policy_input = if !has_dots { Some(path) } else { None };
-
     // Step 1: canonicalize for existing files.
     if let Ok(resolved) = input_path.canonicalize() {
-        // Check if any base claims this path and policy approves.
         let accepted = base_directories.iter().any(|base_dir| {
             if !resolved.starts_with(base_dir) {
                 return false;
@@ -364,9 +357,7 @@ fn resolve_absolute(
             if let Some(policy) = policy {
                 let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     return false;
                 }
             }
@@ -387,9 +378,7 @@ fn resolve_absolute(
             if let Some(policy) = policy {
                 let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     return false;
                 }
             }
@@ -410,9 +399,7 @@ fn resolve_absolute(
             if let Some(policy) = policy {
                 let relative_path = resolved.strip_prefix(base_dir).unwrap_or(Path::new(""));
                 let normalized_relative = normalize::normalize_path(relative_path);
-                if fast_policy_input != Some(normalized_relative.as_ref())
-                    && !policy.is_allowed(&normalized_relative)
-                {
+                if !policy.is_allowed(&normalized_relative) {
                     return false;
                 }
             }
