@@ -128,3 +128,26 @@ harness = false
 [[bench]]
 name = "permissions"
 harness = false
+
+[[bench]]
+name = "tools_read"
+harness = false
+required-features = ["blocking"]
+
+[[bench]]
+name = "tools_grep"
+harness = false
+
+[[bench]]
+name = "tools_edit"
+harness = false
+required-features = ["blocking"]
+
+[[bench]]
+name = "tools_glob"
+harness = false
+
+[[bench]]
+name = "tools_write"
+harness = false
+required-features = ["blocking"]
