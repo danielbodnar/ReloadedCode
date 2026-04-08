@@ -1,6 +1,7 @@
 //! Glob pattern file matching operation.
 
 use crate::error::{ToolError, ToolResult};
+use crate::path::allowed_glob::normalize::normalize_path;
 use crate::path::PathResolver;
 use crate::permissions::Ruleset;
 use crate::permissions_ext::OptionRulesetExt;
@@ -15,7 +16,9 @@ use std::time::SystemTime;
 /// Serde-friendly glob request owned by the core crate.
 #[derive(Debug, Deserialize)]
 pub struct GlobRequest {
+    /// Glob pattern to match against file paths (e.g. `"**/*.rs"`).
     pub pattern: String,
+    /// Absolute or relative directory path to search.
     pub path: String,
 }
 
@@ -31,7 +34,9 @@ impl GlobRequest {
 /// The `limit` field caps the number of file paths returned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobSettings {
+    /// Maximum number of file paths to return.
     limit: usize,
+    /// Optional permission ruleset controlling which paths may be traversed.
     permission: Option<Arc<Ruleset>>,
 }
 
@@ -127,13 +132,31 @@ pub struct GlobOutput {
 ///
 /// Results are sorted by modification time (newest first) and respect `.gitignore`.
 /// The `limit` parameter controls the maximum number of files returned.
+///
+/// # Arguments
+/// - `resolver` - [`PathResolver`] used to resolve `request.path` to an absolute directory.
+/// - `request` - The glob request containing the pattern and search directory.
+/// - `settings` - Runtime settings including result limit and optional permission ruleset.
+///
+/// # Returns
+/// - [`GlobOutput`] with matched file paths, sorted newest-first, plus truncation and
+///   error metadata.
+///
+/// # Errors
+/// - Returns [`ToolError::InvalidPath`] when the resolved path is not a directory.
+/// - Returns a [`ToolError`] when the glob pattern fails to compile.
+/// - Returns a [`ToolError`] when path resolution fails.
+/// - Returns a [`ToolError`] when the permission check denies access to the search directory.
 pub fn glob_files<R: PathResolver>(
     resolver: &R,
     request: GlobRequest,
     settings: &GlobSettings,
 ) -> ToolResult<GlobOutput> {
+    // Resolve the requested path to an absolute directory.
     let path = resolver.resolve(&request.path)?;
     let search_subject = path.to_string_lossy();
+
+    // Check that the caller is allowed to glob inside this directory.
     settings
         .permission()
         .check(glob_meta::NAME, search_subject.as_ref())?;
@@ -147,11 +170,13 @@ pub fn glob_files<R: PathResolver>(
 
     let limit = settings.limit();
 
+    // Compile the glob pattern once for repeated matching.
     let matcher = Glob::new(&request.pattern)?.compile_matcher();
 
     let mut entries: Vec<(std::path::PathBuf, SystemTime)> = Vec::new();
     let mut errors: Vec<String> = Vec::with_capacity(8);
 
+    // Walk the directory tree, honouring .gitignore at every level.
     let walker = WalkBuilder::new(&path)
         .hidden(false)
         .git_ignore(true)
@@ -160,6 +185,7 @@ pub fn glob_files<R: PathResolver>(
         .build();
 
     for entry_result in walker {
+        // Record traversal errors but keep walking.
         let entry = match entry_result {
             Ok(e) => e,
             Err(err) => {
@@ -168,6 +194,7 @@ pub fn glob_files<R: PathResolver>(
             }
         };
 
+        // Skip directories — we only want files.
         if let Some(ft) = entry.file_type() {
             if ft.is_dir() {
                 continue;
@@ -176,6 +203,7 @@ pub fn glob_files<R: PathResolver>(
             continue;
         }
 
+        // Strip the search-root prefix to get a relative path.
         let rel_path = match entry.path().strip_prefix(&path) {
             Ok(p) => p,
             Err(err) => {
@@ -188,29 +216,21 @@ pub fn glob_files<R: PathResolver>(
             }
         };
 
+        // When WalkBuilder yields the search root itself, strip_prefix
+        // produces an empty path - skip it so we only match against files.
         if rel_path.as_os_str().is_empty() {
             continue;
         }
 
-        let rel_str = rel_path.to_string_lossy();
+        // Normalise separators to forward slashes.
+        let rel_str = normalize_path(rel_path);
 
-        // Normalise Windows backslashes to forward slashes for glob pattern matching
-        #[cfg(windows)]
-        let rel_str: std::borrow::Cow<'_, str> = {
-            use std::borrow::Cow;
-            if rel_str.contains('\\') {
-                Cow::Owned(rel_str.replace('\\', "/"))
-            } else {
-                rel_str
-            }
-        };
-
+        // Skip files that don't match the glob pattern.
         if !matcher.is_match(rel_str.as_ref()) {
             continue;
         }
 
-        // If target is in a location it's not allowed to access, it needs
-        // to be filtered out.
+        // Drop files the caller isn't allowed to see.
         if let Some(ruleset) = settings.permission() {
             let entry_subject = entry.path().to_string_lossy();
             if !ruleset.is_allowed(glob_meta::NAME, entry_subject.as_ref()) {
@@ -218,6 +238,7 @@ pub fn glob_files<R: PathResolver>(
             }
         }
 
+        // Read mtime, falling back to epoch when unavailable.
         let mtime = entry
             .metadata()
             .ok()
@@ -230,6 +251,8 @@ pub fn glob_files<R: PathResolver>(
     let total = entries.len();
     let truncated = total > limit;
 
+    // Sort newest-first; break ties by path. Partial-sort when over limit
+    // to avoid ordering entries that will be discarded.
     if total <= limit {
         entries.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     } else {
@@ -237,14 +260,10 @@ pub fn glob_files<R: PathResolver>(
         entries[..limit].sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     }
 
+    // Build the final list of normalised relative paths.
     let files: Vec<String> = entries[..limit.min(total)]
         .iter()
-        .map(|(p, _)| {
-            let s = p.to_string_lossy().into_owned();
-            #[cfg(windows)]
-            let s = s.replace('\\', "/");
-            s
-        })
+        .map(|(p, _)| normalize_path(p).into_owned())
         .collect();
 
     Ok(GlobOutput {
@@ -257,17 +276,51 @@ pub fn glob_files<R: PathResolver>(
 
 #[cfg(test)]
 mod tests {
+    //! Tests for the [`glob_files`] operation covering pattern matching, sorting,
+    //! gitignore handling, permission filtering, limit enforcement, and serialization.
     use super::*;
     use crate::path::AbsolutePathResolver;
     use crate::permissions::{ExpandError, PermissionAction, Rule};
     use rstest::rstest;
     use std::fs::{self, File, FileTimes};
     use std::io::Write;
+    use std::path::Path;
     use std::time::{Duration, SystemTime};
     use tempfile::TempDir;
 
     type TestResult = Result<(), ExpandError>;
 
+    fn test_settings() -> GlobSettings {
+        GlobSettings::new().with_limit(1000).unwrap()
+    }
+
+    fn test_settings_with_limit(limit: usize) -> GlobSettings {
+        GlobSettings::new().with_limit(limit).unwrap()
+    }
+
+    fn run_glob(path: &Path, pattern: &str) -> GlobOutput {
+        run_glob_with_settings(path, pattern, &test_settings())
+    }
+
+    fn run_glob_with_limit(path: &Path, pattern: &str, limit: usize) -> GlobOutput {
+        run_glob_with_settings(path, pattern, &test_settings_with_limit(limit))
+    }
+
+    fn run_glob_with_settings(path: &Path, pattern: &str, settings: &GlobSettings) -> GlobOutput {
+        let resolver = AbsolutePathResolver;
+        glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: pattern.to_string(),
+                path: path.to_str().unwrap().to_string(),
+            },
+            settings,
+        )
+        .unwrap()
+    }
+
+    /// Creates a temporary directory tree with `.git`, `src/lib.rs`, `Cargo.toml`,
+    /// and a `target/` directory excluded via `.gitignore`.
     fn create_test_tree() -> TempDir {
         let dir = TempDir::new().unwrap();
         let base = dir.path();
@@ -282,7 +335,6 @@ mod tests {
         dir
     }
 
-    // GlobSettings tests
     #[test]
     fn glob_settings_should_create_standard_defaults() {
         let settings = GlobSettings::new();
@@ -305,17 +357,7 @@ mod tests {
         #[case] should_find: bool,
     ) {
         let dir = create_test_tree();
-        let resolver = AbsolutePathResolver;
-
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: pattern.to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), pattern);
 
         let found = result.files.iter().any(|f| f.contains(needle));
 
@@ -382,7 +424,6 @@ mod tests {
     fn glob_sorts_by_mtime_desc() {
         let dir = TempDir::new().unwrap();
         let base = dir.path();
-        let resolver = AbsolutePathResolver;
 
         let older_path = base.join("older.txt");
         let newer_path = base.join("newer.txt");
@@ -398,15 +439,7 @@ mod tests {
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
 
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(base, "**/*.txt");
 
         let newer_index = result
             .files
@@ -419,7 +452,6 @@ mod tests {
             .position(|path| path.ends_with("older.txt"))
             .unwrap();
 
-        // Newer files should appear before older ones in the results
         assert!(
             newer_index < older_index,
             "expected newer file before older: {:?}",
@@ -448,7 +480,6 @@ mod tests {
     ) {
         let dir = TempDir::new().unwrap();
         let base = dir.path();
-        let resolver = AbsolutePathResolver;
 
         let same_time = SystemTime::UNIX_EPOCH + Duration::from_secs(100);
         for name in files {
@@ -457,15 +488,7 @@ mod tests {
                 .unwrap();
         }
 
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(limit).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob_with_limit(base, "**/*.txt", limit);
 
         assert_eq!(
             result.files, expected,
@@ -476,36 +499,26 @@ mod tests {
 
     #[test]
     fn glob_returns_forward_slash_paths() {
-        // Patterns and returned paths use forward slashes on all platforms
         let dir = create_test_tree();
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.rs".to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), "**/*.rs");
 
-        // The only .rs file in our test tree is src/lib.rs
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with("lib.rs"));
 
-        // Returned paths must always use forward slashes (important on Windows)
         for path in &result.files {
             assert!(!path.contains('\\'), "expected forward slashes: {path}");
         }
         assert!(result.files.iter().any(|f| f.contains('/')));
     }
 
-    #[test]
-    fn glob_filters_denied_files_before_returning_output() -> TestResult {
+    #[rstest]
+    #[case::txt_files("txt")]
+    #[case::rs_files("rs")]
+    fn glob_permission_filtering_excludes_denied_files(#[case] ext: &str) -> TestResult {
         let dir = TempDir::new().unwrap();
-        let resolver = AbsolutePathResolver;
-        let allowed = dir.path().join("allowed.txt");
-        let denied = dir.path().join("denied.txt");
+        let base = dir.path();
+        let allowed = base.join(format!("allowed.{ext}"));
+        let denied = base.join(format!("denied.{ext}"));
         File::create(&allowed).unwrap();
         File::create(&denied).unwrap();
 
@@ -517,20 +530,21 @@ mod tests {
             PermissionAction::Deny,
         )?);
 
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: dir.path().to_string_lossy().into_owned(),
-            },
-            &GlobSettings::new().with_permission(Some(Arc::new(ruleset))),
-        )
-        .unwrap();
+        let result = run_glob_with_settings(
+            base,
+            &format!("**/*.{ext}"),
+            &GlobSettings::new()
+                .with_limit(1000)
+                .unwrap()
+                .with_permission(Some(Arc::new(ruleset))),
+        );
 
-        assert_eq!(result.files, vec!["allowed.txt".to_string()]);
+        assert_eq!(result.files, vec![format!("allowed.{ext}")]);
         Ok(())
     }
 
+    /// Creates a nested directory tree with root and nested `.gitignore` files
+    /// to verify multi-level ignore rule application.
     fn create_nested_gitignore_tree() -> TempDir {
         let dir = TempDir::new().unwrap();
         let base = dir.path();
@@ -554,20 +568,13 @@ mod tests {
         dir
     }
 
+    /// Verifies that the root `.gitignore` (`build/`) prevents `build/output.rs`
+    /// from appearing in results even when the glob pattern (`**/*.rs`) would
+    /// otherwise match it, while non-ignored `.rs` files remain visible.
     #[test]
     fn glob_root_gitignore_excludes_build_dir_with_rs_pattern() {
         let dir = create_nested_gitignore_tree();
-        let resolver = AbsolutePathResolver;
-
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.rs".to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), "**/*.rs");
 
         assert!(
             !result.files.iter().any(|f| f.contains("build")),
@@ -581,20 +588,13 @@ mod tests {
         );
     }
 
+    /// Verifies that a nested `.gitignore` (`src/subdir/.gitignore` with `*.tmp`)
+    /// excludes matching files in that subtree, while sibling files not matching
+    /// the pattern (`keep.rs`) remain in the results.
     #[test]
     fn glob_nested_gitignore_excludes_tmp_files() {
         let dir = create_nested_gitignore_tree();
-        let resolver = AbsolutePathResolver;
-
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*".to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), "**/*");
 
         assert!(
             !result.files.iter().any(|f| f.contains("test.tmp")),
@@ -611,17 +611,7 @@ mod tests {
     #[test]
     fn glob_handles_empty_directory() {
         let dir = TempDir::new().unwrap();
-        let resolver = AbsolutePathResolver;
-
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*".to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), "**/*");
 
         assert!(
             result.files.is_empty(),
@@ -635,17 +625,7 @@ mod tests {
     #[test]
     fn glob_handles_pattern_matching_nothing() {
         let dir = create_test_tree();
-        let resolver = AbsolutePathResolver;
-
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.xyz".to_string(),
-                path: dir.path().to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(dir.path(), "**/*.xyz");
 
         assert!(
             result.files.is_empty(),
@@ -669,16 +649,7 @@ mod tests {
 
         symlink(base.join("real_dir"), base.join("link_dir")).unwrap();
 
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(base, "**/*.txt");
 
         assert!(
             !result.files.iter().any(|f| f.starts_with("link_dir/")),
@@ -705,16 +676,7 @@ mod tests {
             File::create(base.join(format!("file{i}.txt"))).unwrap();
         }
 
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(3).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob_with_limit(base, "**/*.txt", 3);
 
         assert_eq!(result.files.len(), 3, "should return exactly limit items");
         assert!(result.truncated, "truncated flag should be set");
@@ -727,56 +689,12 @@ mod tests {
         File::create(base.join("a.txt")).unwrap();
         File::create(base.join("b.txt")).unwrap();
 
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.txt".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(100).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob_with_limit(base, "**/*.txt", 100);
 
         assert!(
             !result.truncated,
             "truncated should be false when files <= limit"
         );
-    }
-
-    #[test]
-    fn glob_permission_filtering_with_override_builder_pattern() -> TestResult {
-        let dir = TempDir::new().unwrap();
-        let base = dir.path();
-        let allowed_path = base.join("allowed.rs");
-        let denied_path = base.join("denied.rs");
-        File::create(&allowed_path).unwrap();
-        File::create(&denied_path).unwrap();
-
-        let mut ruleset = Ruleset::new();
-        ruleset.push(Rule::new(glob_meta::NAME, "*", PermissionAction::Allow)?);
-        ruleset.push(Rule::new(
-            glob_meta::NAME,
-            denied_path.to_string_lossy().into_owned(),
-            PermissionAction::Deny,
-        )?);
-
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*.rs".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new()
-                .with_limit(1000)
-                .unwrap()
-                .with_permission(Some(Arc::new(ruleset))),
-        )
-        .unwrap();
-
-        assert_eq!(result.files, vec!["allowed.rs".to_string()]);
-        Ok(())
     }
 
     #[test]
@@ -793,16 +711,7 @@ mod tests {
         writeln!(subdir_gi, "*.tmp").unwrap();
         File::create(base.join("src/subdir/test.tmp")).unwrap();
 
-        let resolver = AbsolutePathResolver;
-        let result = glob_files(
-            &resolver,
-            GlobRequest {
-                pattern: "**/*".to_string(),
-                path: base.to_str().unwrap().to_string(),
-            },
-            &GlobSettings::new().with_limit(1000).unwrap(),
-        )
-        .unwrap();
+        let result = run_glob(base, "**/*");
 
         assert!(
             !result.files.iter().any(|f| f.contains("test.tmp")),
