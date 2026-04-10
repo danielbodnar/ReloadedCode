@@ -118,6 +118,10 @@ impl AllowedGlobResolver {
     ///
     /// A new [`AllowedGlobResolver`] with no glob policy attached.
     pub fn from_canonical(workspace_root: impl AsRef<Path>) -> Self {
+        debug_assert!(
+            workspace_root.as_ref().is_absolute(),
+            "from_canonical expects an absolute workspace_root"
+        );
         Self {
             workspace_root: Arc::from(workspace_root.as_ref()),
             policy: None,
