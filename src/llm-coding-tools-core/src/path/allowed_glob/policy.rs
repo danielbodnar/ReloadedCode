@@ -444,11 +444,9 @@ mod tests {
         let temp_home = temp.path().canonicalize()?;
 
         temp_env::with_var("HOME", Some(&temp_home), || {
-            let policy = GlobPolicy::builder().allow("~/src/**")?.build()?;
-            let abs_path = format!(
-                "{}/src/lib.rs",
-                temp_home.to_str().unwrap().trim_end_matches('/')
-            );
+            let policy = GlobPolicy::builder().allow("$HOME/src/**")?.build()?;
+            let abs_path = temp_home.join("src").join("lib.rs");
+            let abs_path = normalize_path(&abs_path);
             assert!(policy.is_allowed(&abs_path));
             Ok(())
         })
@@ -492,14 +490,25 @@ mod tests {
         let dir = TempDir::new()?;
         let base = dir.path().canonicalize()?;
 
-        let abs_pattern = "/some/absolute/path/**/*.rs";
-        // base is set but ignored because the pattern starts with `/`.
+        let (abs_pattern, file_path, other_path) = if cfg!(windows) {
+            (
+                "C:/some/absolute/path/**/*.rs",
+                "C:/some/absolute/path/file.rs",
+                "D:/other/path/file.rs",
+            )
+        } else {
+            (
+                "/some/absolute/path/**/*.rs",
+                "/some/absolute/path/file.rs",
+                "/other/path/file.rs",
+            )
+        };
         let policy = GlobPolicy::builder_with_base(&base)?
             .allow(abs_pattern)?
             .build()?;
 
-        assert!(policy.is_allowed("/some/absolute/path/file.rs"));
-        assert!(!policy.is_allowed("/other/path/file.rs"));
+        assert!(policy.is_allowed(file_path));
+        assert!(!policy.is_allowed(other_path));
         Ok(())
     }
 

@@ -315,8 +315,13 @@ mod tests {
 
     #[test]
     fn from_canonical_skips_validation() {
-        let resolver = AllowedGlobResolver::from_canonical(PathBuf::from("/nonexistent/path"));
-        assert_eq!(resolver.workspace_root(), Path::new("/nonexistent/path"));
+        let fake_abs = if cfg!(windows) {
+            PathBuf::from("C:\\nonexistent\\path")
+        } else {
+            PathBuf::from("/nonexistent/path")
+        };
+        let resolver = AllowedGlobResolver::from_canonical(&fake_abs);
+        assert_eq!(resolver.workspace_root(), fake_abs);
     }
 
     #[test]
