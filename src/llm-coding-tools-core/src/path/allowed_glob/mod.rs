@@ -205,44 +205,17 @@ fn resolve_candidate(
 ) -> ToolResult<PathBuf> {
     // Step 1: canonicalize for existing files - resolves symlinks and normalizes.
     if let Ok(resolved) = candidate.canonicalize() {
-        if !resolved.starts_with(workspace_root) {
-            return Err(reject(path));
-        }
-        if let Some(policy) = policy {
-            let abs_str = normalize_path(&resolved);
-            if !policy.is_allowed(abs_str.as_ref()) {
-                return Err(reject(path));
-            }
-        }
-        return Ok(resolved);
+        return validate_resolved(resolved, path, workspace_root, policy);
     }
 
     // Step 2: fast path for new files in existing directories.
     if let Some(resolved) = resolve_new_file_fast(candidate) {
-        if !resolved.starts_with(workspace_root) {
-            return Err(reject(path));
-        }
-        if let Some(policy) = policy {
-            let abs_str = normalize_path(&resolved);
-            if !policy.is_allowed(abs_str.as_ref()) {
-                return Err(reject(path));
-            }
-        }
-        return Ok(resolved);
+        return validate_resolved(resolved, path, workspace_root, policy);
     }
 
     // Step 3: fallback for paths with missing parent dirs.
     if let Ok(resolved) = soft_canonicalize(candidate) {
-        if !resolved.starts_with(workspace_root) {
-            return Err(reject(path));
-        }
-        if let Some(policy) = policy {
-            let abs_str = normalize_path(&resolved);
-            if !policy.is_allowed(abs_str.as_ref()) {
-                return Err(reject(path));
-            }
-        }
-        return Ok(resolved);
+        return validate_resolved(resolved, path, workspace_root, policy);
     }
 
     Err(reject(path))
@@ -251,6 +224,31 @@ fn resolve_candidate(
 #[inline]
 fn reject(path: &str) -> ToolError {
     ToolError::InvalidPath(format!("path '{}' is not within allowed directories", path))
+}
+
+/// Validates a resolved path against workspace containment and policy.
+///
+/// Checks that the resolved path:
+/// 1. Is within the workspace root directory
+/// 2. Passes the glob policy (if one is configured)
+///
+/// Returns the resolved path if valid, or a rejection error otherwise.
+fn validate_resolved(
+    resolved: PathBuf,
+    path: &str,
+    workspace_root: &Path,
+    policy: Option<&GlobPolicy>,
+) -> ToolResult<PathBuf> {
+    if !resolved.starts_with(workspace_root) {
+        return Err(reject(path));
+    }
+    if let Some(policy) = policy {
+        let abs_str = normalize_path(&resolved);
+        if !policy.is_allowed(abs_str.as_ref()) {
+            return Err(reject(path));
+        }
+    }
+    Ok(resolved)
 }
 
 #[cfg(test)]
