@@ -110,6 +110,9 @@ permission:
   task: allow  # Required to delegate to subagents
 ```
 
+**Glob patterns in permissions:** Permission values use globs (`*` = one component, `**` = any depth).
+Bare `allow` equals `**`. Patterns are workspace-relative.
+
 **Note:** `task` is special - when omitted, it allows delegation to all callable
 subagents for OpenCode compatibility. To disable delegation, explicitly set
 `task: deny`.

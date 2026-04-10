@@ -69,13 +69,13 @@ Path-based tools are generic over [`PathResolver`], so wrappers can choose unres
 
 - [`AbsolutePathResolver`] enforces absolute-path inputs (unrestricted mode).
 - [`AllowedPathResolver`] constrains operations to configured directories (sandbox mode).
-- [`AllowedGlobResolver`] constrains to directories with glob pattern filtering (fine-grained sandbox mode).
+- [`AllowedGlobResolver`] constrains to a workspace root with glob pattern filtering (fine-grained sandbox mode).
 - Failed resolution rejects traversal and out-of-sandbox paths before tool execution.
 
 ```rust,no_run
 use llm_coding_tools_core::{
     path::{AllowedGlobResolver, GlobPolicy, RuleAction},
-    AbsolutePathResolver, AllowedPathResolver, PathResolver, ToolResult,
+    resolve_workspace_root, AbsolutePathResolver, AllowedPathResolver, PathResolver, ToolResult,
 };
 
 fn demo() -> ToolResult<()> {
@@ -83,12 +83,13 @@ fn demo() -> ToolResult<()> {
     let any_path = AbsolutePathResolver;
     let _hosts = any_path.resolve("/etc/hosts")?;
 
-    // Sandboxed mode: only configured directories are allowed.
+    // Sandboxed mode: multiple allowed directories.
     let sandbox = AllowedPathResolver::new(["/workspace/project", "/tmp"])?;
     let _lib = sandbox.resolve("src/lib.rs")?;
 
-    // Fine-grained sandbox (last-match-wins).
-    let glob = AllowedGlobResolver::new(["/workspace/project"])?
+    // Fine-grained sandbox with glob policy (workspace-relative patterns).
+    let root = resolve_workspace_root()?;
+    let glob = AllowedGlobResolver::new(&root)?
         .with_policy(
             GlobPolicy::builder()
                 .add("src/**", RuleAction::Allow)?    // Matches src/lib.rs
@@ -102,6 +103,16 @@ fn demo() -> ToolResult<()> {
     Ok(())
 }
 ```
+
+#### Permission glob semantics
+
+- `*` matches any characters within a single path component (e.g., `*.rs` matches `lib.rs` but not `src/lib.rs`).
+- `**` matches any number of path components (e.g., `src/**/*.rs` matches `src/deep/nested/mod.rs`).
+- Bare `allow` maps to `**` (all files under the workspace root).
+- Relative patterns are implicitly joined with the workspace root at construction time.
+- Absolute patterns (leading `/` or drive-root like `C:/`) are treated as-is.
+
+Last-match-wins: both deny-then-allow and allow-then-deny orders work depending on whether you want a default-deny or default-allow posture.
 
 #### Linux shell sandboxing
 

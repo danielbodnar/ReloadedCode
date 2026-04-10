@@ -20,6 +20,7 @@ pub mod system_prompt;
 pub mod tool_metadata;
 pub mod tools;
 pub mod util;
+pub mod workspace;
 
 mod internal;
 
@@ -29,6 +30,7 @@ pub use error::{ToolError, ToolResult};
 pub use output::ToolOutput;
 pub use path::{AbsolutePathResolver, AllowedGlobResolver, AllowedPathResolver, PathResolver};
 pub use system_prompt::SystemPromptBuilder;
+pub use workspace::resolve_workspace_root;
 
 // Re-export tools (always available, sync or async based on runtime feature)
 pub use tools::{
