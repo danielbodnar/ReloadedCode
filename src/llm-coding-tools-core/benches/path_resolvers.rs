@@ -7,7 +7,6 @@
 //! - `resolvers`: Compares [`AllowedPathResolver`] and [`AllowedGlobResolver`] on the same paths
 //! - `multiple_bases`: Tests [`AllowedPathResolver`] with multiple base directories
 //! - `canonicalize`: Isolates `canonicalize` vs `soft_canonicalize` performance
-//! - `external_directory`: Tests external directory permission fallback for absolute paths
 //!
 //! # Test Cases (resolvers)
 //!
@@ -55,18 +54,6 @@
 //! canonicalize/existing_file_soft_canonicalize    ~5.3 µs  (2.7x slower than canonicalize)
 //! canonicalize/new_file_shallow_soft_canonicalize ~7.2 µs
 //! canonicalize/new_file_deep_soft_canonicalize    ~8.4 µs
-//!
-//! external_directory/AllowedPathResolver/external_existing_file  ~548 ns  (canonicalize + permission)
-//! external_directory/AllowedPathResolver/external_new_file       ~3.3 µs  (soft_canonicalize + permission)
-//! external_directory/AllowedPathResolver/external_rejected       ~2.4 µs  (canonicalize + deny)
-//! external_directory/AllowedPathResolver/external_no_ruleset     ~2.3 µs  (canonicalize, no permission)
-//! external_directory/AllowedPathResolver/relative_still_fails    ~9.8 µs  (soft_canonicalize, not external)
-//!
-//! external_directory/AllowedGlobResolver/external_existing_file  ~535 ns  (canonicalize + permission)
-//! external_directory/AllowedGlobResolver/external_new_file       ~3.3 µs  (soft_canonicalize + permission)
-//! external_directory/AllowedGlobResolver/external_rejected       ~2.3 µs  (canonicalize + deny)
-//! external_directory/AllowedGlobResolver/external_no_ruleset     ~2.3 µs  (canonicalize, no permission)
-//! external_directory/AllowedGlobResolver/relative_still_fails    ~9.8 µs  (soft_canonicalize, not external)
 //! ```
 //!
 //! # Platform Differences
@@ -93,10 +80,8 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Through
 use llm_coding_tools_core::path::{
     AllowedGlobResolver, AllowedPathResolver, GlobPolicy, GlobPolicyBuilder, PathResolver,
 };
-use llm_coding_tools_core::permissions::{PermissionAction, Rule, Ruleset};
 use soft_canonicalize::soft_canonicalize;
 use std::fs;
-use std::sync::Arc;
 use tempfile::TempDir;
 
 const EXISTING_FILE: &str = "src/lib.rs";
@@ -112,7 +97,8 @@ fn build_policy<F>(f: F) -> llm_coding_tools_core::error::ToolResult<GlobPolicy>
 where
     F: FnOnce(GlobPolicyBuilder) -> llm_coding_tools_core::error::ToolResult<GlobPolicyBuilder>,
 {
-    f(GlobPolicy::builder()).and_then(|b| b.build())
+    let base = soft_canonicalize(std::env::current_dir().unwrap()).unwrap();
+    f(GlobPolicy::builder_with_base(&base)?).and_then(|b| b.build())
 }
 
 /// Benchmarks [`AllowedPathResolver`] and [`AllowedGlobResolver`] on the same paths.
@@ -149,13 +135,11 @@ fn bench_resolvers_same_paths(c: &mut Criterion) {
     let allowed = AllowedPathResolver::new(vec![current_dir.clone()]).unwrap();
 
     // Simple policy: single glob pattern (src/**/*.rs)
-    // This tests minimal glob matching overhead.
     let simple_policy = build_policy(|b| b.allow("src/**/*.rs")).unwrap();
 
     // Complex policy: 10 rules simulating a realistic project configuration.
-    // Tests last-match-wins semantics and rule iteration overhead.
     let complex_policy = build_policy(|b| {
-        b.allow("src/**/*.rs")?
+        b.allow("src/**")?
             .deny("target/**")?
             .allow("*.toml")?
             .deny("*.log")?
@@ -167,10 +151,10 @@ fn bench_resolvers_same_paths(c: &mut Criterion) {
     })
     .unwrap();
 
-    let glob_simple = AllowedGlobResolver::new(vec![current_dir.clone()])
+    let glob_simple = AllowedGlobResolver::new(&current_dir)
         .unwrap()
         .with_policy(simple_policy);
-    let glob_complex = AllowedGlobResolver::new(vec![current_dir.clone()])
+    let glob_complex = AllowedGlobResolver::new(&current_dir)
         .unwrap()
         .with_policy(complex_policy);
 
@@ -306,117 +290,11 @@ fn bench_canonicalize_vs_soft(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks the external directory permission fallback path.
-///
-/// Tests the performance of resolving paths that are outside all base
-/// directories but may be allowed via an `"external_directory"` permission rule.
-///
-/// # Test Cases
-///
-/// ```text
-/// | Case                    | Description                                              |
-/// |-------------------------|----------------------------------------------------------|
-/// | external_existing_file  | Absolute path to file in allowed temp dir (fast path)    |
-/// | external_new_file       | Absolute path to new file in allowed temp dir (soft_can) |
-/// | external_rejected       | Absolute path denied by permission ruleset (early exit)  |
-/// | external_no_ruleset     | Absolute path with no external_permission configured     |
-/// | relative_still_fails    | Relative path even when external_permission is set       |
-/// ```
-fn bench_external_directory(c: &mut Criterion) {
-    let mut group = c.benchmark_group("external_directory");
-
-    let current_dir = std::env::current_dir().unwrap();
-    let external_dir = TempDir::new().unwrap();
-    let existing_file = external_dir.path().join("existing.txt");
-    fs::write(&existing_file, "content").unwrap();
-    let new_file = external_dir.path().join("subdir/new_file.txt");
-
-    let canon_external = soft_canonicalize(external_dir.path()).unwrap();
-    let allow_pattern = canon_external.join("*").to_str().unwrap().to_owned();
-
-    let mut allow_ruleset = Ruleset::new();
-    allow_ruleset.push(
-        Rule::new(
-            "external_directory",
-            allow_pattern.as_str(),
-            PermissionAction::Allow,
-        )
-        .unwrap(),
-    );
-
-    let mut deny_ruleset = Ruleset::new();
-    deny_ruleset.push(Rule::new("external_directory", "*", PermissionAction::Deny).unwrap());
-
-    let existing_file_str = existing_file.to_str().unwrap().to_owned();
-    let new_file_str = new_file.to_str().unwrap().to_owned();
-    let rejected_path = std::env::temp_dir()
-        .join("rejected_external")
-        .join("path.txt")
-        .to_str()
-        .unwrap()
-        .to_owned();
-
-    let allowed_path_resolver = AllowedPathResolver::new(vec![current_dir.clone()])
-        .unwrap()
-        .with_external_permission(Arc::new(allow_ruleset.clone()));
-
-    let denied_path_resolver = AllowedPathResolver::new(vec![current_dir.clone()])
-        .unwrap()
-        .with_external_permission(Arc::new(deny_ruleset.clone()));
-
-    let no_permission_resolver = AllowedPathResolver::new(vec![current_dir.clone()]).unwrap();
-
-    let allowed_glob_resolver = AllowedGlobResolver::new(vec![current_dir.clone()])
-        .unwrap()
-        .with_external_permission(Arc::new(allow_ruleset));
-
-    let denied_glob_resolver = AllowedGlobResolver::new(vec![current_dir.clone()])
-        .unwrap()
-        .with_external_permission(Arc::new(deny_ruleset));
-
-    let no_permission_glob_resolver = AllowedGlobResolver::new(vec![current_dir.clone()]).unwrap();
-
-    group.throughput(Throughput::Elements(1));
-
-    for (case_name, path_input) in [
-        ("external_existing_file", existing_file_str.as_str()),
-        ("external_new_file", new_file_str.as_str()),
-        ("external_rejected", rejected_path.as_str()),
-        ("external_no_ruleset", rejected_path.as_str()),
-        ("relative_still_fails", "relative/path.txt"),
-    ] {
-        let (path_resolver, glob_resolver) = match case_name {
-            "external_existing_file" | "external_new_file" => {
-                (&allowed_path_resolver, &allowed_glob_resolver)
-            }
-            "external_rejected" => (&denied_path_resolver, &denied_glob_resolver),
-            "external_no_ruleset" => (&no_permission_resolver, &no_permission_glob_resolver),
-            "relative_still_fails" => (&allowed_path_resolver, &allowed_glob_resolver),
-            _ => unreachable!(),
-        };
-
-        group.bench_with_input(
-            BenchmarkId::new("AllowedPathResolver", case_name),
-            path_resolver,
-            |b, resolver| b.iter(|| resolver.resolve(black_box(path_input))),
-        );
-
-        group.bench_with_input(
-            BenchmarkId::new("AllowedGlobResolver", case_name),
-            glob_resolver,
-            |b, resolver| b.iter(|| resolver.resolve(black_box(path_input))),
-        );
-    }
-
-    group.finish();
-}
-
 criterion_group!(
     benches,
     bench_resolvers_same_paths,
     bench_multiple_bases,
-    bench_canonicalize_vs_soft,
-    bench_external_directory
+    bench_canonicalize_vs_soft
 );
 
 criterion_main!(benches);
