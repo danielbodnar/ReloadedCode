@@ -9,41 +9,11 @@ pub(crate) const TRUNCATION_ELLIPSIS: &str = "...";
 /// Minimum characters per output line when using `...` truncation.
 pub const MIN_LINE_LENGTH: usize = TRUNCATION_ELLIPSIS.len() + 1;
 
-/// A number of characters per line that's likely to not be exceeded in most files.
-pub const LIKELY_CHARS_PER_LINE_MAX: usize = ESTIMATED_CHARS_PER_LINE * 4;
-
 /// Minimum value for limit/count fields (e.g., read.limit, grep.limit, glob.limit).
 pub const MIN_LIMIT: usize = 1;
 
 /// Minimum value for timeout fields in milliseconds (e.g., bash.timeout_ms, webfetch.timeout_ms).
 pub const MIN_TIMEOUT_MS: u32 = 1000;
-
-/// Formats a line with its line number for output.
-///
-/// Uses the format: `{spaces}{line_number}\t{content}` where spaces
-/// pad the line number to align with the widest number in the range.
-#[inline]
-pub fn format_numbered_line(line_number: usize, content: &str, max_line_number: usize) -> String {
-    let width = max_line_number.checked_ilog10().unwrap_or(0) as usize + 1;
-    format!("{:>width$}\t{}", line_number, content)
-}
-
-/// Truncates text to a maximum byte length at a UTF-8 boundary.
-///
-/// Returns `(truncated_text, was_truncated)`.
-pub fn truncate_text(text: &str, max_bytes: usize) -> (&str, bool) {
-    if text.len() <= max_bytes {
-        return (text, false);
-    }
-
-    // Find a valid UTF-8 boundary before max_bytes
-    let mut end = max_bytes;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-
-    (&text[..end], true)
-}
 
 /// Truncates a line for display with a trailing [`TRUNCATION_ELLIPSIS`].
 ///
@@ -125,40 +95,6 @@ pub(crate) fn push_usize(output: &mut String, mut n: usize) {
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    #[rstest]
-    #[case::single_digit_max(1, 9, "1\thello")] // 1-9, no padding needed
-    #[case::double_digit_max(1, 10, " 1\thello")] // 10, 1 space padding
-    #[case::triple_digit_max(1, 100, "  1\thello")] // 100, 2 space padding
-    fn format_numbered_line_pads_correctly(
-        #[case] line: usize,
-        #[case] max: usize,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(format_numbered_line(line, "hello", max), expected);
-    }
-
-    #[rstest]
-    #[case::shorter_than_max("hello", 10, "hello", false)] // Text shorter than max, no truncation
-    #[case::longer_than_max("hello world", 5, "hello", true)] // Text longer than max, truncates
-    fn truncate_text_cases(
-        #[case] input: &str,
-        #[case] max: usize,
-        #[case] expected: &str,
-        #[case] was_truncated: bool,
-    ) {
-        let (text, truncated) = truncate_text(input, max);
-        assert_eq!(text, expected);
-        assert_eq!(truncated, was_truncated);
-    }
-
-    #[test]
-    fn truncate_text_respects_utf8_boundaries() {
-        // "héllo" has é which is 2 bytes - truncation must happen at char boundary, not byte boundary
-        let (text, truncated) = truncate_text("héllo", 2);
-        assert_eq!(text, "h");
-        assert!(truncated);
-    }
 
     #[rstest]
     #[case::short_line_preserved("hello", 10, "hello", false)] // Line shorter than max, preserved unchanged
