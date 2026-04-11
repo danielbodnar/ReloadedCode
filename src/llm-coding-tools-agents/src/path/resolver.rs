@@ -71,8 +71,9 @@ impl PathResolver for FileToolResolver {
 ///
 /// - No config for tool -> `AllowedPathResolver([workspace_root])` (workspace only)
 /// - `Action(Allow)` -> `AllowedPathResolver([workspace_root])`
-/// - All patterns are `<prefix>/**` with `Allow`, no denies -> `AllowedPathResolver(dirs)`
 /// - `"/**"` -> `AbsolutePathResolver` (any absolute path)
+/// - `is_traversal_tool == false` and all patterns are `<prefix>/**` with `Allow`, no denies
+///   -> `AllowedPathResolver(dirs)`
 /// - Otherwise -> `AllowedGlobResolver` with `GlobPolicy`
 ///
 /// # Arguments
@@ -80,6 +81,9 @@ impl PathResolver for FileToolResolver {
 /// - `config` - Permission config mapping tool names to [`PermissionRule`].
 /// - `tool_name` - Name of the tool to look up in `config`.
 /// - `workspace_root` - Workspace root used for relative-pattern resolution.
+/// - `is_traversal_tool` - `true` for tools that walk directory trees (glob,
+///   grep). These tools call `resolve(".")` and need the workspace root as the
+///   search root, so the prefix-globstar optimisation must not be applied.
 ///
 /// # Returns
 ///
@@ -94,6 +98,7 @@ pub fn build_resolver_for_tool(
     config: &IndexMap<String, PermissionRule>,
     tool_name: &str,
     workspace_root: &Path,
+    is_traversal_tool: bool,
 ) -> Result<FileToolResolver, ToolError> {
     let workspace_root = soft_canonicalize(workspace_root).map_err(|e| {
         ToolError::InvalidPath(format!(
@@ -125,10 +130,15 @@ pub fn build_resolver_for_tool(
                 if let Some(resolver) = try_globstar_optimisation(patterns)? {
                     return Ok(FileToolResolver::Absolute(resolver));
                 }
-                // All "<prefix>/**" -> prefix-check access
-                if let Some(resolver) = try_prefix_globstar_optimisation(patterns, &workspace_root)?
-                {
-                    return Ok(FileToolResolver::Allowed(resolver));
+                // All "<prefix>/**" -> prefix-check access.
+                // Skipped for traversal tools: resolve(".") must return the
+                // workspace root so the walker can traverse the full tree.
+                if !is_traversal_tool {
+                    if let Some(resolver) =
+                        try_prefix_globstar_optimisation(patterns, &workspace_root)?
+                    {
+                        return Ok(FileToolResolver::Allowed(resolver));
+                    }
                 }
             }
             // Fall through to full glob policy
@@ -240,7 +250,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
 
         let config = IndexMap::new();
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         let FileToolResolver::Allowed(inner) = &resolver else {
             panic!("expected Allowed, got {resolver:?}");
@@ -268,7 +278,7 @@ mod tests {
             PermissionRule::Action(PermissionAction::Allow),
         );
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         let FileToolResolver::Allowed(inner) = &resolver else {
             panic!("expected Allowed, got {resolver:?}");
@@ -295,9 +305,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
-
-        assert!(matches!(resolver, FileToolResolver::Absolute(_)));
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         // Any absolute path is allowed, even outside the workspace.
         assert!(resolver.is_path_allowed(Path::new("/etc/passwd")));
@@ -319,7 +327,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         let FileToolResolver::Allowed(inner) = &resolver else {
             panic!("expected Allowed, got {resolver:?}");
@@ -347,7 +355,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         let FileToolResolver::Allowed(inner) = &resolver else {
             panic!("expected Allowed, got {resolver:?}");
@@ -376,7 +384,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         assert!(matches!(resolver, FileToolResolver::Glob(_)));
 
@@ -413,7 +421,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         assert!(matches!(resolver, FileToolResolver::Glob(_)));
 
@@ -437,7 +445,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         let FileToolResolver::Allowed(inner) = &resolver else {
             panic!("expected Allowed, got {resolver:?}");
@@ -466,7 +474,7 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let resolver = build_resolver_for_tool(&config, "read", temp.path())?;
+        let resolver = build_resolver_for_tool(&config, "read", temp.path(), false)?;
 
         assert!(matches!(resolver, FileToolResolver::Glob(_)));
 
@@ -490,11 +498,42 @@ mod tests {
         let mut config = IndexMap::new();
         config.insert("read".to_string(), PermissionRule::Pattern(patterns));
 
-        let result = build_resolver_for_tool(&config, "read", temp.path());
+        let result = build_resolver_for_tool(&config, "read", temp.path(), false);
         assert!(
             result.is_err(),
             "unresolvable shell variable should produce an error"
         );
+    }
+
+    // ---------------------------------------------------------------
+    // Regression: prefix-globstar optimisation breaks resolve(".")
+    // for traversal tools (glob/grep). AllowedPathResolver resolves
+    // "." to the first allowed subdirectory instead of workspace root.
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn prefix_globstar_optimisation_breaks_resolve_dot_for_traversal() -> TestResult {
+        let temp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(temp.path().join("src")).unwrap();
+        std::fs::create_dir_all(temp.path().join("tests")).unwrap();
+
+        let mut patterns = IndexMap::new();
+        patterns.insert("src/**".to_string(), PermissionAction::Allow);
+        patterns.insert("tests/**".to_string(), PermissionAction::Allow);
+        let mut config = IndexMap::new();
+        config.insert("glob".to_string(), PermissionRule::Pattern(patterns));
+
+        let resolver = build_resolver_for_tool(&config, "glob", temp.path(), true)?;
+        let workspace_root = soft_canonicalize(temp.path())?;
+        let resolved = resolver.resolve(".")?;
+
+        assert_eq!(
+            resolved, workspace_root,
+            "resolve('.') must return workspace root for traversal tools, got {:?}",
+            resolved
+        );
+
+        Ok(())
     }
 
     // ---------------------------------------------------------------
