@@ -9,7 +9,7 @@
 
 use futures::StreamExt;
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
-use llm_coding_tools_core::{CredentialResolver, TaskInput};
+use llm_coding_tools_core::{CredentialResolver, TaskInput, resolve_workspace_root};
 use llm_coding_tools_models_dev::ModelsDevCatalog;
 use llm_coding_tools_serdesai::{AgentBuildContext, AgentDefaults};
 use serdes_ai::{AgentStreamEvent, UserContent};
@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(runtime),
         Arc::new(load_result.catalog),
         Arc::new(credentials),
+        Arc::from(resolve_workspace_root()?),
     );
 
     println!(

@@ -13,11 +13,9 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
-use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::edit as edit_meta;
 use llm_coding_tools_core::tools::{EditRequest, EditSettings, edit_file};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
-use std::sync::Arc;
 
 use crate::convert::core_error_to_serdes;
 
@@ -47,28 +45,15 @@ impl<R: PathResolver + Clone> EditTool<R> {
     /// # Arguments
     ///
     /// * `resolver` - A [`PathResolver`] used to resolve and validate file paths.
-    /// * `settings` - [`EditSettings`] controlling edit behaviour such as
-    ///   permission checks and replacement limits.
+    /// * `settings` - [`EditSettings`] controlling replacement limits.
     pub fn with_settings(resolver: R, settings: EditSettings) -> Self {
-        let path_mode = R::PATH_MODE;
+        let path_mode = resolver.path_mode();
         Self {
             definition: build_definition(path_mode),
             resolver,
             path_mode,
             settings,
         }
-    }
-
-    /// Sets the permission ruleset for this tool.
-    ///
-    /// # Arguments
-    ///
-    /// * `permission` - Optional [`Ruleset`] for path access control.
-    ///   Use `None` to disable permission checking.
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.settings = self.settings.with_permission(permission);
-        self
     }
 
     /// Returns the path mode for this tool instance.

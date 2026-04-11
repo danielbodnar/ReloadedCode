@@ -243,6 +243,7 @@ mod tests {
             Arc::new(runtime.expect("test fixture should not fail pattern expansion")),
             Arc::new(catalog()),
             credentials(),
+            Arc::from(llm_coding_tools_core::resolve_workspace_root().expect("workspace root")),
         ))
     }
 

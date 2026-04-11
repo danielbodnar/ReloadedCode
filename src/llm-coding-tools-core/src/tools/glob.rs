@@ -3,14 +3,11 @@
 use crate::error::{ToolError, ToolResult};
 use crate::path::allowed_glob::normalize::normalize_path;
 use crate::path::PathResolver;
-use crate::permissions::Ruleset;
-use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::glob as glob_meta;
 use globset::Glob;
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Serde-friendly glob request owned by the core crate.
@@ -36,8 +33,6 @@ impl GlobRequest {
 pub struct GlobSettings {
     /// Maximum number of file paths to return.
     limit: usize,
-    /// Optional permission ruleset controlling which paths may be traversed.
-    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for GlobSettings {
@@ -52,7 +47,6 @@ impl GlobSettings {
     pub fn new() -> Self {
         Self {
             limit: glob_meta::MAX_RESULTS,
-            permission: None,
         }
     }
 
@@ -74,22 +68,6 @@ impl GlobSettings {
         Ok(self)
     }
 
-    /// Attaches an optional permission ruleset to glob operations.
-    ///
-    /// # Arguments
-    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
-    ///   may be traversed. Pass `None` to disable permission filtering.
-    ///
-    /// # Returns
-    /// - The modified [`GlobSettings`] with the permission attached.
-    ///
-    /// [`Arc<Ruleset>`]: std::sync::Arc
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.permission = permission;
-        self
-    }
-
     /// Returns the maximum number of files to return.
     ///
     /// # Returns
@@ -97,18 +75,6 @@ impl GlobSettings {
     #[must_use]
     pub const fn limit(&self) -> usize {
         self.limit
-    }
-
-    /// Returns the permission ruleset applied to glob operations, if any.
-    ///
-    /// # Returns
-    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
-    /// - `None` when no permission filtering is applied.
-    ///
-    /// [`Ruleset`]: crate::permissions::Ruleset
-    #[must_use]
-    pub fn permission(&self) -> Option<&Ruleset> {
-        self.permission.as_deref()
     }
 }
 
@@ -134,9 +100,10 @@ pub struct GlobOutput {
 /// The `limit` parameter controls the maximum number of files returned.
 ///
 /// # Arguments
-/// - `resolver` - [`PathResolver`] used to resolve `request.path` to an absolute directory.
+/// - `resolver` - [`PathResolver`] used to resolve `request.path` to an absolute directory
+///   and to filter walked entries via [`PathResolver::is_path_allowed`].
 /// - `request` - The glob request containing the pattern and search directory.
-/// - `settings` - Runtime settings including result limit and optional permission ruleset.
+/// - `settings` - Runtime settings including result limit.
 ///
 /// # Returns
 /// - [`GlobOutput`] with matched file paths, sorted newest-first, plus truncation and
@@ -144,9 +111,8 @@ pub struct GlobOutput {
 ///
 /// # Errors
 /// - Returns [`ToolError::InvalidPath`] when the resolved path is not a directory.
-/// - Returns a [`ToolError`] when the glob pattern fails to compile.
-/// - Returns a [`ToolError`] when path resolution fails.
-/// - Returns a [`ToolError`] when the permission check denies access to the search directory.
+/// - Returns [`ToolError::InvalidPattern`] when the glob pattern fails to compile.
+/// - Returns [`ToolError::InvalidPath`] when path resolution fails.
 pub fn glob_files<R: PathResolver>(
     resolver: &R,
     request: GlobRequest,
@@ -154,12 +120,6 @@ pub fn glob_files<R: PathResolver>(
 ) -> ToolResult<GlobOutput> {
     // Resolve the requested path to an absolute directory.
     let path = resolver.resolve(&request.path)?;
-    let search_subject = path.to_string_lossy();
-
-    // Check that the caller is allowed to glob inside this directory.
-    settings
-        .permission()
-        .check(glob_meta::NAME, search_subject.as_ref())?;
 
     if !path.is_dir() {
         return Err(ToolError::InvalidPath(format!(
@@ -230,12 +190,9 @@ pub fn glob_files<R: PathResolver>(
             continue;
         }
 
-        // Drop files the caller isn't allowed to see.
-        if let Some(ruleset) = settings.permission() {
-            let entry_subject = entry.path().to_string_lossy();
-            if !ruleset.is_allowed(glob_meta::NAME, entry_subject.as_ref()) {
-                continue;
-            }
+        // Drop files the resolver doesn't allow.
+        if !resolver.is_path_allowed(entry.path()) {
+            continue;
         }
 
         // Read mtime, falling back to epoch when unavailable.
@@ -277,18 +234,20 @@ pub fn glob_files<R: PathResolver>(
 #[cfg(test)]
 mod tests {
     //! Tests for the [`glob_files`] operation covering pattern matching, sorting,
-    //! gitignore handling, permission filtering, limit enforcement, and serialization.
+    //! gitignore handling, limit enforcement, and serialization.
     use super::*;
     use crate::path::AbsolutePathResolver;
-    use crate::permissions::{ExpandError, PermissionAction, Rule};
+    use crate::path::AllowedGlobResolver;
+    use crate::path::GlobPolicy;
     use rstest::rstest;
+    use soft_canonicalize::soft_canonicalize;
     use std::fs::{self, File, FileTimes};
     use std::io::Write;
     use std::path::Path;
     use std::time::{Duration, SystemTime};
     use tempfile::TempDir;
 
-    type TestResult = Result<(), ExpandError>;
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     fn test_settings() -> GlobSettings {
         GlobSettings::new().with_limit(1000).unwrap()
@@ -511,35 +470,43 @@ mod tests {
         assert!(result.files.iter().any(|f| f.contains('/')));
     }
 
+    /// Verifies that glob_files filters results via `is_path_allowed` using both
+    /// relative and absolute search paths.
     #[rstest]
-    #[case::txt_files("txt")]
-    #[case::rs_files("rs")]
-    fn glob_permission_filtering_excludes_denied_files(#[case] ext: &str) -> TestResult {
-        let dir = TempDir::new().unwrap();
-        let base = dir.path();
-        let allowed = base.join(format!("allowed.{ext}"));
-        let denied = base.join(format!("denied.{ext}"));
-        File::create(&allowed).unwrap();
-        File::create(&denied).unwrap();
+    #[case::relative_path(".")]
+    #[case::absolute_path_uses_workdir_as_param(
+        // Placeholder: replaced with the temp dir path inside the test body.
+        "ABSOLUTE"
+    )]
+    fn glob_filters_via_is_path_allowed(#[case] path_kind: &str) -> TestResult {
+        let dir = TempDir::new()?;
+        fs::create_dir_all(dir.path().join("src"))?;
+        File::create(dir.path().join("src/lib.rs"))?;
+        File::create(dir.path().join("Cargo.toml"))?;
 
-        let mut ruleset = Ruleset::new();
-        ruleset.push(Rule::new(glob_meta::NAME, "*", PermissionAction::Allow)?);
-        ruleset.push(Rule::new(
-            glob_meta::NAME,
-            denied.to_string_lossy().into_owned(),
-            PermissionAction::Deny,
-        )?);
+        let root = soft_canonicalize(dir.path())?;
+        let policy = GlobPolicy::builder_with_base(&root)?
+            .allow("src/**")?
+            .build()?;
+        let resolver = AllowedGlobResolver::new(dir.path())?.with_policy(policy);
 
-        let result = run_glob_with_settings(
-            base,
-            &format!("**/*.{ext}"),
-            &GlobSettings::new()
-                .with_limit(1000)
-                .unwrap()
-                .with_permission(Some(Arc::new(ruleset))),
-        );
+        let search_path = if path_kind == "ABSOLUTE" {
+            dir.path().to_str().unwrap().to_string()
+        } else {
+            path_kind.to_string()
+        };
 
-        assert_eq!(result.files, vec![format!("allowed.{ext}")]);
+        let result = glob_files(
+            &resolver,
+            GlobRequest {
+                pattern: "**/*".to_string(),
+                path: search_path,
+            },
+            &GlobSettings::new(),
+        )?;
+
+        assert!(result.files.iter().any(|f| f.contains("lib.rs")));
+        assert!(!result.files.iter().any(|f| f.contains("Cargo.toml")));
         Ok(())
     }
 

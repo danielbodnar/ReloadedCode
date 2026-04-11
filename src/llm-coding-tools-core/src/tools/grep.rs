@@ -2,8 +2,6 @@
 
 use crate::error::{ToolError, ToolResult};
 use crate::path::PathResolver;
-use crate::permissions::Ruleset;
-use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::grep as grep_meta;
 use crate::util::{push_usize, truncate_line_with_ellipsis, TRUNCATION_ELLIPSIS};
 use globset::Glob;
@@ -14,7 +12,6 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Default maximum line length (in characters) for formatted grep output.
@@ -48,7 +45,6 @@ impl GrepRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrepSettings {
     max_limit: usize,
-    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for GrepSettings {
@@ -63,7 +59,6 @@ impl GrepSettings {
     pub fn new() -> Self {
         Self {
             max_limit: grep_meta::DEFAULT_LIMIT,
-            permission: None,
         }
     }
 
@@ -85,22 +80,6 @@ impl GrepSettings {
         Ok(self)
     }
 
-    /// Attaches an optional permission ruleset to grep operations.
-    ///
-    /// # Arguments
-    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
-    ///   may be searched. Pass `None` to disable permission filtering.
-    ///
-    /// # Returns
-    /// - The modified [`GrepSettings`] with the permission attached.
-    ///
-    /// [`Arc<Ruleset>`]: std::sync::Arc
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.permission = permission;
-        self
-    }
-
     /// Returns the upper bound on matching lines returned per search.
     ///
     /// # Returns
@@ -108,18 +87,6 @@ impl GrepSettings {
     #[must_use]
     pub const fn max_limit(&self) -> usize {
         self.max_limit
-    }
-
-    /// Returns the permission ruleset applied to grep operations, if any.
-    ///
-    /// # Returns
-    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
-    /// - `None` when no permission filtering is applied.
-    ///
-    /// [`Ruleset`]: crate::permissions::Ruleset
-    #[must_use]
-    pub fn permission(&self) -> Option<&Ruleset> {
-        self.permission.as_deref()
     }
 }
 
@@ -322,10 +289,6 @@ pub fn grep_search<R: PathResolver>(
     });
 
     let path = resolver.resolve(&request.path)?;
-    let search_subject = path.to_string_lossy();
-    settings
-        .permission()
-        .check(grep_meta::NAME, search_subject.as_ref())?;
 
     let matcher =
         RegexMatcher::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
@@ -366,13 +329,9 @@ pub fn grep_search<R: PathResolver>(
 
         let entry_path = entry.path();
 
-        // If target is in a location it's not allowed to access, it needs
-        // to be filtered out.
-        if let Some(ruleset) = settings.permission() {
-            let subject = entry_path.to_string_lossy();
-            if !ruleset.is_allowed(grep_meta::NAME, subject.as_ref()) {
-                continue;
-            }
+        // Filter entries through the resolver's path policy.
+        if !resolver.is_path_allowed(entry_path) {
+            continue;
         }
 
         // Apply include glob to basename when requested.
@@ -476,11 +435,14 @@ fn collect_file_matches(
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
-    use crate::permissions::{ExpandError, PermissionAction, Rule};
+    use crate::path::AllowedGlobResolver;
+    use crate::path::GlobPolicy;
     use rstest::rstest;
+    use soft_canonicalize::soft_canonicalize;
+    use std::fs;
     use tempfile::tempdir;
 
-    type TestResult = Result<(), ExpandError>;
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     // GrepSettings and GrepFormattingSettings tests
     #[test]
@@ -819,38 +781,51 @@ mod tests {
         assert!(result.truncated);
     }
 
-    #[test]
-    fn grep_skips_denied_files_before_counting_matches() -> TestResult {
-        let temp = tempdir().unwrap();
-        let allowed = temp.path().join("allowed.txt");
-        let denied = temp.path().join("denied.txt");
-        std::fs::write(&allowed, "hello\n").unwrap();
-        std::fs::write(&denied, "hello\n").unwrap();
-        let resolver = AbsolutePathResolver;
+    /// Verifies that grep_search filters results via `is_path_allowed` using both
+    /// relative and absolute search paths.
+    #[rstest]
+    #[case::relative_path(".")]
+    #[case::absolute_path_uses_workdir_as_param(
+        // Placeholder: replaced with the temp dir path inside the test body.
+        "ABSOLUTE"
+    )]
+    fn grep_filters_via_is_path_allowed(#[case] path_kind: &str) -> TestResult {
+        let temp = tempdir()?;
+        fs::create_dir_all(temp.path().join("src"))?;
+        std::fs::write(temp.path().join("src/lib.rs"), "match_content\n")?;
+        std::fs::write(temp.path().join("Cargo.toml"), "match_content\n")?;
 
-        let mut ruleset = Ruleset::new();
-        ruleset.push(Rule::new(grep_meta::NAME, "*", PermissionAction::Allow)?);
-        ruleset.push(Rule::new(
-            grep_meta::NAME,
-            denied.to_string_lossy().into_owned(),
-            PermissionAction::Deny,
-        )?);
+        let root = soft_canonicalize(temp.path())?;
+        let policy = GlobPolicy::builder_with_base(&root)?
+            .allow("src/**")?
+            .build()?;
+        let resolver = AllowedGlobResolver::new(temp.path())?.with_policy(policy);
+
+        let search_path = if path_kind == "ABSOLUTE" {
+            temp.path().to_str().unwrap().to_string()
+        } else {
+            path_kind.to_string()
+        };
 
         let result = grep_search(
             &resolver,
             GrepRequest {
-                pattern: "hello".into(),
-                path: temp.path().to_string_lossy().into_owned(),
+                pattern: "match_content".into(),
+                path: search_path,
                 include: None,
                 limit: None,
             },
-            &GrepSettings::new().with_permission(Some(Arc::new(ruleset))),
-        )
-        .unwrap();
+            &GrepSettings::new().with_max_limit(100)?,
+        )?;
 
-        assert_eq!(result.match_count, 1);
-        assert_eq!(result.files.len(), 1);
-        assert_eq!(result.files[0].path, allowed.to_string_lossy());
+        assert!(
+            result.files.iter().any(|f| f.path.contains("lib.rs")),
+            "src/lib.rs should appear in results"
+        );
+        assert!(
+            !result.files.iter().any(|f| f.path.contains("Cargo.toml")),
+            "Cargo.toml should be filtered by src/** policy"
+        );
         Ok(())
     }
 }

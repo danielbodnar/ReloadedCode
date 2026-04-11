@@ -124,7 +124,7 @@ impl GlobPolicy {
     ///
     /// `true` if the path is allowed by the last matching rule, `false` otherwise.
     #[inline]
-    pub(crate) fn is_allowed(&self, normalized_path: &str) -> bool {
+    pub fn is_allowed(&self, normalized_path: &str) -> bool {
         if self.rules.is_empty() {
             return false;
         }

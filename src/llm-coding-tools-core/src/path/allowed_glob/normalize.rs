@@ -38,9 +38,9 @@ pub(crate) fn expand_pattern(
 
 /// Expands shell-like patterns in a path string, returning a [`PathBuf`].
 ///
-/// Wraps [`expand_pattern`] with fail-fast error handling: returns
+/// Wraps the internal expansion logic with fail-fast error handling: returns
 /// `ToolError::InvalidPath` if expansion fails (e.g., unset variable).
-pub(crate) fn expand_shell(path: &str) -> ToolResult<PathBuf> {
+pub fn expand_shell(path: &str) -> ToolResult<PathBuf> {
     expand_pattern(path)
         .map(|cow| PathBuf::from(cow.into_owned()))
         .map_err(|e| {

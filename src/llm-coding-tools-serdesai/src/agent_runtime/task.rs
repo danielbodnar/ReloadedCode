@@ -8,6 +8,7 @@ use crate::task::TaskHandle;
 use llm_coding_tools_agents::AgentRuntime;
 use llm_coding_tools_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Reusable shared inputs for building runnable SerdesAI agents.
@@ -25,18 +26,21 @@ impl<C> AgentBuildContext<C>
 where
     C: CredentialLookup + Send + Sync + 'static,
 {
-    /// Creates a shared build context from runtime state, model catalog, and credentials.
+    /// Creates a shared build context from runtime state, model catalog, credentials,
+    /// and the workspace root directory.
     #[inline]
     pub fn new(
         runtime: Arc<AgentRuntime>,
         model_catalog: Arc<ModelCatalog>,
         credentials: Arc<C>,
+        workspace_root: Arc<Path>,
     ) -> Self {
         Self {
             context: Arc::new(TaskBuildContext {
                 runtime,
                 model_catalog,
                 credentials,
+                workspace_root,
             }),
         }
     }
@@ -73,6 +77,7 @@ pub(crate) struct TaskBuildContext<C: CredentialLookup + Send + Sync + ?Sized = 
     runtime: Arc<AgentRuntime>,
     model_catalog: Arc<ModelCatalog>,
     credentials: Arc<C>,
+    workspace_root: Arc<Path>,
 }
 
 impl<C> TaskBuildContext<C>
@@ -96,11 +101,13 @@ where
         runtime: Arc<AgentRuntime>,
         model_catalog: Arc<ModelCatalog>,
         credentials: Arc<C>,
+        workspace_root: Arc<Path>,
     ) -> Self {
         Self {
             runtime,
             model_catalog,
             credentials,
+            workspace_root,
         }
     }
 }
@@ -126,8 +133,13 @@ where
         with_summaries,
     )?;
     let builder = AgentBuilder::<(), String>::from_arc(prepared.model().clone());
-    let task_handle = TaskHandle::new(context, current_depth);
-    let (builder, prompt_builder) = attach_standard_tools(builder, &prepared, Some(&task_handle))?;
+    let task_handle = TaskHandle::new(context.clone(), current_depth);
+    let (builder, prompt_builder) = attach_standard_tools(
+        builder,
+        &prepared,
+        Some(&task_handle),
+        &context.workspace_root,
+    )?;
     Ok(builder.system_prompt(prompt_builder.build()).build())
 }
 
@@ -218,6 +230,10 @@ mod tests {
         Arc::new(resolver)
     }
 
+    fn workspace_root() -> Arc<Path> {
+        Arc::from(llm_coding_tools_core::resolve_workspace_root().expect("workspace root"))
+    }
+
     #[test]
     fn build_agent_skips_task_tool_when_no_targets_are_callable() -> TestResult {
         let credentials = credentials();
@@ -240,6 +256,7 @@ mod tests {
             runtime: Arc::new(runtime),
             model_catalog,
             credentials,
+            workspace_root: workspace_root(),
         });
 
         let agent = build_agent(context, "caller", 0).expect("build should succeed");
@@ -275,6 +292,7 @@ mod tests {
             runtime: Arc::new(runtime),
             model_catalog,
             credentials,
+            workspace_root: workspace_root(),
         });
 
         let agent = build_agent(context, "caller", 0).expect("build should succeed");
@@ -309,6 +327,7 @@ mod tests {
             runtime: Arc::new(runtime),
             model_catalog,
             credentials,
+            workspace_root: workspace_root(),
         });
 
         let agent = build_agent(context, "caller", 0).expect("build should succeed");
@@ -339,6 +358,7 @@ mod tests {
             runtime: Arc::new(runtime),
             model_catalog,
             credentials,
+            workspace_root: workspace_root(),
         });
 
         let agent = build_agent(context, "caller", 0).expect("build should succeed");
@@ -366,7 +386,12 @@ mod tests {
             .defaults(AgentDefaults::with_model("openrouter/openai/gpt-4.1-mini"))
             .build()?;
 
-        let context = AgentBuildContext::new(Arc::new(runtime), model_catalog, credentials);
+        let context = AgentBuildContext::new(
+            Arc::new(runtime),
+            model_catalog,
+            credentials,
+            workspace_root(),
+        );
         let agent = context.build("caller").expect("build should succeed");
         let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(!names.contains(&task_meta::NAME));
@@ -401,6 +426,7 @@ mod tests {
             runtime: Arc::new(runtime),
             model_catalog,
             credentials,
+            workspace_root: workspace_root(),
         });
 
         let agent = build_agent(context, "caller", 1).expect("build should succeed");
@@ -434,7 +460,12 @@ mod tests {
             .max_task_depth(0)
             .build()?;
 
-        let context = AgentBuildContext::new(Arc::new(runtime), model_catalog, credentials);
+        let context = AgentBuildContext::new(
+            Arc::new(runtime),
+            model_catalog,
+            credentials,
+            workspace_root(),
+        );
         let agent = context.build("caller").expect("build should succeed");
         let names: Vec<_> = agent.tools().iter().map(|t| t.name()).collect();
         assert!(!names.contains(&task_meta::NAME));

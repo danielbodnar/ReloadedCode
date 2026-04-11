@@ -7,7 +7,7 @@
 //!
 //! The entry point (`PathResolver::resolve`) rejects paths that lexically
 //! escape the workspace root, then joins relative paths with the workspace root
-//! and dispatches to [`resolve_candidate`].
+//! and dispatches to `resolve_candidate`.
 //!
 //! ## `resolve_candidate`
 //!
@@ -28,7 +28,7 @@
 //! If no tier succeeds or policy denies the path, reject with
 //! "not within allowed directories".
 
-pub(crate) mod normalize;
+pub mod normalize;
 mod policy;
 
 use super::{path_analysis, resolve_new_file_fast, PathResolver};
@@ -154,7 +154,25 @@ impl AllowedGlobResolver {
 }
 
 impl PathResolver for AllowedGlobResolver {
-    const PATH_MODE: PathMode = PathMode::Allowed;
+    /// Fast per-entry check: is this absolute path allowed?
+    ///
+    /// Checks `starts_with(workspace_root)` and, if a policy is configured,
+    /// normalizes the path and checks against the glob policy.
+    fn is_path_allowed(&self, path: &Path) -> bool {
+        if !path.starts_with(&self.workspace_root) {
+            return false;
+        }
+        if let Some(policy) = &self.policy {
+            let normalized = normalize_path(path);
+            policy.is_allowed(normalized.as_ref())
+        } else {
+            true
+        }
+    }
+
+    fn path_mode(&self) -> PathMode {
+        PathMode::Allowed
+    }
 
     /// Resolves a path against the workspace root and checks glob policy.
     ///
@@ -179,7 +197,6 @@ impl PathResolver for AllowedGlobResolver {
     /// - No resolution tier succeeds.
     fn resolve(&self, path: &str) -> ToolResult<PathBuf> {
         let input_path = Path::new(path);
-        let policy = self.policy.as_deref();
 
         let analysis = path_analysis(input_path);
         if analysis.escapes {
@@ -187,7 +204,7 @@ impl PathResolver for AllowedGlobResolver {
         }
 
         let candidate = self.workspace_root.join(input_path);
-        resolve_candidate(&self.workspace_root, policy, path, &candidate)
+        resolve_candidate(self, path, &candidate)
     }
 }
 
@@ -202,24 +219,23 @@ impl PathResolver for AllowedGlobResolver {
 /// After each tier, re-check glob policy against the normalized absolute path.
 /// Accept the first tier that passes both the containment check and policy.
 fn resolve_candidate(
-    workspace_root: &Path,
-    policy: Option<&GlobPolicy>,
+    resolver: &AllowedGlobResolver,
     path: &str,
     candidate: &Path,
 ) -> ToolResult<PathBuf> {
     // Step 1: canonicalize for existing files - resolves symlinks and normalizes.
     if let Ok(resolved) = candidate.canonicalize() {
-        return validate_resolved(resolved, path, workspace_root, policy);
+        return validate_resolved(resolver, resolved, path);
     }
 
     // Step 2: fast path for new files in existing directories.
     if let Some(resolved) = resolve_new_file_fast(candidate) {
-        return validate_resolved(resolved, path, workspace_root, policy);
+        return validate_resolved(resolver, resolved, path);
     }
 
     // Step 3: fallback for paths with missing parent dirs.
     if let Ok(resolved) = soft_canonicalize(candidate) {
-        return validate_resolved(resolved, path, workspace_root, policy);
+        return validate_resolved(resolver, resolved, path);
     }
 
     Err(reject(path))
@@ -232,27 +248,19 @@ fn reject(path: &str) -> ToolError {
 
 /// Validates a resolved path against workspace containment and policy.
 ///
-/// Checks that the resolved path:
-/// 1. Is within the workspace root directory
-/// 2. Passes the glob policy (if one is configured)
-///
-/// Returns the resolved path if valid, or a rejection error otherwise.
+/// Delegates to [`AllowedGlobResolver::is_path_allowed`] for a single source
+/// of truth on the policy check.
 fn validate_resolved(
+    resolver: &AllowedGlobResolver,
     resolved: PathBuf,
     path: &str,
-    workspace_root: &Path,
-    policy: Option<&GlobPolicy>,
 ) -> ToolResult<PathBuf> {
-    if !resolved.starts_with(workspace_root) {
-        return Err(reject(path));
+    if resolved.as_path() == resolver.workspace_root.as_ref() || resolver.is_path_allowed(&resolved)
+    {
+        Ok(resolved)
+    } else {
+        Err(reject(path))
     }
-    if let Some(policy) = policy {
-        let abs_str = normalize_path(&resolved);
-        if !policy.is_allowed(abs_str.as_ref()) {
-            return Err(reject(path));
-        }
-    }
-    Ok(resolved)
 }
 
 #[cfg(test)]
