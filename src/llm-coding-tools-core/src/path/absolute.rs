@@ -1,8 +1,9 @@
 //! Absolute path resolver implementation.
 
 use super::PathResolver;
+use crate::context::PathMode;
 use crate::error::{ToolError, ToolResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Path resolver that requires absolute paths.
 ///
@@ -25,6 +26,14 @@ use std::path::PathBuf;
 pub struct AbsolutePathResolver;
 
 impl PathResolver for AbsolutePathResolver {
+    fn path_mode(&self) -> PathMode {
+        PathMode::Absolute
+    }
+
+    fn is_path_allowed(&self, _path: &Path) -> bool {
+        true
+    }
+
     fn resolve(&self, path: &str) -> ToolResult<PathBuf> {
         let path = PathBuf::from(path);
         if !path.is_absolute() {
@@ -90,5 +99,20 @@ mod tests {
                 assert!(err.to_string().contains("must be absolute"));
             }
         }
+    }
+
+    #[test]
+    fn is_path_allowed_always_true() {
+        let resolver = AbsolutePathResolver;
+        // resolve succeeds for absolute paths
+        let ok_path = if cfg!(windows) {
+            "C:\\Users\\file.txt"
+        } else {
+            "/home/user/file.txt"
+        };
+        let resolved = resolver.resolve(ok_path).unwrap();
+        assert!(resolver.is_path_allowed(&resolved));
+        // is_path_allowed returns true even for paths that resolve() would reject
+        assert!(resolver.is_path_allowed(Path::new("relative/path")));
     }
 }

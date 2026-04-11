@@ -10,7 +10,7 @@
 //!      cargo run --example serdesai-agents -p llm-coding-tools-serdesai
 
 use llm_coding_tools_agents::{AgentCatalog, AgentLoader, AgentRuntimeBuilder};
-use llm_coding_tools_core::CredentialResolver;
+use llm_coding_tools_core::{CredentialResolver, resolve_workspace_root};
 use llm_coding_tools_models_dev::ModelsDevCatalog;
 use llm_coding_tools_serdesai::{AgentBuildContext, AgentDefaults};
 use std::{path::PathBuf, sync::Arc};
@@ -47,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(runtime),
         Arc::new(load_result.catalog),
         Arc::new(credentials),
+        Arc::from(resolve_workspace_root()?),
     );
 
     println!(

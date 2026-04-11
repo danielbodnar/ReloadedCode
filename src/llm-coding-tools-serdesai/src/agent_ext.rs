@@ -20,6 +20,7 @@
 //! # }
 //! ```
 
+use crate::AgentBuildError;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use serdes_ai::agent::ToolExecutor;
@@ -82,5 +83,32 @@ where
     fn tool<T: Tool<Deps> + 'static>(self, tool: T) -> Self {
         let definition = tool.definition();
         self.tool_with_executor(definition, ToolAsExecutor(tool))
+    }
+}
+
+/// Extension for converting [`ToolError`] results into [`AgentBuildError`].
+///
+/// This avoids repeating the full `ToolSettingsValidation` struct literal at
+/// every `.map_err` call site.
+///
+/// # Example
+///
+/// ```no_run
+/// use llm_coding_tools_serdesai::agent_ext::ToolResultExt;
+/// # use llm_coding_tools_serdesai::AgentBuildError;
+/// # fn demo(r: Result<usize, llm_coding_tools_core::ToolError>) -> Result<(), AgentBuildError> {
+/// let value = r.with_tool("my_tool")?;
+/// # Ok(())
+/// # }
+/// ```
+pub trait ToolResultExt<T> {
+    /// Maps a [`ToolError`](llm_coding_tools_core::ToolError) to
+    /// [`AgentBuildError::ToolSettingsValidation`].
+    fn with_tool(self, tool: &'static str) -> Result<T, AgentBuildError>;
+}
+
+impl<T> ToolResultExt<T> for Result<T, llm_coding_tools_core::ToolError> {
+    fn with_tool(self, tool: &'static str) -> Result<T, AgentBuildError> {
+        self.map_err(|source| AgentBuildError::ToolSettingsValidation { tool, source })
     }
 }

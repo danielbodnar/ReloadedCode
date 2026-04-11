@@ -27,11 +27,9 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
-use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::read as read_meta;
 use llm_coding_tools_core::tools::{ReadRequest, ReadSettings, read_file};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
-use std::sync::Arc;
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 
@@ -67,40 +65,13 @@ impl<R: PathResolver + Clone> ReadTool<R> {
     /// * `resolver` - The path resolver for path validation and resolution.
     /// * `settings` - Core read settings for limits and formatting.
     pub fn with_settings(resolver: R, settings: ReadSettings) -> Self {
-        let path_mode = R::PATH_MODE;
+        let path_mode = resolver.path_mode();
         Self {
             definition: build_definition(path_mode, settings.line_numbers()),
             resolver,
             path_mode,
             settings,
         }
-    }
-
-    /// Sets the permission ruleset for this tool.
-    ///
-    /// # Arguments
-    ///
-    /// * `permission` - Optional [`Ruleset`] for path access control.
-    ///   Use `None` to disable permission checking.
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.settings = self.settings.with_permission(permission);
-        self
-    }
-
-    /// Creates a new read tool with settings and permission.
-    ///
-    /// # Arguments
-    ///
-    /// * `resolver` - The path resolver for path validation and resolution.
-    /// * `settings` - Core read settings for limits and formatting.
-    /// * `permission` - Optional permission ruleset for access control.
-    pub fn with_settings_and_permission(
-        resolver: R,
-        settings: ReadSettings,
-        permission: Option<Arc<Ruleset>>,
-    ) -> Self {
-        Self::with_settings(resolver, settings.with_permission(permission))
     }
 
     /// Returns the path mode for this tool instance.

@@ -84,6 +84,9 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls-native-certs",
 ] }
 
+# Used for IndexMap in build.rs (permission config)
+indexmap = "2"
+
 [dev-dependencies]
 serial_test = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

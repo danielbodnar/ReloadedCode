@@ -119,6 +119,7 @@ let build_context = AgentBuildContext::new(
     Arc::new(runtime),
     Arc::new(load_result.catalog),
     Arc::new(CredentialResolver::new()),
+    Arc::from(llm_coding_tools_core::resolve_workspace_root()?.as_path()),
 );
 let agent = build_context.build("planner")?;
 let response = agent.run("Say hello in one sentence.", ()).await?;

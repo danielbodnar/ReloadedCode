@@ -4,8 +4,6 @@ use crate::error::{ToolError, ToolResult};
 use crate::fs;
 use crate::output::ToolOutput;
 use crate::path::PathResolver;
-use crate::permissions::Ruleset;
-use crate::permissions_ext::OptionRulesetExt;
 use crate::tool_metadata::read as read_meta;
 use crate::util::{
     push_usize, truncate_line_with_ellipsis, ESTIMATED_CHARS_PER_LINE, TRUNCATION_ELLIPSIS,
@@ -13,7 +11,6 @@ use crate::util::{
 use memchr::{memchr, memchr_iter};
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Serde-friendly read request owned by the core crate.
 #[derive(Debug, Deserialize)]
@@ -45,7 +42,6 @@ pub struct ReadSettings {
     max_limit: usize,
     max_line_length: usize,
     line_numbers: bool,
-    permission: Option<Arc<Ruleset>>,
 }
 
 impl Default for ReadSettings {
@@ -63,7 +59,6 @@ impl ReadSettings {
             max_limit: read_meta::DEFAULT_LIMIT,
             max_line_length: read_meta::MAX_LINE_LENGTH,
             line_numbers: true,
-            permission: None,
         }
     }
 
@@ -145,22 +140,6 @@ impl ReadSettings {
         self
     }
 
-    /// Attaches an optional permission ruleset to read operations.
-    ///
-    /// # Arguments
-    /// - `permission` - An optional [`Arc<Ruleset>`] controlling which paths
-    ///   may be read. Pass `None` to disable permission filtering.
-    ///
-    /// # Returns
-    /// - The modified [`ReadSettings`] with the permission attached.
-    ///
-    /// [`Arc<Ruleset>`]: std::sync::Arc
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.permission = permission;
-        self
-    }
-
     /// Returns the line count used when the caller doesn't specify one.
     ///
     /// # Returns
@@ -196,18 +175,6 @@ impl ReadSettings {
     pub const fn line_numbers(&self) -> bool {
         self.line_numbers
     }
-
-    /// Returns the permission ruleset applied to read operations, if any.
-    ///
-    /// # Returns
-    /// - `Some(&`[`Ruleset`]`)` when a permission filter is configured.
-    /// - `None` when no permission filtering is applied.
-    ///
-    /// [`Ruleset`]: crate::permissions::Ruleset
-    #[must_use]
-    pub fn permission(&self) -> Option<&Ruleset> {
-        self.permission.as_deref()
-    }
 }
 
 #[cfg(feature = "blocking")]
@@ -226,7 +193,7 @@ type BufFile = tokio::io::BufReader<tokio::fs::File>;
 /// # Arguments
 /// - `resolver`: [`PathResolver`] used to resolve `request.file_path` to a filesystem path.
 /// - `request`: [`ReadRequest`] carrying the file path, 1-indexed offset, and optional line limit.
-/// - `settings`: [`ReadSettings`] controlling line numbers, max line length, and permission checks.
+/// - `settings`: [`ReadSettings`] controlling line numbers and max line length.
 ///
 /// # Returns
 /// - [`ToolOutput`] containing the requested line range, each line optionally
@@ -235,7 +202,6 @@ type BufFile = tokio::io::BufReader<tokio::fs::File>;
 /// # Errors
 /// - Returns [`ToolError::OutOfBounds`] when `offset` is `0` or exceeds the file's line count.
 /// - Returns [`ToolError::validation_for`] when `limit` resolves to `0`.
-/// - Returns a permission error when the resolved path is denied by the configured [`Ruleset`].
 /// - Returns an I/O error when the file cannot be opened or read.
 #[maybe_async::maybe_async]
 pub async fn read_file<R: PathResolver>(
@@ -270,12 +236,8 @@ pub async fn read_file<R: PathResolver>(
         ));
     }
 
-    // Resolve the logical path to a filesystem path and check permissions.
+    // Resolve the logical path to a filesystem path.
     let path = resolver.resolve(&request.file_path)?;
-    let subject = path.to_string_lossy();
-    settings
-        .permission()
-        .check(read_meta::NAME, subject.as_ref())?;
 
     // Open the file with a buffered reader sized proportionally to the
     // expected output, capped at 1 MiB to avoid over-allocating on huge limits.
@@ -591,12 +553,9 @@ fn ensure_max_line_length(max_line_length: usize) -> ToolResult<()> {
 mod tests {
     use super::*;
     use crate::path::AbsolutePathResolver;
-    use crate::permissions::{ExpandError, PermissionAction, Rule};
     use rstest::rstest;
     use std::io::Write as _;
     use tempfile::NamedTempFile;
-
-    type TestResult = Result<(), ExpandError>;
 
     #[maybe_async::maybe_async]
     async fn read_temp_file(
@@ -791,38 +750,5 @@ mod tests {
         .unwrap_err();
 
         assert!(matches!(err, ToolError::Validation { .. }));
-    }
-
-    #[maybe_async::test(feature = "blocking", async(feature = "tokio", tokio::test))]
-    async fn read_request_rejects_denied_path() -> TestResult {
-        let mut temp = NamedTempFile::new().unwrap();
-        temp.write_all(b"line1\n").unwrap();
-        let resolver = AbsolutePathResolver;
-
-        let mut ruleset = Ruleset::new();
-        ruleset.push(Rule::new("read", "*", PermissionAction::Allow)?);
-        ruleset.push(Rule::new(
-            "read",
-            temp.path().to_string_lossy().into_owned(),
-            PermissionAction::Deny,
-        )?);
-
-        let err = read_file(
-            &resolver,
-            ReadRequest {
-                file_path: temp.path().to_string_lossy().into_owned(),
-                offset: 1,
-                limit: Some(1),
-            },
-            &ReadSettings::new().with_permission(Some(Arc::new(ruleset))),
-        )
-        .await
-        .unwrap_err();
-
-        assert!(matches!(
-            err,
-            ToolError::PermissionDenied { tool: "read", .. }
-        ));
-        Ok(())
     }
 }

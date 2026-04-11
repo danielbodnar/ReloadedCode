@@ -13,12 +13,10 @@ use async_trait::async_trait;
 use llm_coding_tools_core::ToolContext;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
-use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::glob as glob_meta;
 use llm_coding_tools_core::tools::{GlobOutput, GlobRequest, GlobSettings, glob_files};
 use serde_json::json;
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult, ToolReturn};
-use std::sync::Arc;
 
 use crate::convert::core_error_to_serdes;
 
@@ -52,25 +50,13 @@ impl<R: PathResolver + Clone> GlobTool<R> {
     /// * `resolver` - The path resolver for path validation.
     /// * `settings` - Core glob settings for result limits.
     pub fn with_settings(resolver: R, settings: GlobSettings) -> Self {
-        let path_mode = R::PATH_MODE;
+        let path_mode = resolver.path_mode();
         Self {
             definition: build_definition(path_mode),
             resolver,
             path_mode,
             settings,
         }
-    }
-
-    /// Sets the permission ruleset for this tool.
-    ///
-    /// # Arguments
-    ///
-    /// * `permission` - Optional [`Ruleset`] for path access control.
-    ///   Use `None` to disable permission checking.
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.settings = self.settings.with_permission(permission);
-        self
     }
 
     /// Returns the path mode for this tool instance.

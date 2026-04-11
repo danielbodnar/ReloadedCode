@@ -6,19 +6,21 @@
 
 use super::model::resolve_model;
 use super::provider_bridge::build_serdes_model;
-use crate::agent_ext::AgentBuilderExt;
+use crate::agent_ext::{AgentBuilderExt, ToolResultExt};
 use crate::task::{TaskHandle, TaskTool};
 use crate::{
-    AbsolutePathResolver, BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder,
-    WebFetchTool, WriteTool, create_todo_tools,
+    BashTool, EditTool, GlobTool, GrepTool, ReadTool, SystemPromptBuilder, WebFetchTool, WriteTool,
+    create_todo_tools,
 };
+use indexmap::IndexMap;
 use llm_coding_tools_agents::{
-    AgentRuntime, AgentToolSettings, ModelResolutionError, TaskTargetSummary, ToolCatalogEntry,
-    ToolCatalogKind,
+    AgentRuntime, AgentToolSettings, ModelResolutionError, PermissionRule, TaskTargetSummary,
+    ToolCatalogEntry, ToolCatalogKind, build_resolver_for_tool,
 };
 use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::{
-    glob as glob_meta, grep as grep_meta, read as read_meta, webfetch as webfetch_meta,
+    edit as edit_meta, glob as glob_meta, grep as grep_meta, read as read_meta,
+    webfetch as webfetch_meta, write as write_meta,
 };
 use llm_coding_tools_core::tools::{
     GlobSettings, GrepFormattingSettings, GrepSettings, ReadSettings, WebFetchSettings,
@@ -26,6 +28,7 @@ use llm_coding_tools_core::tools::{
 use llm_coding_tools_core::{CredentialLookup, models::ModelCatalog};
 use serdes_ai::AgentBuilder;
 use serdes_ai_models::BoxedModel;
+use std::path::Path;
 use std::sync::Arc;
 
 /// Error returned when a build cannot produce a SerdesAI agent.
@@ -61,8 +64,7 @@ pub enum AgentBuildError {
 }
 
 /// Resolved build parameters ready for agent construction.
-#[derive(Clone)]
-pub(super) struct PreparedBuild {
+pub(super) struct PreparedBuild<'a> {
     /// Agent name for [`AgentBuilder::name`].
     agent_name: Box<str>,
     /// Concrete SerdesAI model.
@@ -85,23 +87,26 @@ pub(super) struct PreparedBuild {
     /// Pre-built permission ruleset for tool access control.
     /// None if agent has no permissions (backward compatibility).
     permission: Option<Arc<Ruleset>>,
+    /// Raw permission config for file-tool resolver selection.
+    permission_config: &'a IndexMap<String, PermissionRule>,
 }
 
-impl PreparedBuild {
+impl PreparedBuild<'_> {
     /// Returns the resolved SerdesAI model for builder construction.
     #[inline]
     pub(super) fn model(&self) -> &BoxedModel {
         &self.model
     }
 }
+
 /// Resolves model configuration and collects build parameters for an agent.
-pub(super) fn prepare_build<C>(
-    runtime: &AgentRuntime,
+pub(super) fn prepare_build<'a, C>(
+    runtime: &'a AgentRuntime,
     name: &str,
     model_catalog: &ModelCatalog,
     credentials: &C,
     with_summaries: bool,
-) -> Result<PreparedBuild, AgentBuildError>
+) -> Result<PreparedBuild<'a>, AgentBuildError>
 where
     C: CredentialLookup,
 {
@@ -136,14 +141,16 @@ where
         tool_settings: agent.tool_settings.clone(),
         callable_target_summaries,
         permission,
+        permission_config: &agent.permission,
     })
 }
 
 /// Attaches the standard runtime tools and prompt contexts without finalizing the builder.
-pub(super) fn attach_standard_tools<C>(
+pub(super) fn attach_standard_tools<'a, C>(
     mut builder: AgentBuilder<(), String>,
-    prepared: &PreparedBuild,
+    prepared: &PreparedBuild<'a>,
     task_handle: Option<&TaskHandle<C>>,
+    workspace_root: &Path,
 ) -> Result<(AgentBuilder<(), String>, SystemPromptBuilder), AgentBuildError>
 where
     C: CredentialLookup + Send + Sync + 'static,
@@ -159,53 +166,51 @@ where
         builder = builder.top_p(top_p);
     }
 
-    // Use pre-built permission ruleset from PreparedBuild
-    // No need to rebuild - already constructed in prepare_build
+    // Use pre-built permission ruleset from PreparedBuild for non-file tools.
     let permission = prepared.permission.clone();
+    let permission_config = &prepared.permission_config;
 
     for entry in prepared.tools.iter() {
         match entry.kind {
             ToolCatalogKind::Read => {
+                let resolver =
+                    build_resolver_for_tool(permission_config, read_meta::NAME, workspace_root)
+                        .with_tool(read_meta::NAME)?;
                 let settings = build_read_settings(&prepared.tool_settings.read)?;
                 builder =
-                    builder.tool(prompt_builder.track(ReadTool::with_settings_and_permission(
-                        AbsolutePathResolver,
-                        settings,
-                        permission.clone(),
-                    )));
+                    builder.tool(prompt_builder.track(ReadTool::with_settings(resolver, settings)));
             }
             ToolCatalogKind::Write => {
-                builder = builder.tool(prompt_builder.track(
-                    WriteTool::new(AbsolutePathResolver).with_permission(permission.clone()),
-                ));
+                let resolver =
+                    build_resolver_for_tool(permission_config, write_meta::NAME, workspace_root)
+                        .with_tool(write_meta::NAME)?;
+                builder = builder.tool(prompt_builder.track(WriteTool::new(resolver)));
             }
             ToolCatalogKind::Edit => {
-                builder = builder.tool(prompt_builder.track(
-                    EditTool::new(AbsolutePathResolver).with_permission(permission.clone()),
-                ));
+                let resolver =
+                    build_resolver_for_tool(permission_config, edit_meta::NAME, workspace_root)
+                        .with_tool(edit_meta::NAME)?;
+                builder = builder.tool(prompt_builder.track(EditTool::new(resolver)));
             }
             ToolCatalogKind::Glob => {
+                let resolver =
+                    build_resolver_for_tool(permission_config, glob_meta::NAME, workspace_root)
+                        .with_tool(glob_meta::NAME)?;
                 let settings = build_glob_settings(&prepared.tool_settings.glob)?;
-                builder = builder.tool(
-                    prompt_builder.track(
-                        GlobTool::with_settings(AbsolutePathResolver, settings)
-                            .with_permission(permission.clone()),
-                    ),
-                );
+                builder =
+                    builder.tool(prompt_builder.track(GlobTool::with_settings(resolver, settings)));
             }
             ToolCatalogKind::Grep => {
+                let resolver =
+                    build_resolver_for_tool(permission_config, grep_meta::NAME, workspace_root)
+                        .with_tool(grep_meta::NAME)?;
                 let (search_settings, formatting_settings) =
                     build_grep_settings(&prepared.tool_settings.grep)?;
-                builder = builder.tool(
-                    prompt_builder.track(
-                        GrepTool::with_settings(
-                            AbsolutePathResolver,
-                            search_settings,
-                            formatting_settings,
-                        )
-                        .with_permission(permission.clone()),
-                    ),
-                );
+                builder = builder.tool(prompt_builder.track(GrepTool::with_settings(
+                    resolver,
+                    search_settings,
+                    formatting_settings,
+                )));
             }
             ToolCatalogKind::Bash => {
                 let settings = &prepared.tool_settings.bash;
@@ -256,10 +261,7 @@ fn build_read_settings(
         .with_limits(settings.limit, settings.limit)
         .and_then(|value| value.with_max_line_length(settings.max_line_length))
         .map(|value| value.with_line_numbers(settings.line_numbers))
-        .map_err(|source| AgentBuildError::ToolSettingsValidation {
-            tool: read_meta::NAME,
-            source,
-        })
+        .with_tool(read_meta::NAME)
 }
 
 fn build_grep_settings(
@@ -267,18 +269,12 @@ fn build_grep_settings(
 ) -> Result<(GrepSettings, GrepFormattingSettings), AgentBuildError> {
     let search_settings = GrepSettings::new()
         .with_max_limit(settings.limit)
-        .map_err(|source| AgentBuildError::ToolSettingsValidation {
-            tool: grep_meta::NAME,
-            source,
-        })?;
+        .with_tool(grep_meta::NAME)?;
 
     let formatting_settings = GrepFormattingSettings::new()
         .with_max_line_length(settings.max_line_length)
         .map(|value| value.with_line_numbers(settings.line_numbers))
-        .map_err(|source| AgentBuildError::ToolSettingsValidation {
-            tool: grep_meta::NAME,
-            source,
-        })?;
+        .with_tool(grep_meta::NAME)?;
 
     Ok((search_settings, formatting_settings))
 }
@@ -288,10 +284,7 @@ fn build_glob_settings(
 ) -> Result<GlobSettings, AgentBuildError> {
     GlobSettings::new()
         .with_limit(settings.limit)
-        .map_err(|source| AgentBuildError::ToolSettingsValidation {
-            tool: glob_meta::NAME,
-            source,
-        })
+        .with_tool(glob_meta::NAME)
 }
 
 fn build_webfetch_settings(
@@ -300,10 +293,7 @@ fn build_webfetch_settings(
     WebFetchSettings::new()
         .with_timeouts(settings.timeout_ms, settings.max_timeout_ms)
         .and_then(|value| value.with_max_response_size(settings.max_response_size))
-        .map_err(|source| AgentBuildError::ToolSettingsValidation {
-            tool: webfetch_meta::NAME,
-            source,
-        })
+        .with_tool(webfetch_meta::NAME)
 }
 
 #[cfg(test)]
@@ -332,13 +322,16 @@ mod tests {
 
     /// Builds an agent using a mock model instead of a real one.
     fn build_with_mock(
-        prepared: &super::PreparedBuild,
+        prepared: &super::PreparedBuild<'_>,
         name: &str,
     ) -> serdes_ai::Agent<(), String> {
+        let workspace_root =
+            llm_coding_tools_core::resolve_workspace_root().expect("workspace root");
         let (builder, prompt_builder) = attach_standard_tools::<CredentialResolver>(
             AgentBuilder::<(), String>::new(MockModel::new(name)),
             prepared,
             None,
+            &workspace_root,
         )
         .expect("build should succeed");
         builder.system_prompt(prompt_builder.build()).build()

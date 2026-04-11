@@ -125,7 +125,13 @@ impl AllowedPathResolver {
 }
 
 impl PathResolver for AllowedPathResolver {
-    const PATH_MODE: PathMode = PathMode::Allowed;
+    fn path_mode(&self) -> PathMode {
+        PathMode::Allowed
+    }
+
+    fn is_path_allowed(&self, path: &Path) -> bool {
+        self.allowed_paths.iter().any(|base| path.starts_with(base))
+    }
 
     fn resolve(&self, path: &str) -> ToolResult<PathBuf> {
         let input_path = Path::new(path);
@@ -342,5 +348,25 @@ mod tests {
         let result = resolver.resolve(&external_path.to_string_lossy());
         let err = result.expect_err("external path should be rejected");
         assert!(err.to_string().contains("not within allowed"));
+    }
+
+    #[test]
+    fn is_path_allowed_matches_resolve_outcome() {
+        let dir = setup_test_dir();
+        let resolver = AllowedPathResolver::new(vec![dir.path().to_path_buf()]).unwrap();
+
+        // resolve succeeds for file inside allowed dir
+        let resolved = resolver.resolve("file.txt").unwrap();
+        assert!(
+            resolver.is_path_allowed(&resolved),
+            "is_path_allowed must be true for resolved path"
+        );
+
+        // resolve fails for path outside allowed dir
+        let external = std::env::temp_dir().join("external.txt");
+        assert!(
+            !resolver.is_path_allowed(&external),
+            "is_path_allowed must be false for external path"
+        );
     }
 }

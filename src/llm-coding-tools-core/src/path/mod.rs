@@ -7,10 +7,11 @@
 
 mod absolute;
 mod allowed;
-pub(crate) mod allowed_glob;
+pub mod allowed_glob;
 
 pub use absolute::AbsolutePathResolver;
 pub use allowed::AllowedPathResolver;
+pub use allowed_glob::normalize::expand_shell;
 pub use allowed_glob::{AllowedGlobResolver, GlobPolicy, GlobPolicyBuilder, RuleAction};
 
 use crate::context::PathMode;
@@ -22,17 +23,24 @@ use std::path::{Component, Path, PathBuf};
 /// Implementations control whether paths must be absolute, relative to
 /// allowed directories, or follow other constraints.
 pub trait PathResolver: Send + Sync {
-    /// Describes how tools should present paths for this resolver.
-    ///
-    /// Custom resolvers default to [`PathMode::Absolute`] unless they opt into
-    /// [`PathMode::Allowed`].
-    const PATH_MODE: PathMode = PathMode::Absolute;
-
     /// Resolves and validates a path string.
     ///
     /// Returns an absolute path (may or may not be canonical) if valid,
     /// or an error describing the issue.
     fn resolve(&self, path: &str) -> ToolResult<PathBuf>;
+
+    /// Fast per-entry check: is this absolute path allowed?
+    ///
+    /// WalkBuilder yields real absolute paths. No canonicalization needed.
+    /// Used by glob/grep to filter walked entries without [`resolve()`](Self::resolve)
+    /// overhead.
+    ///
+    /// Implementations must ensure paths where [`resolve()`](Self::resolve) succeeds
+    /// also satisfy `is_path_allowed()` - the two must be consistent.
+    fn is_path_allowed(&self, path: &Path) -> bool;
+
+    /// Returns the path mode for this resolver instance.
+    fn path_mode(&self) -> PathMode;
 }
 
 /// Fast lexical check for whether a relative path would escape its base directory.

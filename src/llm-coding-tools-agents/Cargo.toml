@@ -33,6 +33,9 @@ ahash = { version = "0.8", features = ["serde"] }
 # Core library for permissions and tool types
 llm-coding-tools-core = { path = "../llm-coding-tools-core", version = "0.2.0" }
 
+# Canonicalizes paths, resolving symlinks without requiring the full path to exist
+soft-canonicalize = "0.4"
+
 [dev-dependencies]
 tempfile = "3.27"
 criterion = "0.8"

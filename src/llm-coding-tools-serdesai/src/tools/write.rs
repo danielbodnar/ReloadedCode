@@ -12,12 +12,10 @@
 use async_trait::async_trait;
 use llm_coding_tools_core::context::{PathMode, ToolPrompt};
 use llm_coding_tools_core::path::PathResolver;
-use llm_coding_tools_core::permissions::Ruleset;
 use llm_coding_tools_core::tool_metadata::write as write_meta;
 use llm_coding_tools_core::tools::{WriteRequest, WriteSettings, write_file};
 use llm_coding_tools_core::{ToolContext, ToolOutput};
 use serdes_ai::tools::{RunContext, SchemaBuilder, Tool, ToolDefinition, ToolResult};
-use std::sync::Arc;
 
 use crate::convert::{core_error_to_serdes, to_serdes_result};
 
@@ -47,28 +45,15 @@ impl<R: PathResolver + Clone> WriteTool<R> {
     /// # Arguments
     ///
     /// * `resolver` - A [`PathResolver`] used to resolve and validate file paths.
-    /// * `settings` - [`WriteSettings`] controlling write behaviour such as
-    ///   permission checks and overwrite handling.
+    /// * `settings` - [`WriteSettings`] controlling overwrite handling.
     pub fn with_settings(resolver: R, settings: WriteSettings) -> Self {
-        let path_mode = R::PATH_MODE;
+        let path_mode = resolver.path_mode();
         Self {
             definition: build_definition(path_mode),
             resolver,
             path_mode,
             settings,
         }
-    }
-
-    /// Sets the permission ruleset for this tool.
-    ///
-    /// # Arguments
-    ///
-    /// * `permission` - Optional [`Ruleset`] for path access control.
-    ///   Use `None` to disable permission checking.
-    #[must_use]
-    pub fn with_permission(mut self, permission: Option<Arc<Ruleset>>) -> Self {
-        self.settings = self.settings.with_permission(permission);
-        self
     }
 
     /// Returns the path mode for this tool instance.
