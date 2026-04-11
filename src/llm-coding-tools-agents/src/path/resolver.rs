@@ -109,7 +109,11 @@ pub fn build_resolver_for_tool(
         return Ok(FileToolResolver::Allowed(resolver));
     };
     match rule {
-        PermissionRule::Action(_) => {
+        PermissionRule::Action(PermissionAction::Deny) => Err(ToolError::PermissionDenied {
+            tool: "file",
+            subject: format!("tool '{}' is disabled by configuration", tool_name),
+        }),
+        PermissionRule::Action(PermissionAction::Allow) => {
             // Action(Allow): workspace only.
             let resolver = AllowedPathResolver::from_canonical(vec![workspace_root]);
             Ok(FileToolResolver::Allowed(resolver))
