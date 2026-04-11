@@ -17,7 +17,7 @@ use serdes_ai::tools::{ToolError as SerdesError, ToolReturn};
 /// [`ToolOutput`]: llm_coding_tools_core::ToolOutput
 /// [`ToolReturn`]: serdes_ai::tools::ToolReturn
 #[inline]
-pub fn output_to_return(output: ToolOutput) -> ToolReturn {
+fn output_to_return(output: ToolOutput) -> ToolReturn {
     if output.truncated {
         ToolReturn::json(json!({
             "content": output.content,

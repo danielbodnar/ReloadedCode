@@ -78,7 +78,6 @@ jobs:
           cargo test -p llm-coding-tools-core --no-default-features --features blocking,linux-bubblewrap
 
       - name: Check documentation is valid
-        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         working-directory: src
         shell: bash
         env:
@@ -110,7 +109,6 @@ jobs:
           esac
 
       - name: Run linter
-        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         working-directory: src
         shell: bash
         run: |
