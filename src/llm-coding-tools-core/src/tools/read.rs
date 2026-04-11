@@ -219,9 +219,9 @@ type BufFile = tokio::io::BufReader<tokio::fs::File>;
 /// SIMD-accelerated newline scanning.
 ///
 /// The function opens the file at the resolved path, skips to the requested
-/// 1-indexed `offset` via [`skip_to_line`], then streams lines into an output
-/// string. Each line can optionally carry a `L{number}: ` prefix and is
-/// truncated to `max_line_length` when necessary.
+/// 1-indexed `offset`, then streams lines into an output string. Each line
+/// can optionally carry a `L{number}: ` prefix and is truncated to
+/// `max_line_length` when necessary.
 ///
 /// # Arguments
 /// - `resolver`: [`PathResolver`] used to resolve `request.file_path` to a filesystem path.
@@ -413,7 +413,7 @@ pub async fn read_file<R: PathResolver>(
 /// # Errors
 /// Returns an I/O error if reading from the underlying reader fails.
 #[maybe_async::maybe_async]
-pub async fn skip_to_line(reader: &mut BufFile, skip_target: usize) -> ToolResult<usize> {
+pub(crate) async fn skip_to_line(reader: &mut BufFile, skip_target: usize) -> ToolResult<usize> {
     // Import the sync or async `fill_buf`/`consume` trait depending on feature flag.
     #[cfg(feature = "blocking")]
     use std::io::BufRead as _;

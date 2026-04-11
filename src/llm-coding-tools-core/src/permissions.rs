@@ -342,7 +342,7 @@ impl Ruleset {
 /// assert!(wildcard_match("test", "te?t"));
 /// assert!(!wildcard_match("bash", "task"));
 /// ```
-pub fn wildcard_match(input: &str, pattern: &str) -> bool {
+pub(crate) fn wildcard_match(input: &str, pattern: &str) -> bool {
     // Fast path: exact match or universal wildcard
     if pattern == "*" {
         return true;
