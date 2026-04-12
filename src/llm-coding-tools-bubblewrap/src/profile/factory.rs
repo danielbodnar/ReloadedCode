@@ -298,10 +298,43 @@ fn create_sandbox_inner(
     builder: Builder,
     availability: Availability,
 ) -> Result<Arc<Profile>, CreateSandboxError> {
-    // Assemble and validate the profile, surfacing any structural errors.
     let profile = builder
         .with_availability(availability)
         .build()
         .map_err(CreateSandboxError::Profile)?;
     Ok(Arc::new(profile))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn temp_sandbox_dirs_creates_layout_and_as_dirs_returns_matching_view() {
+        let dirs = TempSandboxDirs::new().unwrap();
+
+        assert!(dirs.home().is_dir());
+        assert!(dirs.cache().is_dir());
+        assert!(dirs.host_tmp().is_dir());
+
+        assert!(dirs.home().ends_with("home"));
+        assert!(dirs.cache().ends_with("cache"));
+        assert!(dirs.host_tmp().ends_with("host-tmp"));
+
+        let tmpdir_prefix = dirs
+            .temp_dir()
+            .path()
+            .file_name()
+            .expect("temp dir has a name")
+            .to_string_lossy();
+        assert!(
+            tmpdir_prefix.starts_with("llm-coding-tools-sandbox-"),
+            "unexpected prefix: {tmpdir_prefix}",
+        );
+
+        let view = dirs.as_dirs();
+        assert_eq!(view.home(), dirs.home());
+        assert_eq!(view.cache(), dirs.cache());
+        assert_eq!(view.host_tmp(), dirs.host_tmp());
+    }
 }
