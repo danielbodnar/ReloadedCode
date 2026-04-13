@@ -60,7 +60,7 @@ bitfields = "1.0.3"
 ahash = "0.8"
 
 # Explicit low-level hash table for model catalog lookup
-hashbrown = "0.16"
+hashbrown = "0.17"
 
 # Inline vector storage for ProviderEnvVars
 tinyvec = { version = "1.11", features = ["alloc"] }
