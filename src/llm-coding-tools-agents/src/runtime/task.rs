@@ -33,7 +33,8 @@ pub struct TaskTargetSummary {
 /// `caller_name` is not in the catalog or no non-primary targets are available.
 ///
 /// # Errors
-/// - Returns [`ExpandError`] when the caller's `permission.task` configuration contains invalid patterns.
+/// - Returns [`ExpandError`] when any entry in the caller's `permission` map contains invalid patterns
+///   (the ruleset is built from the full map via [`Ruleset::from_permission_config`]).
 pub fn summarize_callable_targets(
     catalog: &AgentCatalog,
     caller_name: &str,
@@ -57,7 +58,8 @@ pub fn summarize_callable_targets(
 /// last-match-wins permission semantics.
 ///
 /// # Errors
-/// - Returns [`ExpandError`] when the caller's `permission.task` configuration contains invalid patterns.
+/// - Returns [`ExpandError`] when any entry in the caller's `permission` map contains invalid patterns
+///   (the ruleset is built from the full map via [`Ruleset::from_permission_config`]).
 pub fn callable_targets<'a>(
     catalog: &'a AgentCatalog,
     caller_name: &str,

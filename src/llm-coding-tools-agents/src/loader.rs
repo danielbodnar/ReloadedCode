@@ -81,8 +81,9 @@ impl AgentLoader {
     /// * `directory` - Root directory to scan
     ///
     /// # Errors
-    /// - Returns [`AgentLoadError::Io`] when the directory path exists but is not a directory.
-    /// - Returns [`AgentLoadError::Io`] when the directory cannot be accessed (permissions, etc.).
+    /// - Returns [`AgentLoadError::Io`] when the path exists but is not a directory.
+    ///   Walk errors (permissions, etc.) may be silently skipped by [`load_directory_with`]
+    ///   and are not guaranteed to surface as [`AgentLoadError::Io`].
     pub fn add_directory(
         &self,
         catalog: &mut AgentCatalog,
@@ -103,9 +104,10 @@ impl AgentLoader {
     /// * `on_error` - Callback invoked for each file that fails to load
     ///
     /// # Errors
-    /// - Returns [`AgentLoadError::Io`] when the directory path exists but is not a directory.
-    /// - Returns [`AgentLoadError::Io`] when the directory cannot be accessed (permissions, etc.).
-    /// - Individual file load failures are reported via `on_error` and do not fail the operation.
+    /// - Returns [`AgentLoadError::Io`] when the path exists but is not a directory.
+    ///   Walk errors (permissions, etc.) may be silently skipped by [`load_directory_with`]
+    ///   and are not guaranteed to surface as [`AgentLoadError::Io`].
+    /// - Individual file parse/validation failures are reported via `on_error` and do not fail the operation.
     pub fn add_directory_with_errors(
         &self,
         catalog: &mut AgentCatalog,
