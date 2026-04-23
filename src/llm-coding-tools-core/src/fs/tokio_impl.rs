@@ -8,6 +8,8 @@ use std::path::Path;
 /// # Errors
 /// - Returns [`ToolError::Io`] when the file cannot be read (e.g., file does not exist,
 ///   permission denied, or other I/O error).
+///
+/// [`ToolError::Io`]: crate::error::ToolError::Io
 pub async fn read_to_string(path: impl AsRef<Path>) -> ToolResult<String> {
     Ok(tokio::fs::read_to_string(path).await?)
 }
@@ -17,6 +19,8 @@ pub async fn read_to_string(path: impl AsRef<Path>) -> ToolResult<String> {
 /// # Errors
 /// - Returns [`ToolError::Io`] when the file cannot be written (e.g., parent directory
 ///   does not exist, permission denied, or other I/O error).
+///
+/// [`ToolError::Io`]: crate::error::ToolError::Io
 pub async fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> ToolResult<()> {
     Ok(tokio::fs::write(path, contents).await?)
 }
@@ -26,6 +30,8 @@ pub async fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> ToolRe
 /// # Errors
 /// - Returns [`ToolError::Io`] when the directory cannot be created (e.g., permission
 ///   denied or other I/O error).
+///
+/// [`ToolError::Io`]: crate::error::ToolError::Io
 pub async fn create_dir_all(path: impl AsRef<Path>) -> ToolResult<()> {
     Ok(tokio::fs::create_dir_all(path).await?)
 }
@@ -35,6 +41,8 @@ pub async fn create_dir_all(path: impl AsRef<Path>) -> ToolResult<()> {
 /// # Errors
 /// - Returns [`ToolError::Io`] when the file cannot be opened (e.g., file does not exist,
 ///   permission denied, or other I/O error).
+///
+/// [`ToolError::Io`]: crate::error::ToolError::Io
 pub async fn open_buffered(
     path: impl AsRef<Path>,
     capacity: usize,

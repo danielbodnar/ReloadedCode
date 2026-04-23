@@ -90,6 +90,8 @@ pub(crate) struct ApiModelLimit {
 /// # Errors
 /// - Returns [`CatalogError::Json`] when `json_bytes` is not valid JSON or does not
 ///   match the expected models.dev API schema structure.
+///
+/// [`CatalogError::Json`]: crate::error::CatalogError::Json
 #[inline]
 pub(crate) fn parse_api_json(
     json_bytes: &[u8],

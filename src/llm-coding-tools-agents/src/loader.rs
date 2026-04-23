@@ -82,7 +82,7 @@ impl AgentLoader {
     ///
     /// # Errors
     /// - Returns [`AgentLoadError::Io`] when the path exists but is not a directory.
-    ///   Walk errors (permissions, etc.) may be silently skipped by [`load_directory_with`]
+    ///   Walk errors (permissions, etc.) may be silently skipped by `load_directory_with`
     ///   and are not guaranteed to surface as [`AgentLoadError::Io`].
     pub fn add_directory(
         &self,
@@ -105,7 +105,7 @@ impl AgentLoader {
     ///
     /// # Errors
     /// - Returns [`AgentLoadError::Io`] when the path exists but is not a directory.
-    ///   Walk errors (permissions, etc.) may be silently skipped by [`load_directory_with`]
+    ///   Walk errors (permissions, etc.) may be silently skipped by `load_directory_with`
     ///   and are not guaranteed to surface as [`AgentLoadError::Io`].
     /// - Individual file parse/validation failures are reported via `on_error` and do not fail the operation.
     pub fn add_directory_with_errors(
