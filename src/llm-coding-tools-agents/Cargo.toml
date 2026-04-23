@@ -30,7 +30,7 @@ ignore = { workspace = true }
 ahash = { workspace = true }
 
 # Core library for permissions and tool types
-llm-coding-tools-core = { workspace = true }
+llm-coding-tools-core = { workspace = true, features = ["tokio"] }
 
 # Canonicalizes paths, resolving symlinks without requiring the full path to exist
 soft-canonicalize = { workspace = true }
