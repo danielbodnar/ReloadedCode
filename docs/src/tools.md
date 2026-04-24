@@ -106,18 +106,18 @@ permission:
 
 ## Tool overview
 
-| Tool                                  | Core function            | What it does                                            |
-| ------------------------------------- | ------------------------ | ------------------------------------------------------- |
-| [**read**](#read)                     | `read_file`              | Read a file with offset/limit and optional line numbers |
-| [**write**](#write)                   | `write_file`             | Create or overwrite a file at a resolved path           |
-| [**edit**](#edit)                     | `edit_file`              | Apply exact text replacements (find-and-replace)        |
-| [**glob**](#glob)                     | `glob_files`             | Match filesystem paths by glob pattern                  |
-| [**grep**](#grep)                     | `grep_search`            | Search file contents by regex with match metadata       |
-| [**bash**](#bash)                     | `execute_command`        | Execute shell commands with timeout and captured output |
-| [**webfetch**](#webfetch)             | `fetch_url`              | Fetch a URL and return content as text or markdown      |
-| [**todoread**](#todoread--todowrite)  | `read_todos`             | Read shared todo list state                             |
-| [**todowrite**](#todoread--todowrite) | `write_todos`            | Update shared todo list state                           |
-| [**task**](#task)                     | `TaskInput`/`TaskOutput` | Delegate work to a named sub-agent                      |
+| Tool                                 | Core function            | What it does                                            |
+| ------------------------------------ | ------------------------ | ------------------------------------------------------- |
+| [**read**](#read)                    | `read_file`              | Read a file with offset/limit and optional line numbers |
+| [**write**](#write)                  | `write_file`             | Create or overwrite a file at a resolved path           |
+| [**edit**](#edit)                    | `edit_file`              | Apply exact text replacements (find-and-replace)        |
+| [**glob**](#glob)                    | `glob_files`             | Match filesystem paths by glob pattern                  |
+| [**grep**](#grep)                    | `grep_search`            | Search file contents by regex with match metadata       |
+| [**bash**](#bash)                    | `execute_command`        | Execute shell commands with timeout and captured output |
+| [**webfetch**](#webfetch)            | `fetch_url`              | Fetch a URL and return content as text or markdown      |
+| [**todoread**](#todoread-todowrite)  | `read_todos`             | Read shared todo list state                             |
+| [**todowrite**](#todoread-todowrite) | `write_todos`            | Update shared todo list state                           |
+| [**task**](#task)                    | `TaskInput`/`TaskOutput` | Delegate work to a named sub-agent                      |
 
 ### read
 
