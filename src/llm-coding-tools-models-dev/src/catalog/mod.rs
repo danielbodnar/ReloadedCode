@@ -75,6 +75,7 @@ impl ModelsDevCatalog {
     /// # if let Some(entry) = result.catalog.lookup("openai", "gpt-4") {
     /// #     println!("API URL: {}", entry.0.api_url);
     /// # }
+    /// # Ok(())
     /// # }
     /// ```
     ///

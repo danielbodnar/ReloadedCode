@@ -152,6 +152,7 @@ Exactly one runtime mode must be enabled.
 
 Apache-2.0
 
+[models.dev]: https://models.dev
 [models.dev/api.json]: https://models.dev/api.json
 [models.dev_link]: https://models.dev
 [zstd]: https://facebook.github.io/zstd/
