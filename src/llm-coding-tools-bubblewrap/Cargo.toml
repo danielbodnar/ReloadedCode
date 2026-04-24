@@ -21,5 +21,4 @@ tempfile = { workspace = true }
 [dev-dependencies]
 rstest = { workspace = true }
 serial_test = { workspace = true }
-tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
