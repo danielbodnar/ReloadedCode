@@ -8,7 +8,7 @@ for a cached fallback and caching via ETag(s).
 ## Why this exists
 
 If you run coding agents against many providers, you want to have fresh data.
-[models.dev][models.dev] is one such source of data.
+[models.dev][models.dev_link] is one such source of data.
 
 This crate downloads from models.dev, keeps only the fields we need, and
 builds a `llm_coding_tools_core::models::ModelCatalog`.
@@ -150,4 +150,5 @@ Exactly one runtime mode must be enabled.
 
 Apache-2.0
 
+[models.dev_link]: https://models.dev
 [models.dev]: https://models.dev
