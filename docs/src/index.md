@@ -87,7 +87,7 @@ Shell sandboxing. Default-deny permissions. ~10 MiB footprint.
   </div>
   <div class="feature-card">
     <h3>🤖 Agent Runtime</h3>
-    <p>Load agent markdown files based on [OpenCode]'s schema. Multi-agent delegation with recursion depth limits.</p>
+    <p>Load agent markdown files based on <a href="https://opencode.ai/docs/schemas/agent">OpenCode's schema</a>. Multi-agent delegation with recursion depth limits.</p>
   </div>
   <div class="feature-card">
     <h3>🗄️ Model Catalog</h3>
@@ -189,7 +189,7 @@ dependency setup and an alternate path without agent files.
   </div>
   <div class="crate-card">
     <h3><a href="https://crates.io/crates/llm-coding-tools-agents">agents</a></h3>
-    <p>Load agent markdown files based on [OpenCode]'s schema into a typed catalog. Default-deny permissions with granular path matching.</p>
+    <p>Load agent markdown files based on <a href="https://opencode.ai/docs/schemas/agent">OpenCode's schema</a> into a typed catalog. Default-deny permissions with granular path matching.</p>
   </div>
   <div class="crate-card">
     <h3><a href="https://crates.io/crates/llm-coding-tools-serdesai">serdesai</a></h3>
