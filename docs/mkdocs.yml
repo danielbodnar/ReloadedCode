@@ -78,3 +78,5 @@ nav:
       - Comparison: comparison.md
       - Migration: migration.md
   - Custom Framework Integration: guides/custom-framework.md
+  - Extra:
+      - Extra Sandboxing Notes: extra-sandboxing-notes.md

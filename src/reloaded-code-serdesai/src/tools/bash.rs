@@ -20,7 +20,7 @@
           looser sandbox for build automation. Not safe against hostile commands.\n\
         \n\
         See the workspace guide at \
-        <https://github.com/Reloaded-Project/ReloadedCode/blob/main/SANDBOX-PROFILES.md> \
+        <https://reloaded-project.github.io/ReloadedCode/sandboxing/> \
         for full profile configuration and setup instructions."
 )]
 
