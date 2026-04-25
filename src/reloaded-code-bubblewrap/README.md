@@ -140,7 +140,7 @@ per-user profile directories from the inherited `PATH`.
 still drops entries under directories hidden by the profile.
 
 For more details on sandbox profiles and trade-offs, see
-[SANDBOX-PROFILES.md](https://github.com/Reloaded-Project/ReloadedCode/blob/main/SANDBOX-PROFILES.md).
+[Extra Sandboxing Notes](https://reloaded-project.github.io/ReloadedCode/extra_sandboxing_notes/).
 
 ## Builder Lists
 

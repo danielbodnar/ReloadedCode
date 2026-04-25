@@ -3,7 +3,7 @@
 Linux-only library that builds [bubblewrap] sandbox profiles, probes host
 capabilities, and produces wrapped command lines.
 
-For the security model, see [SANDBOX-PROFILES.md](../../SANDBOX-PROFILES.md).
+For the security model, see [Extra Sandboxing Notes](https://reloaded-project.github.io/ReloadedCode/extra-sandboxing-notes/).
 
 ## File Map
 

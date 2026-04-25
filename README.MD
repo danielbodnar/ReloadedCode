@@ -149,7 +149,7 @@ cargo run --example serdesai-task -p reloaded-code-serdesai
 - [reloaded-code-serdesai README](./src/reloaded-code-serdesai/README.md)
 - [reloaded-code-bubblewrap README](./src/reloaded-code-bubblewrap/README.md)
 - [reloaded-code-models-dev README](./src/reloaded-code-models-dev/README.md)
-- [Sandbox profiles and operator checklist](./SANDBOX-PROFILES.md)
+- [Sandbox profiles and operator checklist](https://reloaded-project.github.io/ReloadedCode/extra_sandboxing_notes/)
 - [API Reference (docs.rs)](https://docs.rs/reloaded-code-core)
 
 ## Contributing

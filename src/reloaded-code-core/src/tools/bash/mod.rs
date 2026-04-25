@@ -23,7 +23,7 @@
     doc = "- `Builder::trusted_maintenance` for trusted jobs (network enabled, read-only host rootfs)."
 )]
 //!
-//! See <https://github.com/Reloaded-Project/ReloadedCode/blob/main/SANDBOX-PROFILES.md>
+//! See <https://reloaded-project.github.io/ReloadedCode/sandboxing/>
 //! for the full operator guide.
 //!
 //! # Errors

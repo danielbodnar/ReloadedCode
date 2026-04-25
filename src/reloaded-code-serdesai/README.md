@@ -186,7 +186,7 @@ We default to **Public Bot** profile when sandboxing is used.
 In either case, trusted or not, please evaluate whether the solution fits your
 security needs. I can make no guarantees.
 
-More info in [SANDBOX-PROFILES.md](https://github.com/Reloaded-Project/ReloadedCode/blob/main/SANDBOX-PROFILES.md).
+More info in [Sandboxing docs](https://reloaded-project.github.io/ReloadedCode/sandboxing/).
 
 ## Examples
 

@@ -229,6 +229,9 @@ network exfiltration, credential theft, and host filesystem writes.
 - Commands run via the system `bash` or `sh` (resolved from mounted system
   paths)
 
+See [Profile Reference](extra-sandboxing-notes.md#public-bot) for the full
+mount table, environment variables, and design rationale.
+
 #### Trusted Maintenance
 
 For **trusted automation** - CI/CD pipelines, build jobs, maintenance tasks
@@ -247,6 +250,9 @@ contained to limit blast radius from accidental damage.
 
 - Selective bind-mounts of credential directories (e.g. `~/.ssh`,
   `~/.config/gcloud`) into the sandbox, with validated mount destinations
+
+See [Profile Reference](extra-sandboxing-notes.md#trusted-maintenance) for the
+full mount table, environment variables, and design rationale.
 
 !!! danger "Trusted Maintenance is not safe for untrusted input"
 
@@ -267,32 +273,14 @@ contained to limit blast radius from accidental damage.
 | Credential mounts  | Not supported                     | Supported (validated)                     |
 | Safe for untrusted | **Yes**                           | **No**                                    |
 
-### Under the hood: mounts, environment, and network
+### Under the hood
 
-The sandbox starts from an empty filesystem view. The sandbox exposes nothing
-from the host unless you mount it.
+The sandbox starts from an empty filesystem view. Nothing from the host is
+visible unless explicitly mounted in. The kernel enforces filesystem, network,
+and process isolation — this is not a userspace restriction.
 
-**Mount types:**
-
-| Type           | Flag        | Effect                                                         |
-| -------------- | ----------- | -------------------------------------------------------------- |
-| Read-only bind | `--ro-bind` | Read-only access to a host path                                |
-| Writable bind  | `--bind`    | Read-write access to a host path                               |
-| Memory overlay | `--tmpfs`   | Writable directory backed by memory; hides anything underneath |
-| Symlink        | `--symlink` | Creates a symlink inside the sandbox                           |
-
-**Environment isolation:** The sandbox clears all inherited variables
-(`--clearenv`), then sets only explicitly allowed ones (`--setenv`).
-
-**Network isolation:** `--unshare-net` places the sandbox in its own network
-namespace with no interfaces. This is kernel-level, not a firewall rule.
-
-**Process lifecycle:** `--die-with-parent` kills the sandboxed process if the
-parent exits. `--new-session` creates a clean process session for signal
-handling.
-
-**LLM awareness:** When the sandbox disables network access, the system prompt
-tells the LLM that network is unavailable, so it adjusts its behaviour.
+For the full mount-type reference, per-profile mount and environment tables,
+and design rationale, see [Profile Reference](extra-sandboxing-notes.md).
 
 ## Security best practices
 

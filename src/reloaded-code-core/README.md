@@ -137,7 +137,7 @@ Two profiles are available:
 We default to the **Public Bot** profile when sandboxing is enabled. In either
 case, evaluate whether the chosen profile fits your security needs.
 
-See [SANDBOX-PROFILES.md](https://github.com/Reloaded-Project/ReloadedCode/blob/main/SANDBOX-PROFILES.md) for the full operator
+See [Sandboxing docs](https://reloaded-project.github.io/ReloadedCode/sandboxing/) for the full operator
 guide and checklist.
 
 ### Context and wrapper mapping
