@@ -1173,7 +1173,7 @@ mod tests {
         let preamble = pb.build();
 
         assert!(preamble.contains("## Common Rules"));
-        assert!(preamble.contains("Read a file before `edit`, then copy exact text from `read`."));
+        assert!(preamble.contains("Read before `edit`, then copy exact text from `read`."));
         assert!(preamble.contains("- Returns raw text. Lines over `2000` chars are truncated."));
         assert!(preamble.contains("- Reads files, not directories."));
         assert!(!preamble.contains("`glob`"));

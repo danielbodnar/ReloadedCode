@@ -73,7 +73,7 @@ fn append_search_rule(facts: ToolPromptFacts, output: &mut String) {
         (true, true, true) => push_line(
             output,
             formatcp!(
-                "- Use `{}` for file-name search, `{}` for content search, and `{}` for full-file inspection.",
+                "- Use `{}` for file-name search, `{}` for content search, and `{}` for file content.",
                 glob::NAME,
                 grep::NAME,
                 read::NAME,
@@ -85,11 +85,11 @@ fn append_search_rule(facts: ToolPromptFacts, output: &mut String) {
         ),
         (true, false, true) => push_line(
             output,
-            formatcp!("- Use `{}` to find files and `{}` for full-file inspection.", glob::NAME, read::NAME),
+            formatcp!("- Use `{}` to find files and `{}` for file content.", glob::NAME, read::NAME),
         ),
         (false, true, true) => push_line(
             output,
-            formatcp!("- Use `{}` for content search and `{}` for full-file inspection.", grep::NAME, read::NAME),
+            formatcp!("- Use `{}` for content search and `{}` for file content.", grep::NAME, read::NAME),
         ),
         _ => {}
     }
@@ -115,7 +115,7 @@ fn append_read_before_edit_rule(facts: ToolPromptFacts, output: &mut String) {
         (true, true, true, true) => push_line(
             output,
             formatcp!(
-                "- Read a file before `{}` or overwriting it with `{}`; for `{}`, copy exact text from `{}` and omit any `{}` prefixes.",
+                "- Read before `{}` or overwriting with `{}`; for `{}`, copy exact text from `{}` and omit any `{}` prefixes.",
                 edit::NAME,
                 write::NAME,
                 edit::NAME,
@@ -126,7 +126,7 @@ fn append_read_before_edit_rule(facts: ToolPromptFacts, output: &mut String) {
         (true, true, true, false) => push_line(
             output,
             formatcp!(
-                "- Read a file before `{}` or overwriting it with `{}`; for `{}`, copy exact text from `{}`.",
+                "- Read before `{}` or overwriting with `{}`; for `{}`, copy exact text from `{}`.",
                 edit::NAME,
                 write::NAME,
                 edit::NAME,
@@ -136,7 +136,7 @@ fn append_read_before_edit_rule(facts: ToolPromptFacts, output: &mut String) {
         (true, true, false, true) => push_line(
             output,
             formatcp!(
-                "- Read a file before `{}`, then copy exact text from `{}` and omit any `{}` prefixes.",
+                "- Read before `{}`, then copy exact text from `{}` and omit any `{}` prefixes.",
                 edit::NAME,
                 read::NAME,
                 read::LINE_PREFIX_DISPLAY,
@@ -145,13 +145,13 @@ fn append_read_before_edit_rule(facts: ToolPromptFacts, output: &mut String) {
         (true, true, false, false) => push_line(
             output,
             formatcp!(
-                "- Read a file before `{}`, then copy exact text from `{}`.",
+                "- Read before `{}`, then copy exact text from `{}`.",
                 edit::NAME,
                 read::NAME,
             ),
         ),
         (true, false, true, _) => {
-            push_line(output, formatcp!("- Read a file before overwriting it with `{}`.", write::NAME))
+            push_line(output, formatcp!("- Read before overwriting with `{}`.", write::NAME))
         }
         _ => {}
     }
