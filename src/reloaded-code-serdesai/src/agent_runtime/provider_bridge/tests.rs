@@ -428,3 +428,87 @@ fn build_serdes_model_rejects_unknown_provider_type() {
             .contains("provider `mystery` has no SerdesAI mapping")
     );
 }
+
+#[test]
+fn build_openai_chat_succeeds_without_credential_when_no_env_vars() {
+    // A provider with no credential env vars should build successfully
+    // even without any API key set (e.g., local OpenAI-compatible endpoints).
+    let catalog = build_catalog(
+        vec![(
+            "local-compat",
+            provider(
+                "http://localhost:11434/v1",
+                &[], // No env vars listed - no credential required
+                ProviderType::OpenAiCompletions,
+            ),
+        )],
+        vec![("local-compat", "llama3", model_info(8_192, 4_096))],
+    );
+    let defaults = AgentDefaults::with_model("local-compat/llama3");
+    let agent = config_with_model("planner", None);
+    let credentials = CredentialResolver::without_env();
+
+    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+    let result = build_serdes_model(&catalog, &resolved, &credentials);
+    assert!(result.is_ok(), "should succeed with no credential env vars");
+    let model = result.expect("should build");
+    assert_eq!(model.spec.as_ref(), "openai:llama3");
+}
+
+#[test]
+fn build_openai_chat_still_requires_credential_when_env_vars_present() {
+    // Existing behavior: when env vars list credentials, they must be set.
+    // This is a regression test to ensure the optional-key change doesn't
+    // break providers that do require credentials.
+    let catalog = build_catalog(
+        vec![(
+            "remote-compat",
+            provider(
+                "https://api.example.com/v1",
+                &["EXAMPLE_API_KEY"], // Credential env var listed
+                ProviderType::OpenAiCompletions,
+            ),
+        )],
+        vec![("remote-compat", "my-model", model_info(128_000, 8_192))],
+    );
+    let defaults = AgentDefaults::with_model("remote-compat/my-model");
+    let agent = config_with_model("planner", None);
+    let credentials = CredentialResolver::without_env();
+
+    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+    let err = build_serdes_model(&catalog, &resolved, &credentials)
+        .err()
+        .expect("should fail without credentials");
+    assert!(
+        err.to_string()
+            .contains("provider `remote-compat` mapped to serdes `openai` requires a credential"),
+        "error was: {err}"
+    );
+}
+
+#[test]
+fn build_openai_chat_succeeds_with_non_credential_env_vars() {
+    // Env vars that don't match credential patterns (no _API_KEY/_TOKEN/_ACCESS_TOKEN suffix)
+    // should behave like no-credential - empty key is used.
+    let catalog = build_catalog(
+        vec![(
+            "compat-noncred",
+            provider(
+                "http://localhost:11434/v1",
+                &["MY_BASE_URL"], // Not a credential env var
+                ProviderType::OpenAiCompletions,
+            ),
+        )],
+        vec![("compat-noncred", "llama3", model_info(8_192, 4_096))],
+    );
+    let defaults = AgentDefaults::with_model("compat-noncred/llama3");
+    let agent = config_with_model("planner", None);
+    let credentials = CredentialResolver::without_env();
+
+    let resolved = resolve_model(&catalog, &defaults, &agent).expect("model should resolve");
+    let result = build_serdes_model(&catalog, &resolved, &credentials);
+    assert!(
+        result.is_ok(),
+        "should succeed with non-credential env vars"
+    );
+}

@@ -1,0 +1,26 @@
+[package]
+name = "reloaded-code-provider-config"
+version = "0.1.0"
+edition = "2021"
+description = "YAML-based custom provider configuration for reloaded-code"
+repository = "https://github.com/Reloaded-Project/ReloadedCode"
+license = "Apache-2.0"
+include = ["src/**/*", "README.md"]
+readme = "README.md"
+
+[dependencies]
+reloaded-code-core = { workspace = true, default-features = false, features = ["tokio"] }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+indexmap = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+
+[[example]]
+name = "config-loader"
+path = "examples/config-loader.rs"
+
+[dev-dependencies]
+rstest = { workspace = true }
+indoc = { workspace = true }
+tempfile = { workspace = true }

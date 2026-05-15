@@ -113,6 +113,12 @@ hash-table format (~30 KiB in memory).
 
 Exactly one must be enabled.
 
+## Custom providers
+
+You can define additional providers via YAML configuration files that extend
+the models.dev catalog. See [Custom Providers](guides/custom-providers.md) for
+the full schema and API reference.
+
 [models.dev]: https://models.dev
 [tokio]: https://tokio.rs
 [zstd]: https://facebook.github.io/zstd/

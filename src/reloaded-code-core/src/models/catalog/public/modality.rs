@@ -36,9 +36,48 @@ bitflags! {
     }
 }
 
+impl Modality {
+    /// Parse a combined modality label.
+    ///
+    /// Recognized: `"text"`, `"image"`, `"audio"`, `"video"`.
+    /// Returns `None` for unrecognized strings.
+    ///
+    /// When adding a new combined flag to the `bitflags!` block above,
+    /// add the corresponding label here and to the test below.
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "text" => Some(Self::TEXT),
+            "image" => Some(Self::IMAGE),
+            "audio" => Some(Self::AUDIO),
+            "video" => Some(Self::VIDEO),
+            _ => None,
+        }
+    }
+}
+
 impl Default for Modality {
     #[inline]
     fn default() -> Self {
         Self::TEXT
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_label_covers_all_combined_flags() {
+        // When adding a new combined flag, add its (label, flag) pair here.
+        const PAIRS: &[(&str, Modality)] = &[
+            ("text", Modality::TEXT),
+            ("image", Modality::IMAGE),
+            ("audio", Modality::AUDIO),
+            ("video", Modality::VIDEO),
+        ];
+        for (label, expected) in PAIRS {
+            assert_eq!(Modality::from_label(label), Some(*expected));
+        }
+        assert_eq!(Modality::from_label("smell"), None);
     }
 }

@@ -2830,6 +2830,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reloaded-code-provider-config"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "indexmap",
+ "indoc",
+ "reloaded-code-core",
+ "rstest",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "reloaded-code-serdesai"
 version = "0.2.0"
 dependencies = [

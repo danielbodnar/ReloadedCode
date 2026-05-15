@@ -77,6 +77,8 @@ nav:
   - vs. OpenCode:
       - Comparison: comparison.md
       - Migration: migration.md
-  - Custom Framework Integration: guides/custom-framework.md
+  - Guides:
+      - Custom Framework Integration: guides/custom-framework.md
+      - Custom Providers: guides/custom-providers.md
   - Extra:
       - Extra Sandboxing Notes: extra-sandboxing-notes.md
