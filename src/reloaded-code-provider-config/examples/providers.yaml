@@ -1,0 +1,38 @@
+# Example custom provider configuration.
+# Copy to ~/.config/reloaded-code/providers.yaml (user-global)
+# or .reloaded/providers.yaml (project-local).
+
+# OpenAI-compatible endpoint with API key
+my-llm:
+  api_url: https://api.myllm.com/v1
+  api_type: openai-compatible
+  env:
+    - MY_LLM_API_KEY
+  models:
+    minimax-coding-plan/MiniMax-M2.7:
+      max_input: 128000
+      max_output: 8192
+      modalities: [text, image]
+      default_temperature: 0.7
+      default_top_p: 0.95
+
+# Local Ollama behind OpenAI-compatible layer (no key required)
+local-ollama:
+  api_url: http://localhost:11434/v1
+  api_type: openai-compatible
+  models:
+    llama3:
+      max_input: 8192
+      max_output: 4096
+
+# Anthropic provider
+my-anthropic:
+  api_url: https://api.anthropic.com/v1
+  api_type: anthropic
+  env:
+    - ANTHROPIC_API_KEY
+  models:
+    claude-sonnet-4-6:
+      max_input: 200000
+      max_output: 8192
+      modalities: [text, image]

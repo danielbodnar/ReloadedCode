@@ -196,6 +196,10 @@ dependency setup and an alternate path without agent files.
     <p>Ready-to-use <a href="https://crates.io/crates/serdes-ai">SerdesAI</a> (LLM serialization framework) integration. 15 LLM provider adapters, multi-agent task delegation with recursion depth limits.</p>
   </div>
   <div class="crate-card">
+    <h3><a href="https://crates.io/crates/reloaded-code-provider-config">provider-config</a></h3>
+    <p>YAML-based custom provider definitions. Add providers without writing Rust code, merge multiple config sources, convert to catalog types.</p>
+  </div>
+  <div class="crate-card">
     <h3><a href="https://crates.io/crates/reloaded-code-bubblewrap">bubblewrap</a></h3>
     <p>Sandbox shell execution on Linux. Network-isolated, filesystem-filtered profiles for untrusted input. Two presets included.</p>
   </div>

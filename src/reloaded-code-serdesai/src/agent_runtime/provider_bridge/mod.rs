@@ -321,14 +321,24 @@ fn build_openai_chat(
 ) -> Result<ResolvedSerdesModel, ModelError> {
     #[cfg(feature = "openai")]
     {
-        let api_key = require_env_value(
-            credentials,
-            provider_key,
-            OPENAI_COMPATIBLE_PROVIDER,
-            env_vars,
-            "a credential",
-            is_credential_env_var,
-        )?;
+        // When the provider lists credential env vars, require at least one to be set.
+        // When no credential env vars are listed (e.g., local OpenAI-compatible
+        // endpoints like Ollama behind a compat layer), proceed with an empty key.
+        let has_credential_vars = env_vars.iter().any(|v| is_credential_env_var(v));
+        let api_key = if has_credential_vars {
+            // Credential env vars listed - require one to be set.
+            require_env_value(
+                credentials,
+                provider_key,
+                OPENAI_COMPATIBLE_PROVIDER,
+                env_vars,
+                "a credential",
+                is_credential_env_var,
+            )?
+        } else {
+            // No credential env vars - allow keyless endpoint (e.g., local Ollama).
+            String::new()
+        };
         let mut model = serdes_ai_models::OpenAIChatModel::new(model_name, api_key);
         if let Some(api_url) = api_url {
             model = model.with_base_url(api_url);
