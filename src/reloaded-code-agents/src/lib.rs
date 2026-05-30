@@ -6,6 +6,8 @@ mod loader;
 mod parser;
 mod path;
 mod runtime;
+#[cfg(test)]
+mod test_helpers;
 mod types;
 
 pub use catalog::AgentCatalog;

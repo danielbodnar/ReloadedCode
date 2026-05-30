@@ -193,9 +193,8 @@ fn collect_allowed_tools(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::PermissionRule;
-    use crate::{AgentConfig, AgentMode, AgentRuntimeBuilder, AgentToolSettings};
-    use ahash::AHashMap;
+    use crate::test_helpers::*;
+    use crate::AgentRuntimeBuilder;
     use indexmap::IndexMap;
     use reloaded_code_core::permissions::{ExpandError, PermissionAction};
     use reloaded_code_core::tool_metadata::{
@@ -203,49 +202,6 @@ mod tests {
     };
 
     type TestResult = Result<(), ExpandError>;
-
-    fn agent(
-        name: &str,
-        mode: AgentMode,
-        description: &str,
-        permission: IndexMap<String, PermissionRule>,
-    ) -> AgentConfig {
-        AgentConfig {
-            name: name.into(),
-            mode,
-            description: description.into(),
-            model: None,
-            hidden: false,
-            temperature: None,
-            top_p: None,
-            permission,
-            options: AHashMap::new(),
-            tool_settings: AgentToolSettings::default(),
-            prompt: Default::default(),
-        }
-    }
-
-    fn allow_tools(names: &[&str]) -> IndexMap<String, PermissionRule> {
-        names
-            .iter()
-            .map(|n| ((*n).into(), PermissionRule::Action(PermissionAction::Allow)))
-            .collect()
-    }
-
-    fn pattern_task(patterns: &[(&str, PermissionAction)]) -> IndexMap<String, PermissionRule> {
-        let mut map = IndexMap::new();
-        for (pattern, action) in patterns {
-            map.insert(pattern.to_string(), *action);
-        }
-        IndexMap::from([(task_meta::NAME.into(), PermissionRule::Pattern(map))])
-    }
-
-    fn deny_task() -> IndexMap<String, PermissionRule> {
-        IndexMap::from([(
-            task_meta::NAME.into(),
-            PermissionRule::Action(PermissionAction::Deny),
-        )])
-    }
 
     /// Unknown callers yield no targets.
     #[test]
