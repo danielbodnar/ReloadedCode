@@ -379,8 +379,6 @@ let key = resolver.resolve("OPENAI_API_KEY");
 [`build(self)`]: crate::SystemPromptBuilder::build
 [`context`]: crate::context
 [`ToolContext`]: crate::context::ToolContext
-[`ToolContext::name`]: crate::context::ToolContext::name
-[`ToolPrompt`]: crate::context::ToolPrompt
 [`ToolFactory`]: crate::ToolFactory
 [`ToolFactory::create`]: crate::ToolFactory::create
 [`ToolBuildContext`]: crate::ToolBuildContext
