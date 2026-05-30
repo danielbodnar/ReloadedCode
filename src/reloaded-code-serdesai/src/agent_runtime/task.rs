@@ -337,6 +337,7 @@ where
         Some(&task_handle),
         &context.workspace_root,
         sandbox_ref,
+        context.runtime.custom_tool_registry(),
     )?;
     Ok(builder.system_prompt(prompt_builder.build()).build())
 }
