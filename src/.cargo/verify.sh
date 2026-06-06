@@ -2,6 +2,7 @@
 # Post-change verification script
 # All steps must pass without warnings
 # Keep in sync with verify.ps1
+# Script is relative to git repo root; search if not found
 #
 # Note: reloaded-code-serdesai is async-only.
 # Blocking mode is validated for core and models-dev.
