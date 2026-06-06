@@ -6,15 +6,15 @@ use crate::hooks::{
 };
 use std::fmt;
 use std::sync::Arc;
-use tinyvec::ArrayVec;
+use tinyvec::TinyVec;
 
 /// All registered hooks and lifecycle events, stored per point.
 #[derive(Clone, Default)]
 pub struct HookSet {
     pub(super) tool_hooks: Vec<Arc<dyn ToolHook>>,
-    pub(super) session_start: ArrayVec<[Option<SessionStartFn>; INLINE_CAP]>,
-    pub(super) session_end: ArrayVec<[Option<SessionEndFn>; INLINE_CAP]>,
-    pub(super) session_compact: ArrayVec<[Option<SessionCompactFn>; INLINE_CAP]>,
+    pub(super) session_start: TinyVec<[Option<SessionStartFn>; INLINE_CAP]>,
+    pub(super) session_end: TinyVec<[Option<SessionEndFn>; INLINE_CAP]>,
+    pub(super) session_compact: TinyVec<[Option<SessionCompactFn>; INLINE_CAP]>,
 }
 
 impl HookSet {
