@@ -38,6 +38,10 @@ The foundation. Contains every tool implementation as a plain function
   `CustomToolRegistry`, and `ToolCatalogEntry` types
 - **Credential resolver** - API key lookup with override support ([details](getting-started.md#credential-management))
 - **Model catalog** - compact hash-table-based provider/model lookup
+- **Hook types** - `HookSet`, `HookSetBuilder`, tool hook types
+  (`ToolHook`, `ToolOriginal`, `ToolHookFuture`, `ToolExecutor`,
+  `ToolCallContext`, `ToolRequest`), and session event types
+  (`SessionContext`, `EndReason`). See [Hooks](hooks).
 
 Core is **framework-agnostic**: it has no dependencies on any specific LLM
 framework. Your integration layer wraps these functions into framework-specific
@@ -50,7 +54,9 @@ Loads agent definitions from markdown files with YAML frontmatter. Provides:
 - **AgentLoader** - scans directories for `.md` agent files
 - **AgentCatalog** - name-to-config lookup table
 - **AgentRuntime** - bundles catalog + defaults + permissions + task settings
-- **AgentRuntimeBuilder** - accepts core tool catalogs and custom tool factories
+  + the registered `HookSet`
+- **AgentRuntimeBuilder** - accepts core tool catalogs, custom tool factories,
+  and a `HookSet` (`.hooks(set)`)
 
 The agent file format mirrors [OpenCode]'s schema - similar enough that many
 files are drop-in compatible, but [not identical](migration.md). The most

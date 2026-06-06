@@ -105,6 +105,10 @@ Shell sandboxing. Default-deny permissions. ~10 MiB footprint.
     <h3>🧩 Embeddable</h3>
     <p>Framework-agnostic core. Use the <a href="https://crates.io/crates/serdes-ai">SerdesAI</a> integration or build your own with the core primitives.</p>
   </div>
+  <div class="feature-card">
+    <h3>🪝 Hooks</h3>
+    <p>Block, transform, observe tool calls and sessions. See <a href="hooks">Hooks</a>.</p>
+  </div>
 </div>
 
 ## Quick Start
@@ -189,7 +193,7 @@ dependency setup and an alternate path without agent files.
   </div>
   <div class="crate-card">
     <h3><a href="https://crates.io/crates/reloaded-code-agents">agents</a></h3>
-    <p>Load agent markdown files based on <a href="https://opencode.ai/docs/schemas/agent">OpenCode's schema</a> into a typed catalog. Default-deny permissions with granular path matching.</p>
+    <p>Load agent markdown files based on <a href="https://opencode.ai/docs/schemas/agent">OpenCode's schema</a> into a typed catalog. Default-deny permissions with granular path matching. <a href="hooks">Hook container</a> attached to the runtime for tool interception and session lifecycle.</p>
   </div>
   <div class="crate-card">
     <h3><a href="https://crates.io/crates/reloaded-code-serdesai">serdesai</a></h3>
