@@ -12,6 +12,7 @@ pub mod credentials;
 pub mod custom_tool;
 pub mod error;
 pub mod fs;
+pub mod hooks;
 pub mod models;
 pub mod output;
 pub mod path;
@@ -34,6 +35,7 @@ pub use custom_tool::{
     ToolBuildContext, ToolFactory, ToolRunContext,
 };
 pub use error::{ToolError, ToolResult};
+pub use hooks::*;
 pub use output::ToolOutput;
 pub use path::{AbsolutePathResolver, AllowedGlobResolver, AllowedPathResolver, PathResolver};
 pub use system_prompt::SystemPromptBuilder;

@@ -9,6 +9,7 @@ use super::task::{build_runtime_task_caches, TaskTargetSummary};
 use crate::{AgentCatalog, RulesetExt};
 use ahash::AHashMap;
 use reloaded_code_core::permissions::{ExpandError, Ruleset};
+use reloaded_code_core::HookSet;
 use reloaded_code_core::{SharedToolRegistry, TaskSettings, ToolCatalogEntry};
 use std::sync::Arc;
 
@@ -43,6 +44,7 @@ pub struct AgentRuntime {
     task_settings: TaskSettings,
     tools: Vec<ToolCatalogEntry>,
     custom_tool_registry: SharedToolRegistry,
+    hooks: HookSet,
     permission_rulesets: AHashMap<String, Arc<Ruleset>>,
     allowed_tools_by_caller: AHashMap<String, Vec<ToolCatalogEntry>>,
     callable_target_summaries_by_caller: AHashMap<String, Vec<TaskTargetSummary>>,
@@ -56,6 +58,7 @@ impl AgentRuntime {
         task_settings: TaskSettings,
         tools: Vec<ToolCatalogEntry>,
         custom_tool_registry: SharedToolRegistry,
+        hooks: HookSet,
     ) -> Result<Self, ExpandError> {
         let permission_rulesets = catalog
             .iter()
@@ -75,6 +78,7 @@ impl AgentRuntime {
             task_settings,
             tools,
             custom_tool_registry,
+            hooks,
             permission_rulesets,
             allowed_tools_by_caller,
             callable_target_summaries_by_caller,
@@ -109,6 +113,12 @@ impl AgentRuntime {
     #[inline]
     pub fn custom_tool_registry(&self) -> &SharedToolRegistry {
         &self.custom_tool_registry
+    }
+
+    /// Returns the registered hooks.
+    #[inline]
+    pub fn hooks(&self) -> &HookSet {
+        &self.hooks
     }
 
     /// Returns the cached permission ruleset for the named caller.

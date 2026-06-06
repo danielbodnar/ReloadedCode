@@ -457,10 +457,12 @@ mod tests {
     ) -> PermissionAction {
         let mut ruleset = Ruleset::new();
         for (perm, pat, action) in rules {
-            ruleset.push(Rule::new(*perm, *pat, *action).expect(&format!(
-                "failed to create Rule for permission {:?}, pattern {:?}, action {:?}",
-                perm, pat, action
-            )));
+            ruleset.push(Rule::new(*perm, *pat, *action).unwrap_or_else(|_| {
+                panic!(
+                    "failed to create Rule for permission {:?}, pattern {:?}, action {:?}",
+                    perm, pat, action
+                )
+            }));
         }
         ruleset.evaluate(permission, subject)
     }

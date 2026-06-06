@@ -3,6 +3,7 @@
 use super::state::{AgentDefaults, AgentRuntime};
 use crate::AgentCatalog;
 use reloaded_code_core::permissions::ExpandError;
+use reloaded_code_core::HookSet;
 use reloaded_code_core::{
     default_tools, CustomToolRegistry, SharedToolRegistry, TaskSettings, ToolCatalogEntry,
     ToolFactory,
@@ -16,6 +17,7 @@ pub struct AgentRuntimeBuilder {
     task_settings: TaskSettings,
     tools: Vec<ToolCatalogEntry>,
     custom_tool_registry: CustomToolRegistry,
+    hooks: HookSet,
 }
 
 impl Default for AgentRuntimeBuilder {
@@ -35,6 +37,7 @@ impl AgentRuntimeBuilder {
             task_settings: TaskSettings::default(),
             tools: default_tools(),
             custom_tool_registry: CustomToolRegistry::new(),
+            hooks: HookSet::default(),
         }
     }
 
@@ -83,6 +86,13 @@ impl AgentRuntimeBuilder {
         self
     }
 
+    /// Sets the hook set for tool interception and session lifecycle.
+    #[inline]
+    pub fn hooks(mut self, hooks: HookSet) -> Self {
+        self.hooks = hooks;
+        self
+    }
+
     /// Finishes building and returns the [`AgentRuntime`].
     ///
     /// # Errors
@@ -95,6 +105,7 @@ impl AgentRuntimeBuilder {
             self.task_settings,
             self.tools,
             SharedToolRegistry::from_registry(self.custom_tool_registry),
+            self.hooks,
         )
     }
 }
@@ -108,6 +119,7 @@ mod tests {
     use reloaded_code_core::context::{ToolContext, ToolPrompt};
     use reloaded_code_core::permissions::{ExpandError, PermissionAction};
     use reloaded_code_core::tool_metadata::{glob as glob_meta, read as read_meta};
+    use reloaded_code_core::HookSet;
     use reloaded_code_core::{
         default_tools, CustomTool, CustomToolDefinition, CustomToolFuture, TaskSettings,
         ToolBuildContext, ToolCatalogEntry, ToolCatalogKind, ToolFactory, ToolOutput, ToolResult,
@@ -288,6 +300,21 @@ mod tests {
             "custom tool factory should be registered"
         );
         assert_eq!(factory.unwrap().name(), "stub");
+        Ok(())
+    }
+
+    #[test]
+    fn builder_default_hooks_are_empty() -> TestResult {
+        let runtime = AgentRuntimeBuilder::new().build()?;
+        assert!(runtime.hooks().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn builder_hooks_sets_hook_set() -> TestResult {
+        let custom_hooks = HookSet::builder().build();
+        let runtime = AgentRuntimeBuilder::new().hooks(custom_hooks).build()?;
+        assert!(runtime.hooks().is_empty());
         Ok(())
     }
 }
