@@ -48,10 +48,11 @@ mistral = ["serdes-ai-models/mistral"]
 ollama = ["serdes-ai-models/ollama"]
 openrouter = ["serdes-ai-models/openrouter"]
 # Sandbox feature - enables bubblewrap sandboxing
-linux-bubblewrap = [
-    "dep:reloaded-code-bubblewrap",
-    "reloaded-code-core/linux-bubblewrap",
-]
+linux-bubblewrap = ["dep:reloaded-code-bubblewrap", "reloaded-code-core/linux-bubblewrap"]
+
+# Mock feature - enables mock models types and model_override injection
+# Use for testing functionality with mocks.
+mock = []
 
 [dependencies]
 # Core tool operations (file read/write/edit, glob, grep, bash, etc.)

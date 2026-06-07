@@ -47,3 +47,6 @@ pub use reloaded_code_agents::{
     AgentDefaults, AgentRuntime, AgentRuntimeBuilder, ModelResolutionError, ResolvedModel,
     resolve_model_with_catalog,
 };
+
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;

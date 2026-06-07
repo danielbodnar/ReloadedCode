@@ -8,6 +8,8 @@ use crate::task::TaskHandle;
 use reloaded_code_agents::AgentRuntime;
 use reloaded_code_core::{CredentialLookup, CredentialResolver, models::ModelCatalog};
 use serdes_ai::{Agent, AgentBuilder};
+#[cfg(any(test, feature = "mock"))]
+use serdes_ai_models::BoxedModel;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -58,6 +60,8 @@ where
                 model_catalog,
                 credentials,
                 workspace_root,
+                #[cfg(any(test, feature = "mock"))]
+                model_override: None,
                 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
                 bash_sandbox: None,
                 #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -198,6 +202,26 @@ where
     pub fn credentials(&self) -> &C {
         self.context.credentials.as_ref()
     }
+
+    /// Sets a mock model that overrides the resolved catalog model.
+    ///
+    /// # Arguments
+    /// - `model`: Any [`serdes_ai_models::Model`] implementation to use instead
+    ///   of the catalog-resolved model.
+    ///
+    /// # Returns
+    /// `Self` for chaining.
+    ///
+    /// # Panics
+    /// Panics if the [`AgentBuildContext`] has already been cloned (i.e., the
+    /// inner `Arc` is not unique). This must be called before sharing the context.
+    #[cfg(any(test, feature = "mock"))]
+    pub fn with_model_override(mut self, model: impl serdes_ai_models::Model + 'static) -> Self {
+        Arc::get_mut(&mut self.context)
+            .expect("with_model_override must be called before sharing the context")
+            .model_override = Some(Arc::new(model));
+        self
+    }
 }
 
 /// Shared owned state for builds that may happen later during Task delegation.
@@ -208,6 +232,8 @@ pub(crate) struct TaskBuildContext<C: CredentialLookup + Send + Sync + ?Sized = 
     model_catalog: Arc<ModelCatalog>,
     credentials: Arc<C>,
     workspace_root: Arc<Path>,
+    #[cfg(any(test, feature = "mock"))]
+    model_override: Option<BoxedModel>,
     #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
     bash_sandbox: Option<Arc<Profile>>,
     #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -251,6 +277,8 @@ where
             model_catalog,
             credentials,
             workspace_root,
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             bash_sandbox: Some(bash_sandbox),
             _sandbox_tmpdir,
         }
@@ -274,6 +302,8 @@ where
             model_catalog,
             credentials,
             workspace_root,
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -329,8 +359,15 @@ where
         context.credentials.as_ref(),
         with_summaries,
     )?;
-    // Create an AgentBuilder pre-loaded with the resolved model.
-    let builder = AgentBuilder::<(), String>::from_arc(prepared.model().clone());
+    // Create an AgentBuilder with the model (override wins over catalog-resolved).
+    #[cfg(any(test, feature = "mock"))]
+    let model = context
+        .model_override
+        .clone()
+        .unwrap_or_else(|| prepared.model().clone());
+    #[cfg(not(any(test, feature = "mock")))]
+    let model = prepared.model().clone();
+    let builder = AgentBuilder::<(), String>::from_arc(model);
     // Create a TaskHandle for delegation if Task tool is attached later.
     let task_handle = TaskHandle::new(context.clone(), current_depth);
     // Select the sandbox profile (None on non-Linux or without the feature).
@@ -464,6 +501,8 @@ mod tests {
             model_catalog,
             credentials,
             workspace_root: workspace_root(),
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -504,6 +543,8 @@ mod tests {
             model_catalog,
             credentials,
             workspace_root: workspace_root(),
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -543,6 +584,8 @@ mod tests {
             model_catalog,
             credentials,
             workspace_root: workspace_root(),
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -578,6 +621,8 @@ mod tests {
             model_catalog,
             credentials,
             workspace_root: workspace_root(),
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
@@ -650,6 +695,8 @@ mod tests {
             model_catalog,
             credentials,
             workspace_root: workspace_root(),
+            #[cfg(any(test, feature = "mock"))]
+            model_override: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
             bash_sandbox: None,
             #[cfg(all(feature = "linux-bubblewrap", target_os = "linux"))]
